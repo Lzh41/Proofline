@@ -58,6 +58,13 @@ interface SampleFieldError {
   field: 'input' | 'output';
 }
 
+type SampleRunItemStatus = 'pending' | 'running' | 'passed' | 'failed' | 'unknown';
+
+interface SampleRunItem {
+  status: SampleRunItemStatus;
+  result?: ProblemSampleRunResult;
+}
+
 function sampleRunStatus(results: ProblemSampleRunResult[]): boolean | null {
   if (results.some((result) => !result.ok || result.passed === false)) return false;
   return results.every((result) => result.passed === true) ? true : null;
@@ -75,6 +82,41 @@ function formatAllSampleResults(results: ProblemSampleRunResult[]): string {
     ? '\n\n已自动生成测试入口，你只需要编写题目要求的解题函数。'
     : '';
   return `${summary}\n\n${details}${entryPointNote}`;
+}
+
+function sampleRunItemStatus(result: ProblemSampleRunResult): SampleRunItemStatus {
+  if (!result.ok || result.passed === false) return 'failed';
+  if (result.passed === true) return 'passed';
+  return 'unknown';
+}
+
+function sampleRunStatusLabel(status: SampleRunItemStatus): string {
+  switch (status) {
+    case 'running': return '运行中';
+    case 'passed': return '通过';
+    case 'failed': return '未通过';
+    case 'unknown': return '无法判定';
+    default: return '等待中';
+  }
+}
+
+function sampleRunFailure(error: unknown, sampleIndex: number, expectedOutput: string): ProblemSampleRunResult {
+  return {
+    ok: false,
+    output: '',
+    error: error instanceof Error ? error.message : '样例运行失败。',
+    durationMs: 0,
+    timedOut: false,
+    sampleIndex,
+    expectedOutput,
+    actualOutput: '',
+    generatedEntryPoint: false,
+    mode: 'stdin',
+  };
+}
+
+function formatSampleProgress(results: ProblemSampleRunResult[], total: number): string {
+  return `已运行 ${results.length} / ${total} 条样例\n\n${formatAllSampleResults(results)}`;
 }
 
 const COACH_ACTIONS: Array<{
@@ -316,6 +358,7 @@ export function SolvePage() {
   const [runResult, setRunResult] = useState('还没有运行样例。点击上方“运行全部样例”，应用会自动补齐测试入口。');
   const [runPassed, setRunPassed] = useState<boolean | null>(null);
   const [runningCode, setRunningCode] = useState(false);
+  const [sampleRunItems, setSampleRunItems] = useState<SampleRunItem[]>([]);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleDrafts, setSampleDrafts] = useState<ProblemExample[]>(() => editableExamples(problem?.examples ?? []));
   const [sampleEditorMessage, setSampleEditorMessage] = useState('');
@@ -409,8 +452,6 @@ export function SolvePage() {
     setStreamingAnswer('');
     setAiStatus('idle');
     setAiError('');
-    setRunResult('还没有运行样例。点击上方“运行全部样例”，应用会自动补齐测试入口。');
-    setRunPassed(null);
     setSampleDrafts(editableExamples(problem?.examples ?? []));
     setSampleEditorMessage('');
     setSampleFieldError(null);
@@ -424,6 +465,9 @@ export function SolvePage() {
     requestGenerationRef.current += 1;
     draftAttemptIdRef.current = attempt?.id;
     draftCreatePromiseRef.current = null;
+    setRunResult('还没有运行样例。点击上方“运行全部样例”，应用会自动补齐测试入口。');
+    setRunPassed(null);
+    setSampleRunItems([]);
     setRunningCode(false);
     setSampleBusy(false);
   }, [problem?.id]);
@@ -743,16 +787,30 @@ export function SolvePage() {
         }
       }
 
+      setSampleRunItems(runnableProblem.examples.map(() => ({ status: 'pending' })));
+      setRunResult(`已准备 ${runnableProblem.examples.length} 条样例，等待运行…`);
+      // 让状态列表先完成一次渲染，避免点击按钮后被本地持久化或编译任务挡住反馈。
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
       if (store.runProblemSample) {
         if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
-        activeAttempt = await ensureActiveAttempt();
+        const activeAttemptPromise = ensureActiveAttempt().catch(() => undefined);
         const results: ProblemSampleRunResult[] = [];
         for (let sampleIndex = 0; sampleIndex < runnableProblem.examples.length; sampleIndex += 1) {
+          setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { ...item, status: 'running' } : item));
           setRunResult(`正在运行样例 ${sampleIndex + 1} / ${runnableProblem.examples.length}…`);
-          const result = await store.runProblemSample({ problem: runnableProblem, language, code, sampleIndex, timeoutMs: 3000 });
+          let result: ProblemSampleRunResult;
+          try {
+            result = await store.runProblemSample({ problem: runnableProblem, language, code, sampleIndex, timeoutMs: 3000 });
+          } catch (error) {
+            result = sampleRunFailure(error, sampleIndex, runnableProblem.examples[sampleIndex]?.output ?? '');
+          }
           if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
           results.push(result);
+          setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { status: sampleRunItemStatus(result), result } : item));
+          setRunResult(formatSampleProgress(results, runnableProblem.examples.length));
         }
+        activeAttempt = await activeAttemptPromise;
         const passed = sampleRunStatus(results);
         setRunPassed(passed);
         setRunResult(formatAllSampleResults(results));
@@ -771,12 +829,18 @@ export function SolvePage() {
       const runner = store.runCode ?? store.runLocalCode;
       if (!runner) throw new Error('本地运行服务尚未初始化。');
       if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
-      activeAttempt = await ensureActiveAttempt();
+      const activeAttemptPromise = ensureActiveAttempt().catch(() => undefined);
       const results: ProblemSampleRunResult[] = [];
       for (let sampleIndex = 0; sampleIndex < runnableProblem.examples.length; sampleIndex += 1) {
         const example = runnableProblem.examples[sampleIndex];
+        setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { ...item, status: 'running' } : item));
         setRunResult(`正在运行样例 ${sampleIndex + 1} / ${runnableProblem.examples.length}…`);
-        const result = await runner({ language, code, input: example.input, timeoutMs: 3000 });
+        let result;
+        try {
+          result = await runner({ language, code, input: example.input, timeoutMs: 3000 });
+        } catch (error) {
+          result = sampleRunFailure(error, sampleIndex, example.output);
+        }
         if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
         const actualOutput = result.output.trim();
         results.push({
@@ -788,7 +852,10 @@ export function SolvePage() {
           generatedEntryPoint: false,
           mode: 'stdin',
         });
+        setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { status: sampleRunItemStatus(results[results.length - 1]), result: results[results.length - 1] } : item));
+        setRunResult(formatSampleProgress(results, runnableProblem.examples.length));
       }
+      activeAttempt = await activeAttemptPromise;
       const passed = sampleRunStatus(results);
       setRunPassed(passed);
       setRunResult(formatAllSampleResults(results));
@@ -955,6 +1022,29 @@ export function SolvePage() {
                   {runPassed === true ? <CheckCircle2 size={16} /> : runPassed === false ? <AlertTriangle size={16} /> : <TestTube2 size={16} />}
                   <div>
                     <pre>{runResult}</pre>
+                    {sampleRunItems.length > 0 && (
+                      <div className={styles.sampleRunList} aria-label="样例运行进度">
+                        {sampleRunItems.map((item, index) => {
+                          const statusClass = item.status === 'passed'
+                            ? styles.sampleRunPassed
+                            : item.status === 'failed'
+                              ? styles.sampleRunFailed
+                              : item.status === 'running'
+                                ? styles.sampleRunRunning
+                                : '';
+                          return (
+                            <div className={`${styles.sampleRunItem} ${statusClass}`} key={`sample-run-${index}`}>
+                              <span className={styles.sampleRunMarker} aria-hidden="true">
+                                {item.status === 'passed' ? <CheckCircle2 size={13} /> : item.status === 'failed' ? <AlertTriangle size={13} /> : item.status === 'running' ? <RefreshCw size={13} className={styles.spin} /> : <span>{index + 1}</span>}
+                              </span>
+                              <span className={styles.sampleRunLabel}>样例 {index + 1}</span>
+                              <strong>{sampleRunStatusLabel(item.status)}</strong>
+                              {item.result && <small>{formatProblemSampleResult(item.result).split('\n')[1] ?? ''}</small>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     {runPassed === false && (
                       <div className={styles.buttonRow}>
                         <button className="button" type="button" disabled={busyCoach || !aiConfigured} onClick={() => void requestCoach('debug')} title={!aiConfigured ? '请先在设置中配置 AI 服务' : '让 AI 结合运行结果定位错误'}>

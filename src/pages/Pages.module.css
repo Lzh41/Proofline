@@ -1427,7 +1427,7 @@
 
 .codeWorkbench {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) 116px;
+  grid-template-rows: auto minmax(0, 1fr) minmax(116px, 220px);
 }
 
 .codeWorkbench .solveToolbar {
@@ -1510,7 +1510,9 @@
 
 .runResultPanel {
   min-width: 0;
-  height: 68px;
+  min-height: 68px;
+  max-height: 220px;
+  height: auto;
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: start;
@@ -1525,7 +1527,7 @@
 }
 
 .runResultPanel pre {
-  max-height: 50px;
+  max-height: 72px;
   margin: 0;
   overflow: auto;
   scrollbar-width: none;
@@ -1540,6 +1542,55 @@
 .runResultPanel pre::-webkit-scrollbar { display: none; }
 .runResultPassed { border-left-color: var(--success); color: var(--success); background: color-mix(in srgb, var(--success) 8%, transparent); }
 .runResultFailed { border-left-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+
+.sampleRunList {
+  display: grid;
+  gap: 4px;
+  max-height: 128px;
+  margin-top: 7px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sampleRunList::-webkit-scrollbar { display: none; }
+
+.sampleRunItem {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface-elevated) 72%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.sampleRunMarker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.sampleRunLabel { color: var(--body); }
+.sampleRunItem strong { font-size: 10px; color: var(--muted); }
+.sampleRunItem small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sampleRunRunning { border-color: color-mix(in srgb, var(--info) 45%, var(--line)); }
+.sampleRunRunning .sampleRunMarker, .sampleRunRunning strong { color: var(--info); }
+.sampleRunPassed { border-color: color-mix(in srgb, var(--success) 40%, var(--line)); }
+.sampleRunPassed .sampleRunMarker, .sampleRunPassed strong { color: var(--success); }
+.sampleRunFailed { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.sampleRunFailed .sampleRunMarker, .sampleRunFailed strong { color: var(--danger); }
 
 .thoughtComposer {
   min-width: 0;

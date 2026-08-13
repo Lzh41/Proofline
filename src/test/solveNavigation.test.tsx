@@ -458,6 +458,76 @@ describe('做题页题库导航', () => {
     expect(screen.queryByRole('button', { name: '样例通过' })).not.toBeInTheDocument();
   });
 
+  it('样例运行过程中逐条显示状态，并在后续样例结束前不提前完成练习', async () => {
+    let resolveSecond!: (result: {
+      ok: boolean;
+      output: string;
+      durationMs: number;
+      timedOut: boolean;
+      sampleIndex: number;
+      expectedOutput: string;
+      actualOutput: string;
+      passed: boolean;
+      generatedEntryPoint: boolean;
+      mode: 'function';
+    }) => void;
+    const secondResult = new Promise<Parameters<typeof resolveSecond>[0]>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const runProblemSample = vi.fn(({ sampleIndex = 0 }: { sampleIndex?: number }) => sampleIndex === 0
+      ? Promise.resolve({
+          ok: true,
+          output: '3',
+          durationMs: 2,
+          timedOut: false,
+          sampleIndex,
+          expectedOutput: '3',
+          actualOutput: '3',
+          passed: true,
+          generatedEntryPoint: true,
+          mode: 'function' as const,
+        })
+      : secondResult);
+    useAppStore.setState((state) => ({
+      runProblemSample,
+      problems: state.problems.map((item) => item.id === 'algo-two-sum'
+        ? { ...item, examples: [{ input: '1 2', output: '3' }, { input: '3 4', output: '7' }] }
+        : item),
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
+    await waitFor(() => {
+      const progress = within(screen.getByLabelText('样例运行进度'));
+      expect(progress.getByText('样例 1')).toBeInTheDocument();
+      expect(progress.getByText('通过')).toBeInTheDocument();
+      expect(progress.getByText('样例 2')).toBeInTheDocument();
+      expect(progress.getByText('运行中')).toBeInTheDocument();
+    });
+    expect(useAppStore.getState().attempts.find((item) => item.problemId === 'algo-two-sum')?.result).not.toBe('sample-passed');
+
+    resolveSecond({
+      ok: true,
+      output: '0',
+      durationMs: 2,
+      timedOut: false,
+      sampleIndex: 1,
+      expectedOutput: '7',
+      actualOutput: '0',
+      passed: false,
+      generatedEntryPoint: true,
+      mode: 'function',
+    });
+    await waitFor(() => expect(within(screen.getByLabelText('样例运行进度')).getByText('未通过')).toBeInTheDocument());
+    expect(runProblemSample).toHaveBeenCalledTimes(2);
+    expect(useAppStore.getState().attempts.find((item) => item.problemId === 'algo-two-sum')?.result).not.toBe('sample-passed');
+  });
+
   it('切换题目时不会把上一题的签名误存进新题的草稿', async () => {
     useAppStore.setState((state) => ({
       problems: [

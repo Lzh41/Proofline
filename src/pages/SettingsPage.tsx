@@ -65,7 +65,7 @@ export function SettingsPage() {
           <div className={styles.settingIntro}><DatabaseBackup size={20} color="var(--accent-deep)" /><h2>备份与迁移</h2><p>完整备份不包含平台 Cookie 和 AI 密钥，可安全迁移个人学习记录。</p></div>
           <div className={styles.settingControls}>
             <div className={styles.buttonRow}>
-              <button className="button buttonPrimary" type="button" disabled={busy} onClick={() => run('备份已创建到“文档\\析题\\备份”。', store.createBackup)}><DatabaseBackup size={15} />立即备份</button>
+              <button className="button buttonPrimary" type="button" disabled={busy} onClick={() => run('备份已创建到“文档\\Proofline\\备份”。', store.createBackup)}><DatabaseBackup size={15} />立即备份</button>
               <button className="button" type="button" disabled={busy} onClick={() => run('备份恢复完成，请检查题目和计划。', store.restoreBackup)}><Upload size={15} />恢复备份</button>
             </div>
             <div className={styles.buttonRow}>
@@ -105,7 +105,7 @@ export function SettingsPage() {
         <section className={styles.settingRow}>
           <div className={styles.settingIntro}><Trash2 size={20} color="var(--danger)" /><h2>删除本机数据</h2><p>删除后无法撤销。平台登录、AI 密钥、题目、错题、知识库和计划都会清除。</p></div>
           <div className={styles.settingControls}>
-            <label className={styles.toggle}><div><strong style={{ fontSize: 13 }}>同时删除文档备份</strong><p className={styles.noteContent} style={{ margin: '3px 0 0' }}>关闭时保留“文档\析题\备份”中的恢复文件。</p></div><input type="checkbox" checked={deleteBackups} onChange={(event) => setDeleteBackups(event.target.checked)} aria-label="同时删除文档备份" /></label>
+            <label className={styles.toggle}><div><strong style={{ fontSize: 13 }}>同时删除文档备份</strong><p className={styles.noteContent} style={{ margin: '3px 0 0' }}>关闭时保留“文档\Proofline\备份”中的恢复文件。</p></div><input type="checkbox" checked={deleteBackups} onChange={(event) => setDeleteBackups(event.target.checked)} aria-label="同时删除文档备份" /></label>
             <div className={styles.buttonRow}><button className="button buttonDanger" type="button" disabled={busy} onClick={() => {
               const scope = deleteBackups ? '全部本机数据和所有备份' : '全部本机数据（保留文档备份）';
               if (window.confirm(`确定删除${scope}吗？此操作无法撤销。`)) {

@@ -2772,6 +2772,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "proofline"
+version = "0.1.1"
+dependencies = [
+ "chrono",
+ "dirs",
+ "dom_query",
+ "html5ever",
+ "keyring",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-window-state",
+ "tempfile",
+ "tendril",
+ "tokio",
+ "tokio-util",
+ "url",
+ "uuid",
+ "zip",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5329,34 +5357,6 @@ dependencies = [
  "libc",
  "once_cell",
  "pkg-config",
-]
-
-[[package]]
-name = "xiti"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dirs",
- "dom_query",
- "html5ever",
- "keyring",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-window-state",
- "tempfile",
- "tendril",
- "tokio",
- "tokio-util",
- "url",
- "uuid",
- "zip",
 ]
 
 [[package]]

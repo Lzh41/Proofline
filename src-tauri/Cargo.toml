@@ -1,17 +1,17 @@
 [package]
-name = "xiti"
-version = "0.1.0"
+name = "proofline"
+version = "0.1.1"
 description = "Proofline - 从题目推导到可验证解法的算法学习工作台"
-authors = ["Xiti contributors"]
+authors = ["Proofline contributors"]
 edition = "2021"
 rust-version = "1.77.2"
 
 [lib]
-name = "xiti_lib"
+name = "proofline_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "xiti"
+name = "proofline"
 path = "src/main.rs"
 
 [build-dependencies]

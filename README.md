@@ -16,7 +16,7 @@
   <a href="https://github.com/Lzh41/Proofline"><img src="https://img.shields.io/github/stars/Lzh41/Proofline?style=flat-square&color=E8B86D" alt="GitHub stars" /></a>
 </p>
 
-> 当前版本：`0.1.0` · Windows x64 · Tauri 2 · React 19 · SQLite
+> 当前版本：`0.1.1` · Windows x64 · Tauri 2 · React 19 · SQLite
 
 ## 先看它在做什么
 
@@ -78,12 +78,12 @@ Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从�
 
 前往 [Releases](https://github.com/Lzh41/Proofline/releases) 下载：
 
-- `Proofline_0.1.0_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
-- `Proofline_0.1.0_x64-portable.exe`：Windows x64 便携版，免安装运行。
+- `Proofline_0.1.1_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
+- `Proofline_0.1.1_x64-portable.exe`：Windows x64 便携版，免安装运行。
 
 当前版本未配置商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。下载后请先核对 Release 页面中的 SHA-256。若系统没有 WebView2 Runtime，安装阶段需要联网下载安装运行时。
 
-首次启动会在 `%LOCALAPPDATA%\Xiti` 创建 SQLite 数据库，并自动写入内置面试题库。卸载默认保留个人数据；彻底清理请先在“设置 → 删除本机数据”中明确选择。
+首次启动会在 `%LOCALAPPDATA%\Proofline` 创建 SQLite 数据库，并自动写入内置面试题库。旧版本已有 `%LOCALAPPDATA%\Xiti` 数据时会继续使用原目录，确保题目、错题和 AI 凭据不丢失。卸载默认保留个人数据；彻底清理请先在“设置 → 删除本机数据”中明确选择。
 
 ## AI 与隐私边界
 
@@ -112,10 +112,10 @@ npm run dev
 
 | 数据 | 默认位置 |
 | --- | --- |
-| SQLite 数据库 | `%LOCALAPPDATA%\Xiti\xiti.sqlite` |
-| 附件 | `%LOCALAPPDATA%\Xiti\attachments` |
-| 平台登录目录 | `%LOCALAPPDATA%\Xiti\platforms\<平台>` |
-| ZIP 备份 | `%USERPROFILE%\Documents\析题\备份` |
+| SQLite 数据库 | `%LOCALAPPDATA%\Proofline\proofline.sqlite`（旧版本兼容 `%LOCALAPPDATA%\Xiti\xiti.sqlite`） |
+| 附件 | `%LOCALAPPDATA%\Proofline\attachments`（旧版本兼容 `%LOCALAPPDATA%\Xiti\attachments`） |
+| 平台登录目录 | `%LOCALAPPDATA%\Proofline\platforms\<平台>`（旧版本兼容 `%LOCALAPPDATA%\Xiti\platforms\<平台>`） |
+| ZIP 备份 | `%USERPROFILE%\Documents\Proofline\备份`（旧版本兼容 `%USERPROFILE%\Documents\析题\备份`） |
 | AI 密钥 | Windows 凭据库 `com.xiti.desktop` |
 
 备份包含 SQLite 快照和附件，不包含 AI 密钥、平台登录目录或 Cookie。

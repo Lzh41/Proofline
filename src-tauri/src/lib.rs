@@ -23,22 +23,45 @@ impl AppPaths {
         let root = env::var_os("PROOFLINE_DATA_DIR")
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
-            .unwrap_or(
-                dirs::data_local_dir()
-                    .ok_or_else(|| "无法确定 Windows 本地数据目录".to_string())?
-                    .join("Xiti"),
-            );
+            .unwrap_or_else(|| {
+                let data_local = dirs::data_local_dir()
+                    .expect("无法确定 Windows 本地数据目录");
+                let preferred = data_local.join("Proofline");
+                let legacy = data_local.join("Xiti");
+                // 新安装使用 Proofline；已有 Xiti 数据继续原地使用，避免丢失学习记录。
+                if preferred.exists() || !legacy.join("xiti.sqlite").exists() {
+                    preferred
+                } else {
+                    legacy
+                }
+            });
+        let database_name = if env::var_os("PROOFLINE_DATA_DIR").is_some() {
+            // 测试/迁移环境沿用旧文件名，便于验证旧备份和数据库快照。
+            "xiti.sqlite"
+        } else if root.file_name().is_some_and(|name| name == "Xiti") {
+            "xiti.sqlite"
+        } else {
+            "proofline.sqlite"
+        };
         let backups = env::var_os("PROOFLINE_BACKUP_DIR")
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| {
-                dirs::document_dir()
-                    .unwrap_or_else(|| root.clone())
-                    .join("析题")
-                    .join("备份")
+                let documents = dirs::document_dir().unwrap_or_else(|| root.clone());
+                let preferred = documents.join("Proofline").join("备份");
+                let legacy = documents.join("析题").join("备份");
+                // 旧安装若仍只有析题备份目录，继续保留其备份位置。
+                if root.file_name().is_some_and(|name| name == "Xiti")
+                    && legacy.exists()
+                    && !preferred.exists()
+                {
+                    legacy
+                } else {
+                    preferred
+                }
             });
         Ok(Self {
-            database: root.join("xiti.sqlite"),
+            database: root.join(database_name),
             attachments: root.join("attachments"),
             platforms: root.join("platforms"),
             root,

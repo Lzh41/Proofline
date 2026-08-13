@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "仅析题本地主窗口可以访问的桌面权限。远程平台窗口不匹配此能力。",
+  "description": "仅 Proofline 本地主窗口可以访问的桌面权限。远程平台窗口不匹配此能力。",
   "windows": ["main"],
   "permissions": [
     "core:default",

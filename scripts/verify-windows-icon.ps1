@@ -1,5 +1,5 @@
 param(
-  [string]$ExePath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src-tauri\target\release\xiti.exe')
+  [string]$ExePath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src-tauri\target\release\proofline.exe')
 )
 
 $ErrorActionPreference = 'Stop'

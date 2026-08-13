@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiSseDecoder, buildHintPrompt, coachIntentLevel, extractAiResponseContent } from '../lib/ai';
 import { useAppStore } from '../store/useAppStore';
-import { problem, snapshot } from './fixtures';
+import { attempt, problem, snapshot } from './fixtures';
 
 beforeEach(async () => {
   localStorage.clear();
@@ -22,6 +22,48 @@ afterEach(async () => {
 });
 
 describe('AI 流式响应', () => {
+  it('最近练习分析提示要求覆盖每道题并整理成知识笔记结构', () => {
+    const promptText = buildHintPrompt({
+      intent: 'explain',
+      problem: problem({ title: '两数之和' }),
+      analysisContext: '练习 1\n题目：两数之和\n结果：sample-passed\n代码：使用哈希表',
+      userQuestion: '请整理最近新增练习',
+    });
+
+    expect(promptText).toContain('最近练习复盘');
+    expect(promptText).toContain('共同考点');
+    expect(promptText).toContain('两数之和');
+    expect(promptText).toContain('下一轮复习清单');
+  });
+
+  it('只分析上次分析之后的已完成题目，并将结果保存为关联笔记', async () => {
+    const firstProblem = problem({ id: 'problem-1', title: '两数之和' });
+    const secondProblem = problem({ id: 'problem-2', title: '滑动窗口' });
+    const originalRequestAiHint = useAppStore.getState().requestAiHint;
+    useAppStore.setState((state) => ({
+      ...state,
+      problems: [firstProblem, secondProblem],
+      attempts: [
+        attempt({ id: 'attempt-new', problemId: 'problem-2', result: 'sample-passed', endedAt: 300, updatedAt: 300 }),
+        attempt({ id: 'attempt-old', problemId: 'problem-1', result: 'sample-passed', endedAt: 200, updatedAt: 200 }),
+      ],
+      knowledgeNotes: [{
+        id: 'analysis-old', title: '旧分析', content: '已整理', tags: ['AI练习分析'], relatedProblemIds: ['problem-1'], relatedMistakeIds: [], createdAt: 250, updatedAt: 250,
+      }],
+      requestAiHint: vi.fn(async (payload: { analysisContext?: string }) => {
+        expect(payload.analysisContext).toContain('滑动窗口');
+        expect(payload.analysisContext).not.toContain('两数之和');
+        return '共同考点\n滑动窗口复盘';
+      }),
+    }));
+
+    const note = await useAppStore.getState().analyzeRecentPractice();
+    useAppStore.setState({ requestAiHint: originalRequestAiHint });
+    expect(note?.relatedProblemIds).toEqual(['problem-2']);
+    expect(note?.tags).toContain('AI练习分析');
+    expect(useAppStore.getState().knowledgeNotes[0]?.content).toContain('滑动窗口复盘');
+  });
+
   it('算法逻辑拆解提示解释算法为什么这样写', () => {
     const promptText = buildHintPrompt({
       intent: 'algorithm-logic' as never,

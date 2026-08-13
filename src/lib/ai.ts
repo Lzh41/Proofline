@@ -145,13 +145,17 @@ export function buildHintPrompt(input: {
   userQuestion?: string;
   teachingStep?: string;
   stepDeliverable?: string;
+  analysisContext?: string;
 }): string {
   const intent = input.intent ?? legacyIntent(input.level);
   const language = normalizeHintLanguage(input.language ?? input.attempt?.language);
   const noteContext = input.notes?.slice(0, 5).map((note) => `- ${note.title}: ${note.content.slice(0, 500)}`).join('\n') ?? '无';
   const previousGuidance = recentGuidance(input.previousGuidance);
   const runFeedback = input.recentRunError?.trim().slice(0, 5_000) || '尚无运行反馈。';
-  const answerFormat = intent === 'complete'
+  const hasPracticeAnalysis = Boolean(input.analysisContext?.trim());
+  const answerFormat = hasPracticeAnalysis
+    ? '这是一次“最近练习复盘”任务。请严格按以下顺序输出：## 共同考点 -> ## 逐题关键思路 -> ## 错误模式 -> ## 可迁移模板 -> ## 下一轮复习清单。必须覆盖待整理记录中的每一道题，引用其中真实的题目、结果和代码现象；不要输出泛泛鼓励。'
+    : intent === 'complete'
     ? '输出顺序：## 完整代码 -> ## 关键逻辑 -> ## 复杂度 -> ## 边界检查。完整代码必须放在一个 Markdown 代码块中，禁止 TODO、伪代码、省略号或未实现分支。'
     : intent === 'algorithm-logic'
       ? '输出顺序：## 算法选择 -> ## 为什么这么设计 -> ## 关键步骤拆解 -> ## 边界与复杂度 -> ## 写代码时的落点。重点解释为什么选择这个算法或数据结构，必须落到状态定义、不变量、转移或更新规则、循环条件；不要输出完整代码。'
@@ -164,7 +168,9 @@ export function buildHintPrompt(input: {
     `本轮请求：${INTENT_LABELS[intent]}。强制规则：${INTENT_RULES[intent]}`,
     answerFormat,
     '先逐行阅读当前代码并保留已经正确的部分。禁止泛泛复述整套算法；必须落到变量、函数、循环、分支或返回值，并给出可以实际输入编辑器的代码。',
-    intent === 'complete'
+    hasPracticeAnalysis
+      ? '这次输出会直接保存为知识库笔记，不要反问用户，也不要输出完整代码；请把分析写成可长期回看的复习材料。'
+      : intent === 'complete'
       ? `完整代码必须与题目的平台函数签名或标准输入输出约定一致，并使用 ${language}。若题面确实缺失签名，只能明确说明采用的假设，不能伪造约束。`
       : intent === 'algorithm-logic'
         ? '本轮不要输出完整代码，也不要把多个片段拼成变相完整答案。可以给少量伪代码或关键代码骨架，但重点必须是解释每一步为什么这么写，让用户能据此自己补全实现。'
@@ -181,7 +187,8 @@ export function buildHintPrompt(input: {
     `用户补充问题：\n${input.userQuestion?.trim().slice(0, 2_000) || '无'}`,
     `最近教练对话：\n${previousGuidance}`,
     `个人知识片段：\n${noteContext}`,
-  ].join('\n\n');
+    input.analysisContext?.trim() ? `待整理的最近练习记录：\n${input.analysisContext.slice(0, 24_000)}` : '',
+  ].filter(Boolean).join('\n\n');
 }
 
 export function buildInterviewPrompt(input: InterviewPromptInput): string {

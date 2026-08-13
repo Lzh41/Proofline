@@ -119,9 +119,38 @@ test.describe('析题个人学习闭环', () => {
     await page.getByRole('button', { name: '保存草稿' }).click();
     await expect.poll(async () => (await readSnapshot(page))?.attempts.find((attempt) => attempt.problemId === savedProblemId)?.code).toBe(codeDraft);
 
-    await page.getByRole('button', { name: '结束练习' }).click();
-    await page.getByRole('button', { name: '未通过' }).click();
-    await expect(page.getByText('本次尝试已保存，并进入后续复盘。')).toBeVisible();
+    // 练习完成由“运行全部样例”自动判定；这里直接恢复一次失败记录，继续验证错题与计划的持久化链路。
+    await page.evaluate(({ key, problemId }) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const snapshot = JSON.parse(raw);
+      const attempt = snapshot.attempts.find((item: { problemId: string }) => item.problemId === problemId);
+      if (!attempt) return;
+      const now = Date.now();
+      attempt.result = 'sample-failed';
+      attempt.endedAt = now;
+      attempt.updatedAt = now;
+      snapshot.mistakes = [{
+        id: `e2e-mistake-${problemId}`,
+        problemId,
+        attemptId: attempt.id,
+        category: 'other',
+        rootCause: '本次练习未通过，待补充根因',
+        correction: '',
+        nextChecklistItem: '重新独立推导并检查边界条件',
+        reviewStage: 0,
+        intervalDays: 1,
+        nextReviewAt: now + 86_400_000,
+        successfulReviews: 0,
+        failedReviews: 0,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      }];
+      localStorage.setItem(key, JSON.stringify(snapshot));
+    }, { key: STORAGE_KEY, problemId: savedProblemId });
+    await page.reload();
+    await expect(page.getByText('本地已保存')).toBeVisible();
     await expect.poll(async () => {
       const snapshot = await readSnapshot(page);
       const attempt = snapshot?.attempts.find((item) => item.problemId === savedProblemId);

@@ -375,6 +375,45 @@ describe('做题页题库导航', () => {
     expect(await screen.findByRole('heading', { name: /旧版无 kind 题/ })).toBeVisible();
   });
 
+  it('运行全部样例通过后自动完成练习并保存成功记录', async () => {
+    const runProblemSample = vi.fn(async ({ sampleIndex = 0 }: { sampleIndex?: number }) => ({
+      ok: true,
+      output: sampleIndex === 0 ? '3' : '7',
+      durationMs: 2,
+      timedOut: false,
+      sampleIndex,
+      expectedOutput: sampleIndex === 0 ? '3' : '7',
+      actualOutput: sampleIndex === 0 ? '3' : '7',
+      passed: true,
+      generatedEntryPoint: true,
+      mode: 'function' as const,
+    }));
+    useAppStore.setState((state) => ({
+      runProblemSample,
+      problems: state.problems.map((item) => item.id === 'algo-two-sum'
+        ? { ...item, examples: [{ input: '1 2', output: '3' }, { input: '3 4', output: '7' }] }
+        : item),
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
+
+    await waitFor(() => {
+      const saved = useAppStore.getState().attempts.find((item) => item.problemId === 'algo-two-sum');
+      expect(saved).toMatchObject({ result: 'sample-passed' });
+      expect(saved?.endedAt).toEqual(expect.any(Number));
+    });
+    expect(runProblemSample).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText('全部样例通过，练习已自动完成。')).toBeInTheDocument();
+    expect(screen.queryByText('结束练习')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '样例通过' })).not.toBeInTheDocument();
+  });
+
   it('切换题目时不会把上一题的签名误存进新题的草稿', async () => {
     useAppStore.setState((state) => ({
       problems: [

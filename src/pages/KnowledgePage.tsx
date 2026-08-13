@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { BookOpenText, Plus, Search, X } from 'lucide-react';
+import { BookOpenText, BrainCircuit, Plus, Search, Sparkles, X } from 'lucide-react';
 import type { KnowledgeNote } from '../types';
 import { useStoreView } from '../app/storeAdapter';
 import { EmptyState, PageHeader, SectionHeader } from '../components/PagePrimitives';
@@ -13,6 +13,7 @@ export function KnowledgePage() {
   const [selected, setSelected] = useState<KnowledgeNote | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [message, setMessage] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   const notes = useMemo(() => {
@@ -20,6 +21,29 @@ export function KnowledgePage() {
     return store.knowledgeNotes.filter((note) => !keyword || [note.title, note.content, ...note.tags].some((value) => value.toLowerCase().includes(keyword)));
   }, [query, store.knowledgeNotes]);
   const tags = useMemo(() => Array.from(new Set(store.knowledgeNotes.flatMap((note) => note.tags))).slice(0, 12), [store.knowledgeNotes]);
+
+  const analyzeRecentPractice = async () => {
+    if (!store.analyzeRecentPractice || analyzing) return;
+    if (!store.settings.hasAiCredential || !store.settings.aiModel?.trim()) {
+      setMessage('请先在设置中保存 AI 密钥并填写模型 ID。');
+      return;
+    }
+    setAnalyzing(true);
+    setMessage('正在整理上次分析之后新增的练习题…');
+    try {
+      const note = await store.analyzeRecentPractice();
+      if (!note) {
+        setMessage('没有新增的已完成练习，暂时不重复生成笔记。');
+        return;
+      }
+      setSelected(note);
+      setMessage(`已生成「${note.title}」，覆盖 ${note.relatedProblemIds.length} 道新增练习题。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? `分析失败：${error.message}` : '分析失败，请稍后重试。');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -38,8 +62,13 @@ export function KnowledgePage() {
 
   return (
     <>
-      <PageHeader eyebrow="知识库" title="把解题经验写成自己的工具箱。" description="笔记、代码模板、易错清单和关联题目统一检索；内容始终保存在本地。" actions={<button className="button buttonPrimary" type="button" onClick={() => dialogRef.current?.showModal()}><Plus size={16} />新建笔记</button>} />
+      <PageHeader eyebrow="知识库" title="把解题经验写成自己的工具箱。" description="笔记、代码模板、易错清单和关联题目统一检索；内容始终保存在本地。" actions={<div className="buttonRow"><button className="button buttonAccent" type="button" disabled={analyzing || !store.analyzeRecentPractice} onClick={() => void analyzeRecentPractice()}><BrainCircuit size={16} />{analyzing ? '分析中…' : 'AI 分析最近练习'}</button><button className="button buttonPrimary" type="button" onClick={() => dialogRef.current?.showModal()}><Plus size={16} />新建笔记</button></div>} />
       {message && <div className={styles.notice}>{message}</div>}
+      <section className={styles.accentPanel} style={{ marginBottom: 30 }}>
+        <Sparkles size={20} color="var(--accent)" />
+        <strong>让练习变成一篇能回看的笔记</strong>
+        <p>AI 只分析已经完成、且还没有进入历史分析的题目。它会把共同考点、每题思路、错误模式和下一轮复习清单整理到一篇本地笔记里，重复点击不会重复统计旧题。</p>
+      </section>
       <div className={styles.twoColumn}>
         <section className={styles.section}>
           <div className={styles.filters} style={{ gridTemplateColumns: '1fr' }}><label className="field"><span className="srOnly">搜索知识库</span><div style={{ position: 'relative' }}><Search size={15} style={{ position: 'absolute', left: 11, top: 12, color: 'var(--muted)' }} /><input className="input" style={{ paddingLeft: 34 }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="全文搜索标题、正文或标签" /></div></label></div>

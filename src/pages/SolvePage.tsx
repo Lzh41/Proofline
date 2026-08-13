@@ -41,7 +41,7 @@ import styles from './Pages.module.css';
 const MonacoEditor = lazy(() => import('../lib/localMonaco'));
 
 type AiStatus = 'idle' | 'streaming' | 'cancelling' | 'done' | 'cancelled' | 'error';
-type UtilityTab = 'result' | 'thought' | 'review';
+type UtilityTab = 'result' | 'thought';
 
 interface AiCoachTurn {
   id: string;
@@ -416,7 +416,7 @@ export function SolvePage() {
     draftCreatePromiseRef.current = null;
     setRunningCode(false);
     setSampleBusy(false);
-  }, [attempt?.id, problem?.id]);
+  }, [problem?.id]);
 
   useEffect(() => {
     if (!problem?.id || store.settings.lastSolveProblemId === problem.id) return;
@@ -576,11 +576,14 @@ export function SolvePage() {
     void requestCoach('explain', question);
   };
 
-  const finish = async (result: Attempt['result']) => {
-    if (!attempt?.id) return;
-    setRunning(false);
-    await store.finishAttempt?.(attempt.id, { endedAt: Date.now(), durationSeconds: seconds, code, language, result });
-    setMessage(result === 'sample-passed' ? '练习已结束。请到错题页补充复盘，或开始下一题。' : '本次尝试已保存，并进入后续复盘。');
+  const ensureActiveAttempt = async (): Promise<Attempt | undefined> => {
+    if (!problem) return undefined;
+    if (attempt?.id && !attempt.endedAt && attempt.result === 'unfinished') return attempt;
+    const started = await store.startAttempt?.(problem.id, language);
+    if (!started?.id) return undefined;
+    await store.updateAttempt?.(started.id, { code, language, durationSeconds: seconds });
+    draftAttemptIdRef.current = started.id;
+    return { ...started, code, language, durationSeconds: seconds };
   };
 
   const openProblemReader = () => {
@@ -700,6 +703,7 @@ export function SolvePage() {
     if (!problem) return;
     const requestGeneration = requestGenerationRef.current;
     const problemId = problem.id;
+    let activeAttempt: Attempt | undefined;
     setRunningCode(true);
     setRunPassed(null);
     setUtilityTab('result');
@@ -731,6 +735,7 @@ export function SolvePage() {
 
       if (store.runProblemSample) {
         if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
+        activeAttempt = await ensureActiveAttempt();
         const results: ProblemSampleRunResult[] = [];
         for (let sampleIndex = 0; sampleIndex < runnableProblem.examples.length; sampleIndex += 1) {
           setRunResult(`正在运行样例 ${sampleIndex + 1} / ${runnableProblem.examples.length}…`);
@@ -738,14 +743,25 @@ export function SolvePage() {
           if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
           results.push(result);
         }
-        setRunPassed(sampleRunStatus(results));
+        const passed = sampleRunStatus(results);
+        setRunPassed(passed);
         setRunResult(formatAllSampleResults(results));
+        if (passed === true && activeAttempt?.id) {
+          setRunning(false);
+          try {
+            await store.finishAttempt?.(activeAttempt.id, { endedAt: Date.now(), durationSeconds: seconds, code, language, result: 'sample-passed' });
+            setMessage('全部样例通过，练习已自动完成。');
+          } catch (error) {
+            setMessage(error instanceof Error ? `样例已通过，但保存练习记录失败：${error.message}` : '样例已通过，但保存练习记录失败。');
+          }
+        }
         return;
       }
 
       const runner = store.runCode ?? store.runLocalCode;
       if (!runner) throw new Error('本地运行服务尚未初始化。');
       if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
+      activeAttempt = await ensureActiveAttempt();
       const results: ProblemSampleRunResult[] = [];
       for (let sampleIndex = 0; sampleIndex < runnableProblem.examples.length; sampleIndex += 1) {
         const example = runnableProblem.examples[sampleIndex];
@@ -763,8 +779,18 @@ export function SolvePage() {
           mode: 'stdin',
         });
       }
-      setRunPassed(sampleRunStatus(results));
+      const passed = sampleRunStatus(results);
+      setRunPassed(passed);
       setRunResult(formatAllSampleResults(results));
+      if (passed === true && activeAttempt?.id) {
+        setRunning(false);
+        try {
+          await store.finishAttempt?.(activeAttempt.id, { endedAt: Date.now(), durationSeconds: seconds, code, language, result: 'sample-passed' });
+          setMessage('全部样例通过，练习已自动完成。');
+        } catch (error) {
+          setMessage(error instanceof Error ? `样例已通过，但保存练习记录失败：${error.message}` : '样例已通过，但保存练习记录失败。');
+        }
+      }
     } catch (error) {
       if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
       setRunPassed(false);
@@ -913,25 +939,29 @@ export function SolvePage() {
               <div className={styles.tabs}>
                 <button className={`${styles.tab} ${utilityTab === 'result' ? styles.tabActive : ''}`} type="button" onClick={() => setUtilityTab('result')}>运行结果</button>
                 <button className={`${styles.tab} ${utilityTab === 'thought' ? styles.tabActive : ''}`} type="button" onClick={() => setUtilityTab('thought')}>思路笔记</button>
-                <button className={`${styles.tab} ${utilityTab === 'review' ? styles.tabActive : ''}`} type="button" onClick={() => setUtilityTab('review')}>结束练习</button>
               </div>
               {utilityTab === 'result' && (
                 <div className={`${styles.runResultPanel} ${runPassed === true ? styles.runResultPassed : ''} ${runPassed === false ? styles.runResultFailed : ''}`} aria-live="polite">
                   {runPassed === true ? <CheckCircle2 size={16} /> : runPassed === false ? <AlertTriangle size={16} /> : <TestTube2 size={16} />}
-                  <pre>{runResult}</pre>
+                  <div>
+                    <pre>{runResult}</pre>
+                    {runPassed === false && (
+                      <div className={styles.buttonRow}>
+                        <button className="button" type="button" disabled={busyCoach || !aiConfigured} onClick={() => void requestCoach('debug')} title={!aiConfigured ? '请先在设置中配置 AI 服务' : '让 AI 结合运行结果定位错误'}>
+                          <AlertTriangle size={14} />失败复盘
+                        </button>
+                        <button className="button" type="button" onClick={() => setUtilityTab('thought')}>
+                          <Pencil size={14} />记录错因
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {utilityTab === 'thought' && (
                 <div className={styles.thoughtComposer}>
                   <textarea className="textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder="记录刚刚的观察、报错或突破点" />
                   <button className="button" type="button" onClick={addThought} disabled={!attempt?.id || !note.trim()}>加入回放</button>
-                </div>
-              )}
-              {utilityTab === 'review' && (
-                <div className={styles.buttonRow}>
-                  <button className="button buttonAccent" type="button" disabled={!attempt?.id} onClick={() => finish('sample-passed')}><CheckCircle2 size={15} />样例通过</button>
-                  <button className="button" type="button" disabled={!attempt?.id} onClick={() => finish('sample-failed')}><Square size={14} />未通过</button>
-                  <button className="button" type="button" disabled={!attempt?.id} onClick={() => finish('aborted')}>暂时搁置</button>
                 </div>
               )}
             </div>

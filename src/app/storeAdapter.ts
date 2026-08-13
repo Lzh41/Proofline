@@ -54,6 +54,7 @@ export interface AiHintRequestView {
   userQuestion?: string;
   teachingStep?: string;
   stepDeliverable?: string;
+  analysisContext?: string;
   onChunk?: (chunk: string) => void;
 }
 
@@ -108,6 +109,7 @@ export interface AppStoreView {
   openDataDirectory?: () => Promise<void> | void;
   deleteAllUserData?: (includeBackups: boolean) => Promise<void> | void;
   requestAiHint?: (payload: AiHintRequestView) => Promise<string | void> | string | void;
+  analyzeRecentPractice?: () => Promise<KnowledgeNote | null>;
   requestInterviewExaminer?: (input: InterviewExaminerInput) => Promise<InterviewExaminerResult>;
   cancelAiRequest?: () => Promise<void> | void;
   runCode?: (request: { language: string; code: string; input?: string; timeoutMs?: number }) => Promise<RunCodeResult>;

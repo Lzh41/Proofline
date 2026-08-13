@@ -74,6 +74,7 @@ type AiHintRequest = {
   userQuestion?: string;
   teachingStep?: string;
   stepDeliverable?: string;
+  analysisContext?: string;
   onChunk?: (chunk: string) => void;
 };
 
@@ -115,6 +116,7 @@ interface AppStore extends AppDataSnapshot {
   deleteAiCredential: () => Promise<void>;
   testAiConnection: () => Promise<boolean>;
   requestAiHint: (payload: AiHintRequest) => Promise<string>;
+  analyzeRecentPractice: () => Promise<KnowledgeNote | null>;
   requestInterviewExaminer: (input: InterviewExaminerInput) => Promise<InterviewExaminerResult>;
   cancelAiRequest: () => Promise<void>;
   createBackup: () => Promise<string>;
@@ -880,6 +882,7 @@ export const useAppStore = create<AppStore>((set, get) => {
             userQuestion: payload.userQuestion,
             teachingStep: payload.teachingStep,
             stepDeliverable: payload.stepDeliverable,
+            analysisContext: payload.analysisContext,
           });
       const onChunk = payload.onChunk;
       let response: string;
@@ -931,6 +934,50 @@ export const useAppStore = create<AppStore>((set, get) => {
       });
       await saveState(get, set);
       return response;
+    },
+    analyzeRecentPractice: async () => {
+      await waitForInitialization();
+      const state = get();
+      const analyzedProblemIds = new Set(
+        state.knowledgeNotes
+          .filter((note) => note.tags.includes('AI练习分析'))
+          .flatMap((note) => note.relatedProblemIds),
+      );
+      const pendingAttempts = state.attempts
+        .filter((attempt) => attempt.mode === 'code' && attempt.endedAt && attempt.result !== 'unfinished' && attempt.result !== 'aborted' && !analyzedProblemIds.has(attempt.problemId))
+        .sort((left, right) => (right.endedAt ?? right.updatedAt) - (left.endedAt ?? left.updatedAt));
+      const pending = pendingAttempts
+        .map((attempt) => ({ attempt, problem: state.problems.find((item) => item.id === attempt.problemId) }))
+        .filter((item): item is { attempt: Attempt; problem: Problem } => Boolean(item.problem))
+        .filter((item, index, items) => items.findIndex((candidate) => candidate.problem.id === item.problem.id) === index)
+        .reverse();
+      if (!pending.length) return null;
+
+      const context = pending.map(({ attempt, problem }, index) => [
+        `练习 ${index + 1}`,
+        `题目：${problem.externalId ? `${problem.externalId}. ` : ''}${problem.title}`,
+        `标签：${problem.tags.join('、') || '无'}`,
+        `结果：${attempt.result}`,
+        `用时：${attempt.durationSeconds} 秒`,
+        `代码：\n${attempt.code.slice(0, 6_000) || '未记录代码'}`,
+        `练习笔记：${attempt.notes?.slice(0, 1_000) || '无'}`,
+      ].join('\n')).join('\n\n');
+      const primary = pending[0];
+      const response = await get().requestAiHint({
+        problemId: primary.problem.id,
+        attemptId: primary.attempt.id,
+        intent: 'explain',
+        userQuestion: '请把下面这些最近新增的练习整理成一篇可复习的知识笔记。按共同考点、每题关键思路、错误模式、可迁移模板、下一轮复习清单组织内容；不要泛泛鼓励，要指出代码和结果能证明的具体问题。所有题目都要覆盖。',
+        analysisContext: context,
+      });
+      const tags = uniqueStrings(['AI练习分析', ...Array.from(new Set(pending.flatMap(({ problem }) => problem.tags))).slice(0, 8)]);
+      return get().addKnowledgeNote({
+        title: `练习复盘 · ${new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date())}`,
+        content: response,
+        tags,
+        relatedProblemIds: pending.map(({ problem }) => problem.id),
+        relatedMistakeIds: state.mistakes.filter((mistake) => pending.some(({ problem }) => problem.id === mistake.problemId)).map((mistake) => mistake.id),
+      });
     },
     requestInterviewExaminer: async (input) => {
       await waitForInitialization();

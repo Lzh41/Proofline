@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Proofline 推理闭环标记">
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#FAF9F5"/>
+  <path d="M128 256L256 174L384 256L256 338Z" fill="none" stroke="#181715" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M128 256L256 174L384 256" fill="none" stroke="#CC785C" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M304 205L384 256" fill="none" stroke="#181715" stroke-width="76" stroke-linecap="round"/>
+  <path d="M384 256L256 338L204 305" fill="none" stroke="#CC785C" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

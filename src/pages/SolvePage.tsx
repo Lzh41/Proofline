@@ -280,7 +280,9 @@ export function SolvePage() {
   const store = useStoreView();
   const algorithmProblems = useMemo(() => store.problems.filter(isAlgorithmProblem), [store.problems]);
   const practicedProblemIds = useMemo(
-    () => new Set(store.attempts.filter((item) => item.mode === 'code' && item.startedAt > 0).map((item) => item.problemId)),
+    () => new Set(store.attempts
+      .filter((item) => item.mode === 'code' && (item.result === 'sample-passed' || item.result === 'accepted'))
+      .map((item) => item.problemId)),
     [store.attempts],
   );
   const problem = useMemo(

@@ -375,11 +375,11 @@ describe('做题页题库导航', () => {
     expect(await screen.findByRole('heading', { name: /旧版无 kind 题/ })).toBeVisible();
   });
 
-  it('题库选择器标记已练习和未练习的算法题', async () => {
+  it('题库选择器只把样例全部通过的题标记为已练习', async () => {
     useAppStore.setState((state) => ({
       attempts: [{
         id: 'attempt-two-sum', problemId: 'algo-two-sum', mode: 'code', language: 'cpp', code: '', startedAt: 200, durationSeconds: 12,
-        result: 'unfinished', hintLevel: 0, independent: true, mastery: 1, createdAt: 200, updatedAt: 200,
+        result: 'sample-passed', endedAt: 220, hintLevel: 0, independent: true, mastery: 1, createdAt: 200, updatedAt: 220,
       }],
     }));
 
@@ -391,6 +391,31 @@ describe('做题页题库导航', () => {
 
     const picker = await screen.findByRole('combobox', { name: '选择题库题目' });
     expect(within(picker).getByRole('option', { name: '✓ 已练习 · 1. 两数之和' })).toBeInTheDocument();
+    expect(within(picker).getByRole('option', { name: '○ 未练习 · 300. 最长递增子序列' })).toBeInTheDocument();
+  });
+
+  it('只有草稿或失败样例不会标记为已练习', async () => {
+    useAppStore.setState((state) => ({
+      attempts: [
+        {
+          id: 'attempt-draft', problemId: 'algo-two-sum', mode: 'code', language: 'cpp', code: 'draft', startedAt: 200, durationSeconds: 12,
+          result: 'unfinished', hintLevel: 0, independent: true, mastery: 1, createdAt: 200, updatedAt: 200,
+        },
+        {
+          id: 'attempt-failed', problemId: 'algo-lis', mode: 'code', language: 'cpp', code: 'wrong', startedAt: 201, durationSeconds: 12,
+          result: 'sample-failed', endedAt: 220, hintLevel: 0, independent: true, mastery: 1, createdAt: 201, updatedAt: 220,
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    const picker = await screen.findByRole('combobox', { name: '选择题库题目' });
+    expect(within(picker).getByRole('option', { name: '○ 未练习 · 1. 两数之和' })).toBeInTheDocument();
     expect(within(picker).getByRole('option', { name: '○ 未练习 · 300. 最长递增子序列' })).toBeInTheDocument();
   });
 

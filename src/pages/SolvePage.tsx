@@ -270,11 +270,19 @@ function problemDisplayTitle(problem: Problem): string {
   return problem.externalId ? `${problem.externalId}. ${problem.title}` : problem.title;
 }
 
+function problemPickerLabel(problem: Problem, practicedProblemIds: ReadonlySet<string>): string {
+  return `${practicedProblemIds.has(problem.id) ? '✓ 已练习' : '○ 未练习'} · ${problemDisplayTitle(problem)}`;
+}
+
 export function SolvePage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const store = useStoreView();
   const algorithmProblems = useMemo(() => store.problems.filter(isAlgorithmProblem), [store.problems]);
+  const practicedProblemIds = useMemo(
+    () => new Set(store.attempts.filter((item) => item.mode === 'code' && item.startedAt > 0).map((item) => item.problemId)),
+    [store.attempts],
+  );
   const problem = useMemo(
     () => {
       if (id) return algorithmProblems.find((item) => item.id === id);
@@ -837,7 +845,7 @@ export function SolvePage() {
                   <ChevronLeft size={14} /><span>上一题</span>
                 </button>
                 <select className="select" aria-label="选择题库题目" value={problem.id} onChange={(event) => navigate(`/solve/${event.target.value}`)}>
-                  {algorithmProblems.map((item) => <option key={item.id} value={item.id}>{problemDisplayTitle(item)}</option>)}
+                  {algorithmProblems.map((item) => <option key={item.id} value={item.id}>{problemPickerLabel(item, practicedProblemIds)}</option>)}
                 </select>
                 <button className="button" type="button" aria-label="下一题" disabled={!nextProblem} onClick={() => nextProblem && navigate(`/solve/${nextProblem.id}`)}>
                   <span>下一题</span><ChevronRight size={14} />

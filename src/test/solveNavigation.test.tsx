@@ -359,9 +359,9 @@ describe('做题页题库导航', () => {
     expect(await screen.findByRole('heading', { name: /300\. 最长递增子序列/ })).toBeVisible();
     const picker = screen.getByRole('combobox', { name: '选择题库题目' }) as HTMLSelectElement;
     expect([...picker.options].map((option) => option.textContent)).toEqual([
-      '1. 两数之和',
-      '300. 最长递增子序列',
-      '旧版无 kind 题',
+      '○ 未练习 · 1. 两数之和',
+      '○ 未练习 · 300. 最长递增子序列',
+      '○ 未练习 · 旧版无 kind 题',
     ]);
     expect(screen.queryByText('RAG 面试题')).not.toBeInTheDocument();
 
@@ -373,6 +373,25 @@ describe('做题页题库导航', () => {
 
     fireEvent.change(screen.getByRole('combobox', { name: '选择题库题目' }), { target: { value: 'legacy-algo' } });
     expect(await screen.findByRole('heading', { name: /旧版无 kind 题/ })).toBeVisible();
+  });
+
+  it('题库选择器标记已练习和未练习的算法题', async () => {
+    useAppStore.setState((state) => ({
+      attempts: [{
+        id: 'attempt-two-sum', problemId: 'algo-two-sum', mode: 'code', language: 'cpp', code: '', startedAt: 200, durationSeconds: 12,
+        result: 'unfinished', hintLevel: 0, independent: true, mastery: 1, createdAt: 200, updatedAt: 200,
+      }],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    const picker = await screen.findByRole('combobox', { name: '选择题库题目' });
+    expect(within(picker).getByRole('option', { name: '✓ 已练习 · 1. 两数之和' })).toBeInTheDocument();
+    expect(within(picker).getByRole('option', { name: '○ 未练习 · 300. 最长递增子序列' })).toBeInTheDocument();
   });
 
   it('运行全部样例通过后自动完成练习并保存成功记录', async () => {

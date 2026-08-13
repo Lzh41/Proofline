@@ -1,50 +1,98 @@
 # Proofline
 
-![Proofline 题库页面](docs/proofline-preview.png)
+<p align="center">
+  <img src="docs/proofline-preview.png" alt="Proofline 题库工作台" width="900" />
+</p>
 
-**Proofline 是一个本地优先的 Windows 算法与企业面试训练工作台。**
+<p align="center">
+  <strong>把“看懂一道题”，变成“下次能独立写出来”。</strong><br />
+  本地优先的 Windows 算法与企业面试训练工作台。
+</p>
 
-它把题目、代码、运行样例、AI 讲解、错题复习、知识笔记和每日计划放在同一条学习闭环里。你可以连接力扣中国、LeetCode 或牛客的官方页面，也可以只使用本地题库和内置的企业面试题库。
+<p align="center">
+  <a href="https://github.com/Lzh41/Proofline/releases"><img src="https://img.shields.io/github/v/release/Lzh41/Proofline?style=flat-square&color=E28B6D" alt="最新版本" /></a>
+  <a href="https://github.com/Lzh41/Proofline/actions"><img src="https://img.shields.io/github/actions/workflow/status/Lzh41/Proofline/ci.yml?branch=main&style=flat-square&label=CI" alt="持续集成" /></a>
+  <a href="https://github.com/Lzh41/Proofline/releases"><img src="https://img.shields.io/badge/Windows-x64-1D1B19?style=flat-square" alt="Windows x64" /></a>
+  <a href="https://github.com/Lzh41/Proofline"><img src="https://img.shields.io/github/stars/Lzh41/Proofline?style=flat-square&color=E8B86D" alt="GitHub stars" /></a>
+</p>
 
 > 当前版本：`0.1.0` · Windows x64 · Tauri 2 · React 19 · SQLite
 
-## 下载
+## 先看它在做什么
 
-前往 [Releases](https://github.com/Lzh41/Proofline/releases) 下载最新版本：
+刷题最容易卡在三个瞬间：题面读懂了却不会下手，代码跑不通却不知道错在哪里，做完之后过几天又像第一次见。Proofline 把这三个瞬间串成一条可回看的学习轨迹：
 
-- `Proofline_0.1.0_x64-setup.exe`：按当前 Windows 用户安装，可自定义安装目录。
-- `Proofline_0.1.0_x64-portable.exe`：免安装便携版，适合放在 U 盘或同步盘中运行。
+```mermaid
+flowchart LR
+    A[选择一道题] --> B[拆解题意与约束]
+    B --> C[写出第一版代码]
+    C --> D[一键运行全部样例]
+    D --> E{结果如何}
+    E -->|通过| F[记录可复用思路]
+    E -->|失败| G[AI 解惑与算法逻辑拆解]
+    G --> C
+    F --> H[错题复习与每日计划]
+    H --> A
+```
 
-当前未提供代码签名证书，Windows SmartScreen 可能显示“未知发布者”。下载后请先核对 Release 页面中的 SHA-256，再继续安装。
+题目不再只是列表里的一行文字，而会逐渐长出自己的“记忆”：你的代码、运行结果、错因、提示、复盘和下一次复习时间都留在同一张学习卡里。
 
-## 它解决什么问题
+## 功能地图
 
-刷题时真正难的是把“看过答案”变成“下次能自己写出来”。Proofline 围绕这个问题设计：
+### 算法题：从题面到可运行代码
 
-- **题目工作台**：题面置顶，代码编辑区与 AI 教练并排；支持上一题、下一题和题库内选择。
-- **自动样例运行**：点击一次运行全部样例，不需要手写 `main`、测试函数或测试入口。
-- **算法逻辑拆解**：AI 可以解释算法为什么这样设计、每一步如何落到代码，以及如何检查边界。
-- **企业面试题库**：内置 21 个岗位方向、1083 道面试题，覆盖 LLM、NLP、RAG、推荐、后端、前端、测试、数据等方向；支持岗位、关键词、题型、难度和掌握度联合筛选。
-- **面试出题官**：输入 `Transformer`、`RAG` 等主题，生成考点地图、面试问题、参考答案和递进追问，可勾选加入个人题库。
-- **记忆闭环**：练习草稿自动保存；错题按 `1 / 3 / 7 / 14 / 30` 天复习；知识笔记支持全文检索。
-- **每日计划**：先安排到期复习，再按薄弱标签、岗位方向和新题目标补齐。
-- **本地优先**：SQLite、备份、运行样例和练习记录在本机完成；AI 不可用时，题库、计时、错题、计划和知识库仍可使用。
+- **题面置顶**：题目、约束、样例和函数签名固定在视线前方，代码编辑区与 AI 教练左右排布。
+- **完整样例运行**：一次点击逐条执行全部样例，不需要手写 `main`、测试函数或测试入口；汇总结果会告诉你是哪一条失败。
+- **算法逻辑拆解**：不只给结论，AI 会解释“为什么选这个算法”“状态如何转移”“这一行代码对应哪一步思路”。
+- **连续提问**：可以直接问“这段循环为什么从这里开始”“为什么要先排序”，回答会保留在题目的对话记录中。
+- **代码尺寸可调**：适合长时间练习，也适合在小窗口里快速复盘。
 
-## 运行边界
+### 企业面试：按岗位准备，而不是盲目刷题
 
-Proofline 不批量抓取或镜像力扣、LeetCode、牛客的完整题库，也不读取 Cookie 或代替用户提交代码。官方平台以独立 WebView2 窗口打开，连接器只处理当前用户选择的单题公开信息；页面受登录、验证码、反爬策略或改版影响时，会保留链接型学习卡，并支持手工录入、剪贴板和截图 OCR 回退。
+- **21 个岗位方向、1083 道题**：覆盖大语言模型、NLP、RAG、推荐系统、后端、前端、测试、数据、机器学习等方向。
+- **组合检索**：岗位、关键词、八股主题、题型、难度和掌握度可以一起筛选。
+- **AI 面试出题官**：输入 `Transformer`、`RAG` 或“搜索排序”，生成考点地图、面试问题、参考答案和递进追问。
+- **一键收入个人题库**：勾选出题官生成的题目后直接保存，避免复制粘贴和重复整理。
+- **真实回答闭环**：回答草稿自动保存，提交后查看参考答案、遗漏点和改进表达，再选择“掌握 / 模糊 / 不会”。
 
-AI 使用 OpenAI 兼容接口。用户在设置中填写基础地址、模型 ID 和密钥后，密钥由 Rust 写入 Windows 凭据库，前端不能读取明文。发送题面、代码或笔记前会显示隐私确认。
+### 记忆系统：让练习留下复利
 
-## 快速开始
+- **错题复习**：按 `1 / 3 / 7 / 14 / 30` 天安排复习，失败自动回到 1 天。
+- **每日计划**：先处理到期复习，再按薄弱标签、岗位方向和新题目标补齐。
+- **知识库**：笔记支持全文检索，可关联题目与错题，把零散的八股答案整理成自己的知识网络。
+- **统计面板**：查看练习次数、通过率、专注时间、算法掌握度和岗位薄弱项。
 
-### 直接安装
+### 平台连接：尊重官方页面，也保留学习连续性
 
-1. 从 [Releases](https://github.com/Lzh41/Proofline/releases) 下载 `*-setup.exe`。
-2. 运行安装程序并选择安装目录。
-3. 启动 Proofline。首次启动会在 `%LOCALAPPDATA%\Xiti` 创建 SQLite 数据库，并自动写入内置面试题库。
+Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从当前用户选择的公开单题建立学习卡。页面遇到登录、验证码、改版或反爬限制时，会保留链接型卡片，并提供手工录入、剪贴板和截图 OCR 回退。
 
-### 本地开发
+## 一次完整练习是什么样
+
+1. 在“题库”或官方平台窗口选择一道题。
+2. 开始计时，先写下自己的观察，再进入代码区。
+3. 运行全部样例，查看每一条输入与输出结果。
+4. 卡住时直接问 AI：让它解释算法逻辑、当前代码、报错或下一步实现。
+5. 结束后记录错因和思路，失败题自动进入错题复习队列。
+6. 下一次打开 Proofline，今日计划会优先把它带回来。
+
+## 下载与安装
+
+前往 [Releases](https://github.com/Lzh41/Proofline/releases) 下载：
+
+- `Proofline_0.1.0_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
+- `Proofline_0.1.0_x64-portable.exe`：Windows x64 便携版，免安装运行。
+
+当前版本未配置商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。下载后请先核对 Release 页面中的 SHA-256。若系统没有 WebView2 Runtime，安装阶段需要联网下载安装运行时。
+
+首次启动会在 `%LOCALAPPDATA%\Xiti` 创建 SQLite 数据库，并自动写入内置面试题库。卸载默认保留个人数据；彻底清理请先在“设置 → 删除本机数据”中明确选择。
+
+## AI 与隐私边界
+
+AI 使用 OpenAI 兼容接口。你可以在设置中填写基础地址、模型 ID 和密钥；密钥由 Rust 写入 Windows 凭据库，前端不能读取明文，也不会进入 SQLite、JSON 导出或 ZIP 备份。发送题面、代码或笔记前会显示隐私确认。
+
+Proofline 不批量抓取或镜像力扣、LeetCode、牛客的完整题库，不读取 Cookie，也不代替用户提交代码。官方平台窗口拥有独立的 WebView2 数据目录，主窗口 IPC、SQLite、文件和凭据不会暴露给远程页面。
+
+## 本地开发
 
 环境要求：Node.js 20+、Rust stable MSVC、Visual Studio 2022 C++ 工具链、Windows SDK 和 WebView2 Runtime。
 
@@ -55,15 +103,13 @@ npm ci
 npm run dev
 ```
 
-浏览器预览使用 `localStorage`，不能代表 Windows 凭据库、SQLite 和平台窗口的完整行为。构建 Windows 安装包：
+浏览器预览使用 `localStorage`，不能代表 Windows 凭据库、SQLite 和官方平台窗口的完整行为。构建 Windows 安装包：
 
 ```powershell
 .\scripts\tauri-msvc.ps1 -Mode build
 ```
 
-输出目录：`src-tauri\target\release\bundle\nsis\`。
-
-## 数据与隐私
+## 数据位置
 
 | 数据 | 默认位置 |
 | --- | --- |
@@ -73,7 +119,7 @@ npm run dev
 | ZIP 备份 | `%USERPROFILE%\Documents\析题\备份` |
 | AI 密钥 | Windows 凭据库 `com.xiti.desktop` |
 
-备份包含 SQLite 快照和附件，不包含 AI 密钥、平台登录目录或 Cookie。卸载默认保留个人数据；需要彻底清理时，请先在“设置 → 删除本机数据”中明确选择。
+备份包含 SQLite 快照和附件，不包含 AI 密钥、平台登录目录或 Cookie。
 
 ## 技术栈
 
@@ -88,7 +134,7 @@ React 19 · TypeScript · Vite · Tauri 2 · Rust · SQLite · Zustand · CSS Mo
 
 ## 参与贡献
 
-欢迎提交 Issue 和 Pull Request。请先阅读 [贡献指南](CONTRIBUTING.md)，涉及平台连接器、隐私、凭据或本地执行器的改动请同时说明安全边界和测试方式。
+欢迎提交 Issue 和 Pull Request。请先阅读 [贡献指南](CONTRIBUTING.md)；涉及平台连接器、隐私、凭据或本地执行器的改动，请同时说明安全边界和测试方式。
 
 ## 许可证
 

@@ -1,16 +1,19 @@
 import { useMemo, useRef, useState } from 'react';
-import { BookOpenText, BrainCircuit, Plus, Search, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BrainCircuit, Plus, Search, Sparkles, X } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { KnowledgeNote } from '../types';
 import { useStoreView } from '../app/storeAdapter';
 import { EmptyState, PageHeader, SectionHeader } from '../components/PagePrimitives';
+import { renderMarkdown } from '../lib/markdown';
 import styles from './Pages.module.css';
 
 const EMPTY_FORM = { title: '', tags: '', content: '' };
 
 export function KnowledgePage() {
   const store = useStoreView();
+  const navigate = useNavigate();
+  const { id: noteId } = useParams();
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<KnowledgeNote | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [message, setMessage] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -21,6 +24,10 @@ export function KnowledgePage() {
     return store.knowledgeNotes.filter((note) => !keyword || [note.title, note.content, ...note.tags].some((value) => value.toLowerCase().includes(keyword)));
   }, [query, store.knowledgeNotes]);
   const tags = useMemo(() => Array.from(new Set(store.knowledgeNotes.flatMap((note) => note.tags))).slice(0, 12), [store.knowledgeNotes]);
+  const openedNote = useMemo(
+    () => (noteId ? store.knowledgeNotes.find((note) => note.id === noteId) : undefined),
+    [noteId, store.knowledgeNotes],
+  );
 
   const analyzeRecentPractice = async () => {
     if (!store.analyzeRecentPractice || analyzing) return;
@@ -36,7 +43,7 @@ export function KnowledgePage() {
         setMessage('没有新增的已完成练习，暂时不重复生成笔记。');
         return;
       }
-      setSelected(note);
+      navigate(`/knowledge/${note.id}`);
       setMessage(`已生成「${note.title}」，覆盖 ${note.relatedProblemIds.length} 道新增练习题。`);
     } catch (error) {
       setMessage(error instanceof Error ? `分析失败：${error.message}` : '分析失败，请稍后重试。');
@@ -62,6 +69,21 @@ export function KnowledgePage() {
 
   return (
     <>
+      {openedNote ? (
+        <article className={styles.noteReader}>
+          <PageHeader
+            eyebrow="知识库 · 阅读"
+            title={openedNote.title}
+            description={`更新于 ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(openedNote.updatedAt))}`}
+            actions={<button className="button" type="button" onClick={() => navigate('/knowledge')}><ArrowLeft size={15} />返回知识库</button>}
+          />
+          <div className={styles.noteReaderMeta}>
+            <div className={styles.tags}>{openedNote.tags.map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div>
+            <span className={styles.badge}>{openedNote.relatedProblemIds.length} 道关联题目</span>
+          </div>
+          <div className={styles.noteReaderBody} dangerouslySetInnerHTML={{ __html: renderMarkdown(openedNote.content) }} />
+        </article>
+      ) : <>
       <PageHeader eyebrow="知识库" title="把解题经验写成自己的工具箱。" description="笔记、代码模板、易错清单和关联题目统一检索；内容始终保存在本地。" actions={<div className="buttonRow"><button className="button buttonAccent" type="button" disabled={analyzing || !store.analyzeRecentPractice} onClick={() => void analyzeRecentPractice()}><BrainCircuit size={16} />{analyzing ? '分析中…' : 'AI 分析最近练习'}</button><button className="button buttonPrimary" type="button" onClick={() => dialogRef.current?.showModal()}><Plus size={16} />新建笔记</button></div>} />
       {message && <div className={styles.notice}>{message}</div>}
       <section className={styles.accentPanel} style={{ marginBottom: 30 }}>
@@ -74,20 +96,16 @@ export function KnowledgePage() {
           <div className={styles.filters} style={{ gridTemplateColumns: '1fr' }}><label className="field"><span className="srOnly">搜索知识库</span><div style={{ position: 'relative' }}><Search size={15} style={{ position: 'absolute', left: 11, top: 12, color: 'var(--muted)' }} /><input className="input" style={{ paddingLeft: 34 }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="全文搜索标题、正文或标签" /></div></label></div>
           <SectionHeader title="全部笔记" meta={`${notes.length} 篇`} />
           {notes.map((note) => (
-            <button className={styles.row} style={{ width: '100%', borderTop: 0, borderLeft: 0, borderRight: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer' }} type="button" key={note.id} onClick={() => setSelected(note)}>
+            <button className={styles.row} style={{ width: '100%', borderTop: 0, borderLeft: 0, borderRight: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer' }} type="button" key={note.id} onClick={() => navigate(`/knowledge/${note.id}`)} aria-label={`打开笔记：${note.title}`}>
               <div className={styles.rowMain}><strong>{note.title}</strong><p>{note.content.slice(0, 88) || '空白笔记'}</p><div className={styles.tags}>{note.tags.map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div></div>
               <span className={styles.badge}>{new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(note.updatedAt))}</span>
             </button>
           ))}
           {!notes.length && <EmptyState title={store.knowledgeNotes.length ? '没有检索结果' : '还没有笔记'} message={store.knowledgeNotes.length ? '换一个关键词，或点击标签快速检索。' : '把一道题中可迁移的观察、模板和边界检查沉淀下来。'} action={<button className="button buttonAccent" type="button" onClick={() => dialogRef.current?.showModal()}><BookOpenText size={15} />写第一篇</button>} />}
         </section>
-        <aside>
-          <section className={styles.section}><SectionHeader title="常用标签" meta={`${tags.length} 个`} /><div className={styles.tags} style={{ paddingTop: 18 }}>{tags.map((tag) => <button className={styles.tag} style={{ cursor: 'pointer' }} type="button" key={tag} onClick={() => setQuery(tag)}>{tag}</button>)}</div></section>
-          <section className={styles.paperPanel}>
-            {selected ? <><span className={styles.badge}>笔记预览</span><h2 style={{ fontFamily: 'var(--font-reading)', fontSize: 23 }}>{selected.title}</h2><div className={styles.noteContent}>{selected.content}</div><div className={styles.tags}>{selected.tags.map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div></> : <><BookOpenText size={21} color="var(--info)" /><h2 style={{ fontSize: 16 }}>选择一篇笔记</h2><p className={styles.noteContent}>在左侧打开内容，这里会保留当前阅读位置。</p></>}
-          </section>
-        </aside>
+        <aside><section className={styles.section}><SectionHeader title="常用标签" meta={`${tags.length} 个`} /><div className={styles.tags} style={{ paddingTop: 18 }}>{tags.map((tag) => <button className={styles.tag} style={{ cursor: 'pointer' }} type="button" key={tag} onClick={() => setQuery(tag)}>{tag}</button>)}</div></section></aside>
       </div>
+      </>}
 
       <dialog className={styles.dialog} ref={dialogRef}>
         <div className={styles.dialogHead}><h2>新建知识笔记</h2><button className="iconButton" type="button" aria-label="关闭" onClick={() => dialogRef.current?.close()}><X size={17} /></button></div>

@@ -2342,6 +2342,28 @@
   font-size: 11px;
 }
 
+.noteReader { max-width: 980px; margin: 0 auto; padding-bottom: 48px; }
+.noteReaderMeta { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: -18px 0 28px; padding-bottom: 18px; border-bottom: 1px solid var(--line-strong); }
+.noteReaderBody { max-width: 760px; color: var(--body); font-family: var(--font-reading); font-size: 16px; line-height: 1.9; }
+.noteReaderBody h1, .noteReaderBody h2, .noteReaderBody h3 { margin: 2em 0 .65em; color: var(--ink); font-family: var(--font-reading); line-height: 1.25; }
+.noteReaderBody h1 { font-size: 30px; }
+.noteReaderBody h2 { font-size: 24px; }
+.noteReaderBody h3 { font-size: 19px; }
+.noteReaderBody h1:first-child, .noteReaderBody h2:first-child, .noteReaderBody h3:first-child { margin-top: 0; }
+.noteReaderBody p { margin: 0 0 1.1em; }
+.noteReaderBody ul, .noteReaderBody ol { margin: 0 0 1.15em; padding-left: 1.6em; }
+.noteReaderBody li { margin: .35em 0; }
+.noteReaderBody strong { color: var(--ink); font-weight: 750; }
+.noteReaderBody a { color: var(--info); text-decoration: underline; text-underline-offset: 3px; }
+.noteReaderBody blockquote { margin: 1.2em 0; padding: 10px 16px; border-left: 3px solid var(--accent); background: var(--subtle-fill); color: var(--muted); }
+.noteReaderBody code { padding: .15em .35em; border: 1px solid var(--line); border-radius: 3px; background: var(--subtle-fill); color: var(--accent-deep); font-family: 'JetBrains Mono', Consolas, monospace; font-size: .86em; }
+.noteReaderBody pre { margin: 1.25em 0; padding: 16px 18px; overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface-strong); color: var(--ink); font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; line-height: 1.65; }
+.noteReaderBody pre code { padding: 0; border: 0; background: transparent; color: inherit; }
+.noteReaderBody table { width: 100%; margin: 1.25em 0; border-collapse: collapse; font-family: var(--font-body); font-size: 13px; }
+.noteReaderBody th, .noteReaderBody td { padding: 9px 11px; border: 1px solid var(--line); text-align: left; }
+.noteReaderBody th { background: var(--subtle-fill); color: var(--ink); font-weight: 750; }
+@media (max-width: 700px) { .noteReaderBody { font-size: 15px; } .noteReaderMeta { align-items: flex-start; flex-direction: column; } }
+
 .legend {
   display: flex;
   flex-wrap: wrap;

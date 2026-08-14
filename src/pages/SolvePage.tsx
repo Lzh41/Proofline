@@ -382,8 +382,14 @@ export function SolvePage() {
   const editorFontSize = store.settings.editorFontSize ?? 16;
   const aiConfigured = Boolean(store.requestAiHint && store.settings.hasAiCredential && store.settings.aiModel?.trim());
   const visibleCoachTurns = useMemo(() => {
-    // 教练回答必须完整保留，不能因为切换功能而隐藏旧答案。
-    return coachTurns.filter((turn) => turn.intent !== 'explain');
+    // 五个教练功能各自只展示最新回答；AI 解惑模块单独保留完整多轮记录。
+    const latestByIntent = new Map<AiCoachIntent, AiCoachTurn>();
+    coachTurns.forEach((turn) => {
+      if (turn.intent !== 'explain') latestByIntent.set(turn.intent, turn);
+    });
+    return COACH_ACTIONS
+      .map((action) => latestByIntent.get(action.intent))
+      .filter((turn): turn is AiCoachTurn => Boolean(turn));
   }, [coachTurns]);
   const explainTurns = useMemo(
     () => coachTurns.filter((turn) => turn.intent === 'explain'),
@@ -662,12 +668,6 @@ export function SolvePage() {
     if (busyCoach) return;
     setMessage('正在重新生成本条回答，历史答案会保留。');
     void requestCoach(turn.intent, turn.question ?? '', { force: true });
-  };
-
-  const regenerateCoachIntent = (intent: AiCoachIntent) => {
-    const turn = [...coachTurns].reverse().find((item) => item.intent === intent && item.answer.trim());
-    if (!turn) return;
-    regenerateCoachTurn(turn);
   };
 
   const ensureActiveAttempt = async (draft?: { code: string; language: string; durationSeconds: number }): Promise<Attempt | undefined> => {
@@ -1127,31 +1127,19 @@ export function SolvePage() {
                 const needsRunResult = action.intent === 'debug' && runPassed === null && !hasCachedAnswer;
                 const needsAiConfiguration = !aiConfigured && !hasCachedAnswer;
                 const Icon = hasCachedAnswer ? CheckCircle2 : action.icon;
-                const canRegenerate = hasCachedAnswer && aiConfigured && !busyCoach;
                 return (
-                  <div className={styles.coachIntentGroup} key={action.intent} data-intent={action.intent}>
-                    <button
-                      className={`${styles.coachIntentButton} ${hasCachedAnswer ? styles.coachIntentCached : ''} ${activeIntent === action.intent ? styles.coachIntentActive : ''}`}
-                      type="button"
-                      data-cached={hasCachedAnswer}
-                      disabled={busyCoach || needsAiConfiguration || needsRunResult}
-                      onClick={() => void requestCoach(action.intent)}
-                      title={hasCachedAnswer ? '已有回答，点击直接查看' : needsAiConfiguration ? '请先在设置中保存 AI 密钥并填写模型 ID' : needsRunResult ? '请先运行一次样例' : action.description}
-                    >
-                      <Icon size={14} />
-                      <span><strong>{action.label}</strong><small>{hasCachedAnswer ? '已有回答，点击查看' : action.description}</small></span>
-                    </button>
-                    <button
-                      className={styles.coachIntentRegenerate}
-                      type="button"
-                      aria-label="重新生成回答"
-                      title={canRegenerate ? `重新生成${action.label}，历史答案会保留` : hasCachedAnswer ? '请先在设置中保存 AI 密钥并填写模型 ID' : '先点击左侧功能生成一次回答后才能重新生成'}
-                      disabled={!canRegenerate}
-                      onClick={() => regenerateCoachIntent(action.intent)}
-                    >
-                      <RefreshCw size={13} />
-                    </button>
-                  </div>
+                  <button
+                    className={`${styles.coachIntentButton} ${hasCachedAnswer ? styles.coachIntentCached : ''} ${activeIntent === action.intent ? styles.coachIntentActive : ''}`}
+                    type="button"
+                    key={action.intent}
+                    data-cached={hasCachedAnswer}
+                    disabled={busyCoach || needsAiConfiguration || needsRunResult}
+                    onClick={() => void requestCoach(action.intent)}
+                    title={hasCachedAnswer ? '已有回答，点击直接查看' : needsAiConfiguration ? '请先在设置中保存 AI 密钥并填写模型 ID' : needsRunResult ? '请先运行一次样例' : action.description}
+                  >
+                    <Icon size={14} />
+                    <span><strong>{action.label}</strong><small>{hasCachedAnswer ? '已有回答，点击查看' : action.description}</small></span>
+                  </button>
                 );
               })}
             </div>

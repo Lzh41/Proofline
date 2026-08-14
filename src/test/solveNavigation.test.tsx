@@ -146,14 +146,15 @@ describe('做题页题库导航', () => {
     expect(screen.queryByText('检查边界')).not.toBeInTheDocument();
   });
 
-  it('五个代码教练功能都显示独立的重新生成入口，并固定展示 AI 解惑模块', async () => {
+  it('五个教练功能不显示额外输入框，并固定展示第六个 AI 解惑模块', async () => {
     render(
       <MemoryRouter initialEntries={['/solve/algo-lis']}>
         <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
       </MemoryRouter>,
     );
 
-    expect(await screen.findAllByRole('button', { name: '重新生成回答' })).toHaveLength(5);
+    expect(await screen.findByLabelText('AI 代码教练快捷操作')).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: '重新生成回答' })).toHaveLength(0);
     expect(screen.getByRole('region', { name: 'AI 解惑对话' })).toBeVisible();
     expect(screen.getByText('AI 解惑输入')).toBeVisible();
   });
@@ -236,56 +237,7 @@ describe('做题页题库导航', () => {
     expect(requestAiHint).not.toHaveBeenCalled();
   });
 
-  it('五个教练功能卡片始终提供独立的重新生成按钮', async () => {
-    const requestAiHint = vi.fn(async ({ intent }: { intent?: string }) => `新的${intent ?? '回答'}`);
-    useAppStore.setState((state) => ({
-      requestAiHint,
-      aiGenerations: [{
-        id: 'ai-logic-card',
-        problemId: 'algo-lis',
-        level: 3,
-        intent: 'algorithm-logic',
-        prompt: '算法逻辑拆解',
-        response: '已有的算法逻辑答案',
-        model: 'mock-model',
-        createdAt: 101,
-      }],
-      settings: {
-        ...state.settings,
-        hasAiCredential: true,
-        aiModel: 'mock-model',
-        privacyConfirmed: true,
-      } as typeof state.settings,
-    }));
-
-    render(
-      <MemoryRouter initialEntries={['/solve/algo-lis']}>
-        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
-      </MemoryRouter>,
-    );
-
-    const quickActions = await screen.findByLabelText('AI 代码教练快捷操作');
-    const groups = [...quickActions.querySelectorAll('[data-intent]')];
-    expect(groups).toHaveLength(5);
-    for (const group of groups) {
-      const buttons = within(group as HTMLElement).getAllByRole('button');
-      expect(buttons).toHaveLength(2);
-      expect(within(group as HTMLElement).getByRole('button', { name: '重新生成回答' })).toBeInTheDocument();
-    }
-
-    const logicGroup = quickActions.querySelector('[data-intent="algorithm-logic"]') as HTMLElement;
-    const regenerate = within(logicGroup).getByRole('button', { name: '重新生成回答' });
-    expect(regenerate).toBeEnabled();
-    fireEvent.click(regenerate);
-
-    await waitFor(() => expect(requestAiHint).toHaveBeenCalledWith(expect.objectContaining({
-      intent: 'algorithm-logic',
-    })));
-    expect(await screen.findByText('已有的算法逻辑答案')).toBeInTheDocument();
-    expect(await screen.findByText('新的algorithm-logic')).toBeInTheDocument();
-  });
-
-  it('代码教练展示同一题的全部历史回答，并可追加重新生成版本', async () => {
+  it('五个教练功能重新生成后只显示最新回答', async () => {
     const requestAiHint = vi.fn(async ({ intent }: { intent?: string }) => `重新生成的${intent ?? '回答'}`);
     useAppStore.setState((state) => ({
       requestAiHint,
@@ -319,7 +271,7 @@ describe('做题页题库导航', () => {
     fireEvent.click(screen.getByRole('button', { name: '重新生成“算法逻辑拆解”回答' }));
     await waitFor(() => expect(requestAiHint).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('重新生成的algorithm-logic')).toBeInTheDocument();
-    expect(screen.getByText('旧的逻辑拆解答案')).toBeInTheDocument();
+    expect(screen.queryByText('旧的逻辑拆解答案')).not.toBeInTheDocument();
     expect(screen.getByText('旧的下一步提示答案')).toBeInTheDocument();
   });
 

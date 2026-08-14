@@ -1644,13 +1644,6 @@
   background: var(--panel-info);
 }
 
-.coachIntentGroup {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 29px;
-  align-items: stretch;
-}
-
 .coachIntentButton {
   min-width: 0;
   min-height: 38px;
@@ -1668,37 +1661,7 @@
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
-.coachIntentGroup .coachIntentButton { border-radius: 5px 0 0 5px; }
-
-.coachIntentGroup:last-child { grid-column: auto; }
-
-.coachIntentRegenerate {
-  min-width: 0;
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-left: 0;
-  border-radius: 0 5px 5px 0;
-  background: var(--surface-elevated);
-  color: var(--muted);
-  cursor: pointer;
-  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
-}
-
-.coachIntentRegenerate:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 44%, transparent);
-  background: var(--accent-soft);
-  color: var(--accent);
-  transform: translateY(-1px);
-}
-
-.coachIntentRegenerate:disabled {
-  cursor: not-allowed;
-  opacity: .38;
-}
+.coachIntentButton:last-child { grid-column: auto; }
 
 .coachIntentButton:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--info) 42%, transparent);
@@ -1707,8 +1670,8 @@
   transform: translateY(-1px);
 }
 
-.coachIntentGroup:last-child .coachIntentButton:hover:not(:disabled),
-.coachIntentGroup:last-child .coachIntentButton.coachIntentActive {
+.coachIntentButton:last-child:hover:not(:disabled),
+.coachIntentButton:last-child.coachIntentActive {
   border-color: color-mix(in srgb, var(--accent) 38%, transparent);
   background: var(--accent-soft);
   color: var(--accent);
@@ -2082,7 +2045,7 @@
   .aiCoachHeader { align-items: flex-start; }
   .aiCoachHeader .aiStatusGroup > span { display: none; }
   .coachIntents { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .coachIntentGroup:last-child { grid-column: auto; }
+  .coachIntentButton:last-child { grid-column: auto; }
 }
 
 @media (max-width: 560px) {

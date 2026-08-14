@@ -927,8 +927,15 @@ export const useAppStore = create<AppStore>((set, get) => {
         'interview-improve': '优化完整回答',
       };
       const thought = attempt ? { id: createId('thought'), attemptId: attempt.id, type: 'hint' as const, content: payload.intent ? intentLabels[payload.intent] : `使用 ${level} 级提示`, createdAt: Date.now() } : undefined;
+      const replacePreviousCoachAnswer = Boolean(
+        !payload.userQuestion?.trim()
+        && ['analyze', 'algorithm-logic', 'next-code', 'debug', 'complete'].includes(payload.intent ?? ''),
+      );
+      const retainedGenerations = replacePreviousCoachAnswer
+        ? get().aiGenerations.filter((item) => !(item.problemId === problem.id && item.intent === payload.intent))
+        : get().aiGenerations;
       set({
-        aiGenerations: [generation, ...get().aiGenerations],
+        aiGenerations: [generation, ...retainedGenerations],
         thoughtEvents: thought ? [...get().thoughtEvents, thought] : get().thoughtEvents,
         attempts: attempt ? get().attempts.map((item) => item.id === attempt.id ? { ...item, hintLevel: Math.max(item.hintLevel, level) as Attempt['hintLevel'], independent: false, updatedAt: Date.now() } : item) : get().attempts,
       });

@@ -233,9 +233,9 @@ function AiCoachContent({ content, busy, complete }: { content: string; busy: bo
   );
 }
 
-function conversationContext(turns: AiCoachTurn[]): string {
+function conversationContext(turns: AiCoachTurn[], intent: AiCoachIntent): string {
   return turns
-    .filter((turn) => turn.answer.trim())
+    .filter((turn) => turn.intent === intent && turn.answer.trim())
     .slice(-5)
     .map((turn) => `【用户请求：${turn.label}${turn.question ? `｜${turn.question}` : ''}】\n${turn.answer.slice(0, 1_600)}`)
     .join('\n\n')
@@ -376,6 +376,7 @@ export function SolvePage() {
   const sampleResultDialogRef = useRef<HTMLDialogElement | null>(null);
   const aiContentRef = useRef('');
   const aiPanelRef = useRef<HTMLDivElement | null>(null);
+  const coachQuestionRef = useRef<HTMLTextAreaElement | null>(null);
   const solvePageRef = useRef<HTMLDivElement | null>(null);
   const resolvedTheme = useResolvedTheme(store.settings.theme ?? 'dark');
   const editorTheme = editorThemeFor(resolvedTheme);
@@ -602,7 +603,7 @@ export function SolvePage() {
         intent,
         code,
         language,
-        previousGuidance: conversationContext(coachTurns),
+        previousGuidance: conversationContext(coachTurns, intent),
         recentRunError: runResult,
         userQuestion: question.trim() || undefined,
         onChunk: (chunk: string) => {
@@ -1142,6 +1143,21 @@ export function SolvePage() {
                   </button>
                 );
               })}
+              <button
+                className={`${styles.coachIntentButton} ${activeIntent === 'explain' ? styles.coachIntentActive : ''}`}
+                type="button"
+                key="explain"
+                aria-label="AI 解惑"
+                disabled={busyCoach}
+                onClick={() => {
+                  setActiveIntent('explain');
+                  coachQuestionRef.current?.focus();
+                }}
+                title="聚焦 AI 解惑输入，按 Enter 发送问题"
+              >
+                <Bot size={14} />
+                <span><strong>AI 解惑</strong><small>针对代码、报错或概念直接提问</small></span>
+              </button>
             </div>
 
             <div ref={aiPanelRef} className={styles.aiConversation} aria-label="AI 回答记录" aria-live="polite" aria-busy={busyCoach}>
@@ -1253,6 +1269,7 @@ export function SolvePage() {
                 <span>问具体代码、报错或概念，历史回答会一直保留</span>
               </div>
               <textarea
+                ref={coachQuestionRef}
                 value={coachQuestion}
                 onChange={(event) => setCoachQuestion(event.target.value)}
                 onKeyDown={(event) => {

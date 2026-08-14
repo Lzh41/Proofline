@@ -142,7 +142,10 @@ describe('做题页题库导航', () => {
     );
 
     expect(await screen.findByLabelText('向 AI 代码教练提问')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /AI 解惑/ })).not.toBeInTheDocument();
+    const explainShortcut = screen.getByRole('button', { name: 'AI 解惑' });
+    expect(explainShortcut).toBeInTheDocument();
+    fireEvent.click(explainShortcut);
+    expect(screen.getByLabelText('向 AI 代码教练提问')).toHaveFocus();
     expect(screen.queryByText('检查边界')).not.toBeInTheDocument();
   });
 

@@ -1580,7 +1580,7 @@
 
 .aiCoachPane {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   border-color: color-mix(in srgb, var(--info) 22%, transparent);
   background:
     linear-gradient(155deg, color-mix(in srgb, var(--info) 6%, transparent), transparent 34%),
@@ -1738,16 +1738,94 @@
   background-clip: content-box;
 }
 
-.aiHistoryModule,
-.aiExplainModule {
+.aiCoachModules {
   min-width: 0;
-  padding-bottom: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+/* 每个快捷功能都对应一个独立模块；解惑模块在末尾单独保存多轮问答。 */
+.aiCoachModule {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--info) 19%, var(--line));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-info-elevated) 76%, var(--surface));
+  box-shadow: var(--inset-highlight);
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.aiCoachModuleActive {
+  border-color: color-mix(in srgb, var(--info) 48%, var(--line));
+  background: color-mix(in srgb, var(--panel-info-elevated) 90%, var(--info-soft));
+  box-shadow: var(--inset-highlight), 0 0 18px color-mix(in srgb, var(--info) 7%, transparent);
+}
+
+.aiCoachModule .aiModuleHeader {
+  min-height: 35px;
+  padding: 8px 10px 7px;
+  background: color-mix(in srgb, var(--panel-info) 68%, transparent);
+}
+
+.aiModuleTitle {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--info);
+}
+
+.aiModuleTitle strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiCoachModuleEmpty {
+  padding: 14px 12px 16px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.aiCoachModule .aiCoachTurn {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--info) 14%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.aiCoachModule .aiCoachTurn + .aiCoachTurn {
+  margin-top: 0;
+  border-top: 1px solid color-mix(in srgb, var(--info) 14%, transparent);
+}
+
+.aiCoachModule .aiCoachTurnStreaming {
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
 }
 
 .aiExplainModule {
-  margin-top: 6px;
-  border-top: 1px solid color-mix(in srgb, var(--info) 18%, transparent);
-  background: color-mix(in srgb, var(--panel-info-elevated) 36%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 16%, var(--panel-info-elevated));
+}
+
+.aiExplainModule .aiModuleHeader {
+  background: color-mix(in srgb, var(--accent-soft) 24%, var(--panel-info));
+}
+
+.aiExplainModule .aiModuleTitle { color: var(--accent); }
+
+.aiExplainModule .aiCoachComposer {
+  border-top-color: color-mix(in srgb, var(--accent) 26%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 10%, var(--panel-info-elevated));
 }
 
 .aiExplainEmpty {

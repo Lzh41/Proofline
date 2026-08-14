@@ -160,6 +160,10 @@ describe('做题页题库导航', () => {
     expect(screen.queryAllByRole('button', { name: '重新生成回答' })).toHaveLength(0);
     expect(screen.getByRole('region', { name: 'AI 解惑对话' })).toBeVisible();
     expect(screen.getByText('AI 解惑输入')).toBeVisible();
+    expect(Array.from(document.querySelectorAll<HTMLElement>('[data-ai-module]')).map((module) => module.dataset.aiModule))
+      .toEqual(['analyze', 'algorithm-logic', 'next-code', 'debug', 'complete', 'explain']);
+    expect(screen.getByLabelText('向 AI 代码教练提问').closest('[data-ai-module]'))
+      .toHaveAttribute('data-ai-module', 'explain');
   });
 
   it('AI 解惑由输入问题触发', async () => {

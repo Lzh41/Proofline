@@ -20,7 +20,6 @@ import {
   RefreshCw,
   Save,
   Search,
-  Sparkles,
   Square,
   TestTube2,
   Trash2,
@@ -569,7 +568,9 @@ export function SolvePage() {
       setAiError('');
       setMessage('已显示这道题保存的 AI 回答。');
       window.requestAnimationFrame(() => {
-        if (aiPanelRef.current) aiPanelRef.current.scrollTop = aiPanelRef.current.scrollHeight;
+        const module = aiPanelRef.current?.querySelector<HTMLElement>(`[data-ai-module="${intent}"]`);
+        if (module?.scrollIntoView) module.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else if (aiPanelRef.current) aiPanelRef.current.scrollTop = aiPanelRef.current.scrollHeight;
       });
       return;
     }
@@ -1161,128 +1162,143 @@ export function SolvePage() {
             </div>
 
             <div ref={aiPanelRef} className={styles.aiConversation} aria-label="AI 回答记录" aria-live="polite" aria-busy={busyCoach}>
-              <section className={styles.aiExplainModule} aria-label="AI 解惑对话">
-                <header className={styles.aiModuleHeader}>
-                  <strong>AI 解惑对话</strong>
-                  <small>{explainTurns.length ? `${explainTurns.length} 条问答记录` : '针对不懂的代码直接提问'}</small>
-                </header>
-                {!explainTurns.length && !busyCoach && (
-                  <div className={styles.aiExplainEmpty}>先在下方输入具体问题，回答会按时间顺序保留在这里。</div>
-                )}
-                {explainTurns.map((turn) => (
-                  <article className={styles.aiCoachTurn} key={turn.id}>
-                    <header>
-                      <span>{turn.label}</span>
-                      {turn.question && <small title={turn.question}>{turn.question}</small>}
-                    </header>
-                    <AiCoachContent content={turn.answer} busy={false} complete={turn.intent === 'complete'} />
-                    {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
-                    <footer className={styles.aiCoachTurnFooter}>
-                      <button
-                        className={styles.aiCoachTurnRegenerate}
-                        type="button"
-                        aria-label={`重新生成“${turn.label}”回答`}
-                        title="重新生成本条回答，历史答案会保留"
-                        disabled={busyCoach || !aiConfigured}
-                        onClick={() => regenerateCoachTurn(turn)}
-                      >
-                        <RefreshCw size={13} />重新生成
-                      </button>
-                      <button
-                        className={styles.aiCoachTurnJump}
-                        type="button"
-                        aria-label={`回到“${turn.label}”回答开头`}
-                        onClick={(event) => scrollCoachTurnToStart(event.currentTarget.closest('article'))}
-                      >
-                        <ArrowUpToLine size={14} />回到本条开头
-                      </button>
-                    </footer>
-                  </article>
-                ))}
-                {busyCoach && activeIntent === 'explain' && (
-                  <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
-                    <header><span>AI 解惑</span><small>正在结合编辑器中的最新内容</small></header>
-                    {streamingAnswer
-                      ? <AiCoachContent content={streamingAnswer} busy complete={false} />
-                      : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
-                  </article>
-                )}
-              </section>
+              <div className={styles.aiCoachModules} aria-label="六个独立 AI 模块">
+                {COACH_ACTIONS.map((action) => {
+                  const turn = visibleCoachTurns.find((item) => item.intent === action.intent);
+                  const isStreaming = busyCoach && activeIntent === action.intent;
+                  return (
+                    <section
+                      className={`${styles.aiCoachModule} ${activeIntent === action.intent ? styles.aiCoachModuleActive : ''}`}
+                      aria-label={`${action.label}模块`}
+                      data-ai-module={action.intent}
+                      key={action.intent}
+                    >
+                      <header className={styles.aiModuleHeader}>
+                        <div className={styles.aiModuleTitle}>
+                          <action.icon size={14} />
+                          <strong>{action.label}</strong>
+                        </div>
+                        <small>{turn ? '仅保留最新回答' : action.description}</small>
+                      </header>
+                      {!turn && !isStreaming && (
+                        <div className={styles.aiCoachModuleEmpty}>点击上方“{action.label}”开始。</div>
+                      )}
+                      {turn && (
+                        <article className={styles.aiCoachTurn} key={turn.id}>
+                          <header>
+                            <span>{turn.label}</span>
+                            {turn.question && <small title={turn.question}>{turn.question}</small>}
+                          </header>
+                          <AiCoachContent content={turn.answer} busy={false} complete={turn.intent === 'complete'} />
+                          {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
+                          <footer className={styles.aiCoachTurnFooter}>
+                            <button
+                              className={styles.aiCoachTurnRegenerate}
+                              type="button"
+                              aria-label={`重新生成“${turn.label}”回答`}
+                              title="重新生成本条回答，只显示最新结果"
+                              disabled={busyCoach || !aiConfigured}
+                              onClick={() => regenerateCoachTurn(turn)}
+                            >
+                              <RefreshCw size={13} />重新生成
+                            </button>
+                            <button
+                              className={styles.aiCoachTurnJump}
+                              type="button"
+                              aria-label={`回到“${turn.label}”回答开头`}
+                              onClick={(event) => scrollCoachTurnToStart(event.currentTarget.closest('article'))}
+                            >
+                              <ArrowUpToLine size={14} />回到本条开头
+                            </button>
+                          </footer>
+                        </article>
+                      )}
+                      {isStreaming && (
+                        <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
+                          <header><span>{action.label}</span><small>正在结合编辑器中的最新内容</small></header>
+                          {streamingAnswer
+                            ? <AiCoachContent content={streamingAnswer} busy complete={action.intent === 'complete'} />
+                            : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
+                        </article>
+                      )}
+                    </section>
+                  );
+                })}
 
-              <section className={styles.aiHistoryModule} aria-label="AI 代码教练记录">
-                <header className={styles.aiModuleHeader}>
-                  <strong>代码教练记录</strong>
-                  <small>{visibleCoachTurns.length ? `${visibleCoachTurns.length} 条历史回答` : '点击上方功能开始拆解'}</small>
-                </header>
-                {!visibleCoachTurns.length && !busyCoach && (
-                  <div className={styles.aiCoachEmpty}>
-                    <Sparkles size={25} />
-                    <strong>把编辑器当作共同工作区</strong>
-                    <span>教练不会只复述算法思路。你可以在下方直接问某行代码、变量变化、报错原因或为什么要这样设计算法。</span>
+                <section className={`${styles.aiCoachModule} ${styles.aiExplainModule} ${activeIntent === 'explain' ? styles.aiCoachModuleActive : ''}`} aria-label="AI 解惑对话" data-ai-module="explain">
+                  <header className={styles.aiModuleHeader}>
+                    <div className={styles.aiModuleTitle}>
+                      <Bot size={14} />
+                      <strong>AI 解惑对话</strong>
+                    </div>
+                    <small>{explainTurns.length ? `${explainTurns.length} 条问答记录` : '全部问答按时间保存'}</small>
+                  </header>
+                  {!explainTurns.length && !busyCoach && (
+                    <div className={styles.aiExplainEmpty}>在下方输入具体问题，所有问答都会保留在这个模块中。</div>
+                  )}
+                  {explainTurns.map((turn) => (
+                    <article className={styles.aiCoachTurn} key={turn.id}>
+                      <header>
+                        <span>{turn.label}</span>
+                        {turn.question && <small title={turn.question}>{turn.question}</small>}
+                      </header>
+                      <AiCoachContent content={turn.answer} busy={false} complete={false} />
+                      {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
+                      <footer className={styles.aiCoachTurnFooter}>
+                        <button
+                          className={styles.aiCoachTurnRegenerate}
+                          type="button"
+                          aria-label={`重新生成“${turn.label}”回答`}
+                          title="重新生成本条回答，保留其他问答记录"
+                          disabled={busyCoach || !aiConfigured}
+                          onClick={() => regenerateCoachTurn(turn)}
+                        >
+                          <RefreshCw size={13} />重新生成
+                        </button>
+                        <button
+                          className={styles.aiCoachTurnJump}
+                          type="button"
+                          aria-label={`回到“${turn.label}”回答开头`}
+                          onClick={(event) => scrollCoachTurnToStart(event.currentTarget.closest('article'))}
+                        >
+                          <ArrowUpToLine size={14} />回到本条开头
+                        </button>
+                      </footer>
+                    </article>
+                  ))}
+                  {busyCoach && activeIntent === 'explain' && (
+                    <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
+                      <header><span>AI 解惑</span><small>正在结合编辑器中的最新内容</small></header>
+                      {streamingAnswer
+                        ? <AiCoachContent content={streamingAnswer} busy complete={false} />
+                        : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
+                    </article>
+                  )}
+                  <div className={styles.aiCoachComposer}>
+                    <div className={styles.aiComposerLabel}>
+                      <strong>AI 解惑输入</strong>
+                      <span>问具体代码、报错或概念，所有问答都会保留</span>
+                    </div>
+                    <textarea
+                      ref={coachQuestionRef}
+                      value={coachQuestion}
+                      onChange={(event) => setCoachQuestion(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault();
+                          sendQuestion();
+                        }
+                      }}
+                      placeholder="把不懂的代码、报错或概念直接问我，Enter 发送"
+                      aria-label="向 AI 代码教练提问"
+                    />
+                    <button className="iconButton" type="button" title="发送问题" aria-label="发送问题" disabled={busyCoach || !coachQuestion.trim()} onClick={sendQuestion}><Play size={14} /></button>
                   </div>
-                )}
-                {visibleCoachTurns.map((turn) => (
-                  <article className={styles.aiCoachTurn} key={turn.id}>
-                    <header>
-                      <span>{turn.label}</span>
-                      {turn.question && <small title={turn.question}>{turn.question}</small>}
-                    </header>
-                    <AiCoachContent content={turn.answer} busy={false} complete={false} />
-                    {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
-                    <footer className={styles.aiCoachTurnFooter}>
-                      <button
-                        className={styles.aiCoachTurnRegenerate}
-                        type="button"
-                        aria-label={`重新生成“${turn.question || turn.label}”回答`}
-                        title="重新生成本条回答，历史答案会保留"
-                        disabled={busyCoach || !aiConfigured}
-                        onClick={() => regenerateCoachTurn(turn)}
-                      >
-                        <RefreshCw size={13} />重新生成
-                      </button>
-                      <button
-                        className={styles.aiCoachTurnJump}
-                        type="button"
-                        aria-label={`回到“${turn.label}”回答开头`}
-                        onClick={(event) => scrollCoachTurnToStart(event.currentTarget.closest('article'))}
-                      >
-                        <ArrowUpToLine size={14} />回到本条开头
-                      </button>
-                    </footer>
-                  </article>
-                ))}
-                {busyCoach && activeIntent !== 'explain' && (
-                  <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
-                    <header><span>{coachIntentLabel(activeIntent)}</span><small>正在结合编辑器中的最新内容</small></header>
-                    {streamingAnswer
-                      ? <AiCoachContent content={streamingAnswer} busy complete={activeIntent === 'complete'} />
-                      : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
-                  </article>
-                )}
-              </section>
+                </section>
+              </div>
               {aiError && !busyCoach && <div className={styles.aiStreamMessage}>{aiError}</div>}
             </div>
 
-            <div className={styles.aiCoachComposer}>
-              <div className={styles.aiComposerLabel}>
-                <strong>AI 解惑输入</strong>
-                <span>问具体代码、报错或概念，历史回答会一直保留</span>
-              </div>
-              <textarea
-                ref={coachQuestionRef}
-                value={coachQuestion}
-                onChange={(event) => setCoachQuestion(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    sendQuestion();
-                  }
-                }}
-                placeholder="把不懂的代码、报错或概念直接问我，Enter 发送"
-                aria-label="向 AI 代码教练提问"
-              />
-              <button className="iconButton" type="button" title="发送问题" aria-label="发送问题" disabled={busyCoach || !coachQuestion.trim()} onClick={sendQuestion}><Play size={14} /></button>
-            </div>
           </aside>
         </div>
       </div>

@@ -664,6 +664,12 @@ export function SolvePage() {
     void requestCoach(turn.intent, turn.question ?? '', { force: true });
   };
 
+  const regenerateCoachIntent = (intent: AiCoachIntent) => {
+    const turn = [...coachTurns].reverse().find((item) => item.intent === intent && item.answer.trim());
+    if (!turn) return;
+    regenerateCoachTurn(turn);
+  };
+
   const ensureActiveAttempt = async (draft?: { code: string; language: string; durationSeconds: number }): Promise<Attempt | undefined> => {
     if (!problem) return undefined;
     const nextDraft = draft ?? { code, language, durationSeconds: seconds };
@@ -1121,37 +1127,45 @@ export function SolvePage() {
                 const needsRunResult = action.intent === 'debug' && runPassed === null && !hasCachedAnswer;
                 const needsAiConfiguration = !aiConfigured && !hasCachedAnswer;
                 const Icon = hasCachedAnswer ? CheckCircle2 : action.icon;
+                const canRegenerate = hasCachedAnswer && aiConfigured && !busyCoach;
                 return (
-                  <button
-                    className={`${styles.coachIntentButton} ${hasCachedAnswer ? styles.coachIntentCached : ''} ${activeIntent === action.intent ? styles.coachIntentActive : ''}`}
-                    type="button"
-                    key={action.intent}
-                    data-cached={hasCachedAnswer}
-                    disabled={busyCoach || needsAiConfiguration || needsRunResult}
-                    onClick={() => void requestCoach(action.intent)}
-                    title={hasCachedAnswer ? '已有回答，点击直接查看' : needsAiConfiguration ? '请先在设置中保存 AI 密钥并填写模型 ID' : needsRunResult ? '请先运行一次样例' : action.description}
-                  >
-                    <Icon size={14} />
-                    <span><strong>{action.label}</strong><small>{hasCachedAnswer ? '已有回答，点击查看' : action.description}</small></span>
-                  </button>
+                  <div className={styles.coachIntentGroup} key={action.intent} data-intent={action.intent}>
+                    <button
+                      className={`${styles.coachIntentButton} ${hasCachedAnswer ? styles.coachIntentCached : ''} ${activeIntent === action.intent ? styles.coachIntentActive : ''}`}
+                      type="button"
+                      data-cached={hasCachedAnswer}
+                      disabled={busyCoach || needsAiConfiguration || needsRunResult}
+                      onClick={() => void requestCoach(action.intent)}
+                      title={hasCachedAnswer ? '已有回答，点击直接查看' : needsAiConfiguration ? '请先在设置中保存 AI 密钥并填写模型 ID' : needsRunResult ? '请先运行一次样例' : action.description}
+                    >
+                      <Icon size={14} />
+                      <span><strong>{action.label}</strong><small>{hasCachedAnswer ? '已有回答，点击查看' : action.description}</small></span>
+                    </button>
+                    <button
+                      className={styles.coachIntentRegenerate}
+                      type="button"
+                      aria-label="重新生成回答"
+                      title={canRegenerate ? `重新生成${action.label}，历史答案会保留` : hasCachedAnswer ? '请先在设置中保存 AI 密钥并填写模型 ID' : '先点击左侧功能生成一次回答后才能重新生成'}
+                      disabled={!canRegenerate}
+                      onClick={() => regenerateCoachIntent(action.intent)}
+                    >
+                      <RefreshCw size={13} />
+                    </button>
+                  </div>
                 );
               })}
             </div>
 
             <div ref={aiPanelRef} className={styles.aiConversation} aria-label="AI 回答记录" aria-live="polite" aria-busy={busyCoach}>
-              {!coachTurns.length && !streamingAnswer && !busyCoach && (
-                <div className={styles.aiCoachEmpty}>
-                  <Sparkles size={25} />
-                  <strong>把编辑器当作共同工作区</strong>
-                  <span>教练不会只复述算法思路。你可以在下方直接问某行代码、变量变化、报错原因或为什么要这样设计算法。</span>
-                </div>
-              )}
-              <section className={styles.aiHistoryModule} aria-label="AI 代码教练记录">
+              <section className={styles.aiExplainModule} aria-label="AI 解惑对话">
                 <header className={styles.aiModuleHeader}>
-                  <strong>代码教练记录</strong>
-                  <small>{visibleCoachTurns.length ? `${visibleCoachTurns.length} 条历史回答` : '点击上方功能开始拆解'}</small>
+                  <strong>AI 解惑对话</strong>
+                  <small>{explainTurns.length ? `${explainTurns.length} 条问答记录` : '针对不懂的代码直接提问'}</small>
                 </header>
-                {visibleCoachTurns.map((turn) => (
+                {!explainTurns.length && !busyCoach && (
+                  <div className={styles.aiExplainEmpty}>先在下方输入具体问题，回答会按时间顺序保留在这里。</div>
+                )}
+                {explainTurns.map((turn) => (
                   <article className={styles.aiCoachTurn} key={turn.id}>
                     <header>
                       <span>{turn.label}</span>
@@ -1181,22 +1195,29 @@ export function SolvePage() {
                     </footer>
                   </article>
                 ))}
-                {busyCoach && activeIntent !== 'explain' && (
+                {busyCoach && activeIntent === 'explain' && (
                   <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
-                    <header><span>{coachIntentLabel(activeIntent)}</span><small>正在结合编辑器中的最新内容</small></header>
+                    <header><span>AI 解惑</span><small>正在结合编辑器中的最新内容</small></header>
                     {streamingAnswer
-                      ? <AiCoachContent content={streamingAnswer} busy complete={activeIntent === 'complete'} />
+                      ? <AiCoachContent content={streamingAnswer} busy complete={false} />
                       : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
                   </article>
                 )}
               </section>
 
-              <section className={styles.aiExplainModule} aria-label="AI 解惑对话">
+              <section className={styles.aiHistoryModule} aria-label="AI 代码教练记录">
                 <header className={styles.aiModuleHeader}>
-                  <strong>AI 解惑对话</strong>
-                  <small>{explainTurns.length ? `${explainTurns.length} 条问答记录` : '针对不懂的代码直接提问'}</small>
+                  <strong>代码教练记录</strong>
+                  <small>{visibleCoachTurns.length ? `${visibleCoachTurns.length} 条历史回答` : '点击上方功能开始拆解'}</small>
                 </header>
-                {explainTurns.map((turn) => (
+                {!visibleCoachTurns.length && !busyCoach && (
+                  <div className={styles.aiCoachEmpty}>
+                    <Sparkles size={25} />
+                    <strong>把编辑器当作共同工作区</strong>
+                    <span>教练不会只复述算法思路。你可以在下方直接问某行代码、变量变化、报错原因或为什么要这样设计算法。</span>
+                  </div>
+                )}
+                {visibleCoachTurns.map((turn) => (
                   <article className={styles.aiCoachTurn} key={turn.id}>
                     <header>
                       <span>{turn.label}</span>
@@ -1226,11 +1247,11 @@ export function SolvePage() {
                     </footer>
                   </article>
                 ))}
-                {busyCoach && activeIntent === 'explain' && (
+                {busyCoach && activeIntent !== 'explain' && (
                   <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
-                    <header><span>AI 解惑</span><small>正在结合编辑器中的最新内容</small></header>
+                    <header><span>{coachIntentLabel(activeIntent)}</span><small>正在结合编辑器中的最新内容</small></header>
                     {streamingAnswer
-                      ? <AiCoachContent content={streamingAnswer} busy complete={false} />
+                      ? <AiCoachContent content={streamingAnswer} busy complete={activeIntent === 'complete'} />
                       : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
                   </article>
                 )}
@@ -1239,6 +1260,10 @@ export function SolvePage() {
             </div>
 
             <div className={styles.aiCoachComposer}>
+              <div className={styles.aiComposerLabel}>
+                <strong>AI 解惑输入</strong>
+                <span>问具体代码、报错或概念，历史回答会一直保留</span>
+              </div>
               <textarea
                 value={coachQuestion}
                 onChange={(event) => setCoachQuestion(event.target.value)}

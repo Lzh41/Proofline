@@ -383,7 +383,7 @@ describe('做题页题库导航', () => {
     );
 
     expect(screen.queryByText('思路笔记')).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: '运行结果' }));
+    fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
     expect(await screen.findByRole('dialog', { name: '运行结果' })).toHaveAttribute('open');
   });
 
@@ -458,6 +458,7 @@ describe('做题页题库导航', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
+    expect(screen.getByRole('dialog', { name: '运行结果' })).toHaveAttribute('open', '');
 
     await waitFor(() => {
       const saved = useAppStore.getState().attempts.find((item) => item.problemId === 'algo-two-sum');

@@ -631,7 +631,15 @@ export function SolvePage() {
 
   const openSampleResultDialog = () => {
     const dialog = sampleResultDialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
+    if (!dialog || dialog.open) return;
+    // WebView2 支持 showModal，但浏览器预览、旧版运行时或测试环境可能只支持 open 属性。
+    // 统一走兼容回退，避免样例已在后台运行而用户看不到任何进度。
+    try {
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    } catch {
+      dialog.setAttribute('open', '');
+    }
   };
 
   const openProblemReader = () => {
@@ -754,8 +762,11 @@ export function SolvePage() {
     let activeAttempt: Attempt | undefined;
     setRunningCode(true);
     setRunPassed(null);
-    openSampleResultDialog();
     setRunResult('正在准备样例和自动测试入口…');
+    // 立即打开结果面板，让编译或解释器启动期间也能看到“准备中/等待中”状态。
+    // 结果列表随后随每个样例完成而更新，不依赖 requestAnimationFrame（桌面 WebView
+    // 在窗口失焦时可能会节流 RAF，导致后台运行但结果面板始终不出现）。
+    openSampleResultDialog();
     try {
       let runnableProblem = { ...problem, examples: runnableExamples(problem) };
       if (!runnableProblem.examples.length) {
@@ -784,7 +795,8 @@ export function SolvePage() {
       setSampleRunItems(runnableProblem.examples.map(() => ({ status: 'pending' })));
       setRunResult(`已准备 ${runnableProblem.examples.length} 条样例，等待运行…`);
       // 让状态列表先完成一次渲染，避免点击按钮后被本地持久化或编译任务挡住反馈。
-      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      // 使用定时器而不是 requestAnimationFrame，兼容 WebView2 窗口失焦时的 RAF 节流。
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
       if (store.runProblemSample) {
         if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
@@ -993,7 +1005,6 @@ export function SolvePage() {
                   ? <button className="iconButton" title="开始计时" aria-label="开始计时" type="button" onClick={begin}><Play size={14} /></button>
                   : <button className="iconButton" title="暂停计时" aria-label="暂停计时" type="button" onClick={() => setRunning(false)}><Pause size={14} /></button>}
                 <button className="button buttonAccent" type="button" disabled={runningCode} onClick={runSample}><TestTube2 size={14} />{runningCode ? '运行中' : '运行全部样例'}</button>
-                <button className="button" type="button" onClick={openSampleResultDialog}><TestTube2 size={14} />运行结果</button>
                 <button className="iconButton" type="button" title="保存草稿" aria-label="保存草稿" disabled={!attempt?.id} onClick={() => attempt?.id && store.updateAttempt?.(attempt.id, { code, language, durationSeconds: seconds })}><Save size={15} /></button>
               </div>
             </div>

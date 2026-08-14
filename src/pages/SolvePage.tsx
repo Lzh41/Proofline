@@ -361,6 +361,8 @@ export function SolvePage() {
   const [sampleFieldError, setSampleFieldError] = useState<SampleFieldError | null>(null);
   const [allowEmptySamples, setAllowEmptySamples] = useState(false);
   const saveTimer = useRef<number | undefined>(undefined);
+  const loadedProblemIdRef = useRef<string | undefined>(undefined);
+  const runningCodeRef = useRef(false);
   const draftAttemptIdRef = useRef<string | undefined>(attempt?.id);
   const draftCreatePromiseRef = useRef<Promise<Attempt | void> | null>(null);
   const requestGenerationRef = useRef(0);
@@ -403,6 +405,7 @@ export function SolvePage() {
     if (!problem?.id || !store.updateAttempt) return;
     const templateCode = findProblemCodeSnippet(problem, language) ?? DEFAULT_CODE;
     const capturedCodeProblemId = codeProblemIdRef.current;
+    const capturedProblemId = problem.id;
     // 切换题目瞬间 code 可能还是上一题的代码：只有代码确实属于当前题目时才允许自动建草稿，
     // 否则会把上一题的签名误存进新题的 attempt（历史错位数据的来源）。
     const codeBelongsToProblem = capturedCodeProblemId === problem.id;
@@ -410,17 +413,23 @@ export function SolvePage() {
     if (!attempt?.id && !shouldCreateDraft) return;
 
     const persistDraft = async () => {
-      if (!codeBelongsToProblem || capturedCodeProblemId !== problem.id || codeProblemIdRef.current !== capturedCodeProblemId) return;
+      // effect cleanup 发生在题目切换的 render 之后，此时 draftAttemptIdRef 可能已经指向新题。
+      // 只允许仍属于当前题目的闭包落盘，杜绝上一题代码写入新题记录。
+      if (!codeBelongsToProblem
+        || capturedCodeProblemId !== capturedProblemId
+        || currentProblemIdRef.current !== capturedProblemId
+        || codeProblemIdRef.current !== capturedCodeProblemId) return;
       let targetAttemptId = draftAttemptIdRef.current;
       if (!targetAttemptId) {
         if (!store.startAttempt) return;
         if (!draftCreatePromiseRef.current) draftCreatePromiseRef.current = Promise.resolve(store.startAttempt(problem.id, language));
         const started = await draftCreatePromiseRef.current;
         draftCreatePromiseRef.current = null;
-        if (!started?.id || currentProblemIdRef.current !== problem.id) return;
+        if (!started?.id || currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId) return;
         targetAttemptId = started.id;
         draftAttemptIdRef.current = started.id;
       }
+      if (currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId) return;
       await store.updateAttempt?.(targetAttemptId, { code, language, durationSeconds: seconds });
     };
 
@@ -435,6 +444,12 @@ export function SolvePage() {
   }, [attempt?.id, code, language, problem, seconds, store.startAttempt, store.updateAttempt]);
 
   useEffect(() => {
+    if (!problem?.id) return;
+    // 练习记录保存、补齐样例等动作都会更新 store。恢复编辑器只能发生在题目真正切换时，
+    // 否则一次运行就可能把用户刚输入的代码重新替换成平台模板。
+    if (loadedProblemIdRef.current === problem.id) return;
+
+    loadedProblemIdRef.current = problem.id;
     const nextLanguage = attempt?.language ?? store.settings.defaultLanguage ?? 'cpp';
     setLanguage(nextLanguage);
     codeProblemIdRef.current = problem?.id;
@@ -465,6 +480,7 @@ export function SolvePage() {
     setRunResult('还没有运行样例。点击上方“运行全部样例”，应用会自动补齐测试入口。');
     setRunPassed(null);
     setSampleRunItems([]);
+    runningCodeRef.current = false;
     setRunningCode(false);
     setSampleBusy(false);
   }, [problem?.id]);
@@ -619,14 +635,28 @@ export function SolvePage() {
     void requestCoach('explain', question);
   };
 
-  const ensureActiveAttempt = async (): Promise<Attempt | undefined> => {
+  const ensureActiveAttempt = async (draft?: { code: string; language: string; durationSeconds: number }): Promise<Attempt | undefined> => {
     if (!problem) return undefined;
-    if (attempt?.id && !attempt.endedAt && attempt.result === 'unfinished') return attempt;
-    const started = await store.startAttempt?.(problem.id, language);
+    const nextDraft = draft ?? { code, language, durationSeconds: seconds };
+    if (attempt?.id && !attempt.endedAt && attempt.result === 'unfinished') {
+      await store.updateAttempt?.(attempt.id, nextDraft);
+      draftAttemptIdRef.current = attempt.id;
+      return { ...attempt, ...nextDraft };
+    }
+
+    // 编辑器自动保存和“运行样例”可能同时发现还没有练习记录；共用同一个创建请求，
+    // 避免重复记录、重复 SQLite 写入，以及状态更新时的模板覆盖竞态。
+    const pendingStart = draftCreatePromiseRef.current
+      ?? (store.startAttempt
+        ? (draftCreatePromiseRef.current = Promise.resolve(store.startAttempt(problem.id, nextDraft.language)))
+        : null);
+    if (!pendingStart) return undefined;
+    const started = await pendingStart;
+    if (draftCreatePromiseRef.current === pendingStart) draftCreatePromiseRef.current = null;
     if (!started?.id) return undefined;
-    await store.updateAttempt?.(started.id, { code, language, durationSeconds: seconds });
+    await store.updateAttempt?.(started.id, nextDraft);
     draftAttemptIdRef.current = started.id;
-    return { ...started, code, language, durationSeconds: seconds };
+    return { ...started, ...nextDraft };
   };
 
   const openSampleResultDialog = () => {
@@ -756,10 +786,18 @@ export function SolvePage() {
   };
 
   const runSample = async () => {
-    if (!problem) return;
+    if (!problem || runningCodeRef.current || sampleBusy) return;
+    runningCodeRef.current = true;
     const requestGeneration = requestGenerationRef.current;
     const problemId = problem.id;
+    const codeToRun = code;
+    const languageToRun = language;
+    const durationAtStart = seconds;
     let activeAttempt: Attempt | undefined;
+    // 运行使用不可变代码快照；取消尚未触发的自动保存定时器，随后由 ensureActiveAttempt
+    // 一次性写入同一份快照，避免运行期间的旧闭包再次创建练习记录。
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = undefined;
     setRunningCode(true);
     setRunPassed(null);
     setRunResult('正在准备样例和自动测试入口…');
@@ -800,22 +838,32 @@ export function SolvePage() {
 
       if (store.runProblemSample) {
         if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
-        const activeAttemptPromise = ensureActiveAttempt().catch(() => undefined);
-        const results: ProblemSampleRunResult[] = [];
-        for (let sampleIndex = 0; sampleIndex < runnableProblem.examples.length; sampleIndex += 1) {
+        const runProblemSample = store.runProblemSample;
+        const activeAttemptPromise = ensureActiveAttempt({ code: codeToRun, language: languageToRun, durationSeconds: durationAtStart }).catch(() => undefined);
+        const resultsByIndex: Array<ProblemSampleRunResult | undefined> = [];
+        const runOneSample = async (sampleIndex: number): Promise<ProblemSampleRunResult> => {
           setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { ...item, status: 'running' } : item));
           setRunResult(`正在运行样例 ${sampleIndex + 1} / ${runnableProblem.examples.length}…`);
           let result: ProblemSampleRunResult;
           try {
-            result = await store.runProblemSample({ problem: runnableProblem, language, code, sampleIndex, timeoutMs: 3000 });
+            result = await runProblemSample({ problem: runnableProblem, language: languageToRun, code: codeToRun, sampleIndex, timeoutMs: 3000 });
           } catch (error) {
             result = sampleRunFailure(error, sampleIndex, runnableProblem.examples[sampleIndex]?.output ?? '');
           }
-          if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
-          results.push(result);
+          resultsByIndex[sampleIndex] = result;
+          if (!isCurrentProblemRequest(requestGeneration, problemId)) return result;
           setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { status: sampleRunItemStatus(result), result } : item));
-          setRunResult(formatSampleProgress(results, runnableProblem.examples.length));
+          setRunResult(formatSampleProgress(resultsByIndex.filter((item): item is ProblemSampleRunResult => Boolean(item)), runnableProblem.examples.length));
+          return result;
+        };
+        const canRunInParallel = /^(?:cpp|cpp17|c\+\+|c\+\+17|javascript|typescript)$/i.test(languageToRun.trim());
+        if (canRunInParallel) {
+          await Promise.all(runnableProblem.examples.map((_, sampleIndex) => runOneSample(sampleIndex)));
+        } else {
+          for (let sampleIndex = 0; sampleIndex < runnableProblem.examples.length; sampleIndex += 1) await runOneSample(sampleIndex);
         }
+        if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
+        const results = resultsByIndex.filter((item): item is ProblemSampleRunResult => Boolean(item));
         activeAttempt = await activeAttemptPromise;
         const passed = sampleRunStatus(results);
         setRunPassed(passed);
@@ -823,7 +871,7 @@ export function SolvePage() {
         if (passed === true && activeAttempt?.id) {
           setRunning(false);
           try {
-            await store.finishAttempt?.(activeAttempt.id, { endedAt: Date.now(), durationSeconds: seconds, code, language, result: 'sample-passed' });
+            await store.finishAttempt?.(activeAttempt.id, { endedAt: Date.now(), durationSeconds: durationAtStart, code: codeToRun, language: languageToRun, result: 'sample-passed' });
             setMessage('全部样例通过，练习已自动完成。');
           } catch (error) {
             setMessage(error instanceof Error ? `样例已通过，但保存练习记录失败：${error.message}` : '样例已通过，但保存练习记录失败。');
@@ -835,21 +883,20 @@ export function SolvePage() {
       const runner = store.runCode ?? store.runLocalCode;
       if (!runner) throw new Error('本地运行服务尚未初始化。');
       if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
-      const activeAttemptPromise = ensureActiveAttempt().catch(() => undefined);
-      const results: ProblemSampleRunResult[] = [];
-      for (let sampleIndex = 0; sampleIndex < runnableProblem.examples.length; sampleIndex += 1) {
+      const activeAttemptPromise = ensureActiveAttempt({ code: codeToRun, language: languageToRun, durationSeconds: durationAtStart }).catch(() => undefined);
+      const resultsByIndex: Array<ProblemSampleRunResult | undefined> = [];
+      const runOneSample = async (sampleIndex: number): Promise<ProblemSampleRunResult> => {
         const example = runnableProblem.examples[sampleIndex];
         setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { ...item, status: 'running' } : item));
         setRunResult(`正在运行样例 ${sampleIndex + 1} / ${runnableProblem.examples.length}…`);
         let result;
         try {
-          result = await runner({ language, code, input: example.input, timeoutMs: 3000 });
+          result = await runner({ language: languageToRun, code: codeToRun, input: example.input, timeoutMs: 3000 });
         } catch (error) {
           result = sampleRunFailure(error, sampleIndex, example.output);
         }
-        if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
         const actualOutput = result.output.trim();
-        results.push({
+        const completed: ProblemSampleRunResult = {
           ...result,
           sampleIndex,
           expectedOutput: example.output,
@@ -857,10 +904,21 @@ export function SolvePage() {
           passed: result.ok && example.output.trim() ? outputsEqual(actualOutput, example.output) : undefined,
           generatedEntryPoint: false,
           mode: 'stdin',
-        });
-        setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { status: sampleRunItemStatus(results[results.length - 1]), result: results[results.length - 1] } : item));
-        setRunResult(formatSampleProgress(results, runnableProblem.examples.length));
+        };
+        resultsByIndex[sampleIndex] = completed;
+        if (!isCurrentProblemRequest(requestGeneration, problemId)) return completed;
+        setSampleRunItems((items) => items.map((item, index) => index === sampleIndex ? { status: sampleRunItemStatus(completed), result: completed } : item));
+        setRunResult(formatSampleProgress(resultsByIndex.filter((item): item is ProblemSampleRunResult => Boolean(item)), runnableProblem.examples.length));
+        return completed;
+      };
+      const canRunInParallel = /^(?:javascript|typescript)$/i.test(languageToRun.trim());
+      if (canRunInParallel) {
+        await Promise.all(runnableProblem.examples.map((_, sampleIndex) => runOneSample(sampleIndex)));
+      } else {
+        for (let sampleIndex = 0; sampleIndex < runnableProblem.examples.length; sampleIndex += 1) await runOneSample(sampleIndex);
       }
+      if (!isCurrentProblemRequest(requestGeneration, problemId)) return;
+      const results = resultsByIndex.filter((item): item is ProblemSampleRunResult => Boolean(item));
       activeAttempt = await activeAttemptPromise;
       const passed = sampleRunStatus(results);
       setRunPassed(passed);
@@ -868,7 +926,7 @@ export function SolvePage() {
       if (passed === true && activeAttempt?.id) {
         setRunning(false);
         try {
-          await store.finishAttempt?.(activeAttempt.id, { endedAt: Date.now(), durationSeconds: seconds, code, language, result: 'sample-passed' });
+          await store.finishAttempt?.(activeAttempt.id, { endedAt: Date.now(), durationSeconds: durationAtStart, code: codeToRun, language: languageToRun, result: 'sample-passed' });
           setMessage('全部样例通过，练习已自动完成。');
         } catch (error) {
           setMessage(error instanceof Error ? `样例已通过，但保存练习记录失败：${error.message}` : '样例已通过，但保存练习记录失败。');
@@ -879,6 +937,7 @@ export function SolvePage() {
       setRunPassed(false);
       setRunResult(error instanceof Error ? `样例运行失败\n${error.message}` : '样例运行失败。');
     } finally {
+      runningCodeRef.current = false;
       if (isCurrentProblemRequest(requestGeneration, problemId)) setRunningCode(false);
     }
   };

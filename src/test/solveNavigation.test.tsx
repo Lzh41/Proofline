@@ -541,6 +541,64 @@ describe('做题页题库导航', () => {
     expect(useAppStore.getState().attempts.find((item) => item.problemId === 'algo-two-sum')?.result).not.toBe('sample-passed');
   });
 
+  it('运行样例固定启动时的代码快照，编辑器不会被练习记录创建覆盖', async () => {
+    let resolveRun!: (result: {
+      ok: boolean;
+      output: string;
+      durationMs: number;
+      timedOut: boolean;
+      sampleIndex: number;
+      expectedOutput: string;
+      actualOutput: string;
+      passed: boolean;
+      generatedEntryPoint: boolean;
+      mode: 'function';
+    }) => void;
+    const runPending = new Promise<Parameters<typeof resolveRun>[0]>((resolve) => {
+      resolveRun = resolve;
+    });
+    const runProblemSample = vi.fn(({ code }: { code: string }) => {
+      expect(code).toContain('custom solution');
+      return runPending;
+    });
+    useAppStore.setState((state) => ({ ...state, runProblemSample }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    const editor = await screen.findByLabelText('代码编辑器 Mock') as HTMLTextAreaElement;
+    const launchCode = '// custom solution\nint solve() { return 3; }';
+    fireEvent.change(editor, { target: { value: launchCode } });
+    const runButton = await screen.findByRole('button', { name: '运行全部样例' });
+    fireEvent.click(runButton);
+    fireEvent.click(runButton);
+
+    await waitFor(() => expect(runProblemSample).toHaveBeenCalledTimes(1));
+    expect(runProblemSample.mock.calls[0][0].code).toBe(launchCode);
+    expect(editor).toHaveValue(launchCode);
+
+    const editedWhileRunning = `${launchCode}\n// edited while running`;
+    fireEvent.change(editor, { target: { value: editedWhileRunning } });
+    expect(editor).toHaveValue(editedWhileRunning);
+    resolveRun({
+      ok: true,
+      output: '0',
+      durationMs: 2,
+      timedOut: false,
+      sampleIndex: 0,
+      expectedOutput: '3',
+      actualOutput: '0',
+      passed: false,
+      generatedEntryPoint: true,
+      mode: 'function',
+    });
+    await waitFor(() => expect(within(screen.getByLabelText('样例运行进度')).getByText('未通过')).toBeInTheDocument());
+    expect(editor).toHaveValue(editedWhileRunning);
+  });
+
   it('切换题目时不会把上一题的签名误存进新题的草稿', async () => {
     useAppStore.setState((state) => ({
       problems: [

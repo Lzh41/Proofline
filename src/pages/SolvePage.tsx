@@ -355,6 +355,8 @@ export function SolvePage() {
   const [runPassed, setRunPassed] = useState<boolean | null>(null);
   const [runningCode, setRunningCode] = useState(false);
   const [sampleRunItems, setSampleRunItems] = useState<SampleRunItem[]>([]);
+  // 运行结果弹窗由 React 状态统一控制，避免 runSample 直接调用 showModal 导致布局抢先重绘。
+  const [sampleResultDialogOpen, setSampleResultDialogOpen] = useState(false);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleDrafts, setSampleDrafts] = useState<ProblemExample[]>(() => editableExamples(problem?.examples ?? []));
   const [sampleEditorMessage, setSampleEditorMessage] = useState('');
@@ -380,10 +382,13 @@ export function SolvePage() {
   const editorFontSize = store.settings.editorFontSize ?? 16;
   const aiConfigured = Boolean(store.requestAiHint && store.settings.hasAiCredential && store.settings.aiModel?.trim());
   const visibleCoachTurns = useMemo(() => {
-    const matching = coachTurns.filter((turn) => turn.intent === activeIntent);
-    if (activeIntent === 'explain') return matching;
-    return matching.length ? [matching[matching.length - 1]] : [];
-  }, [activeIntent, coachTurns]);
+    // 教练回答必须完整保留，不能因为切换功能而隐藏旧答案。
+    return coachTurns.filter((turn) => turn.intent !== 'explain');
+  }, [coachTurns]);
+  const explainTurns = useMemo(
+    () => coachTurns.filter((turn) => turn.intent === 'explain'),
+    [coachTurns],
+  );
   const cachedCoachIntents = useMemo(
     () => new Set(coachTurns.filter((turn) => turn.intent !== 'explain' && turn.answer.trim()).map((turn) => turn.intent)),
     [coachTurns],
@@ -394,6 +399,23 @@ export function SolvePage() {
   const isCurrentProblemRequest = (generation: number, problemId: string) => (
     requestGenerationRef.current === generation && currentProblemIdRef.current === problemId
   );
+
+  useEffect(() => {
+    const dialog = sampleResultDialogRef.current;
+    if (!dialog) return;
+    if (sampleResultDialogOpen) {
+      if (dialog.open) return;
+      // WebView2、浏览器预览和测试环境对 showModal 的支持不完全一致，统一回退到 open 属性。
+      try {
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+      } catch {
+        dialog.setAttribute('open', '');
+      }
+      return;
+    }
+    if (dialog.open) dialog.close();
+  }, [sampleResultDialogOpen]);
 
   useEffect(() => {
     if (!running) return;
@@ -483,6 +505,7 @@ export function SolvePage() {
     runningCodeRef.current = false;
     setRunningCode(false);
     setSampleBusy(false);
+    setSampleResultDialogOpen(false);
   }, [problem?.id]);
 
   useEffect(() => {
@@ -524,10 +547,10 @@ export function SolvePage() {
     setMessage('计时已开始，代码和笔记会自动保存。');
   };
 
-  const requestCoach = async (intent: AiCoachIntent, question = '') => {
+  const requestCoach = async (intent: AiCoachIntent, question = '', options: { force?: boolean } = {}) => {
     if (!problem) return;
     const normalizedQuestion = normalizeCoachQuestion(question);
-    const cachedTurn = [...coachTurns].reverse().find((turn) => (
+    const cachedTurn = options.force ? undefined : [...coachTurns].reverse().find((turn) => (
       turn.intent === intent
       && turn.answer.trim()
       && (intent !== 'explain' || normalizeCoachQuestion(turn.question) === normalizedQuestion)
@@ -586,7 +609,7 @@ export function SolvePage() {
       setStreamingAnswer('');
       setAiStatus('done');
       setCoachTurns((turns) => [...turns, {
-        id: `${Date.now()}-${intent}`,
+        id: `${Date.now()}-${intent}-${Math.random().toString(36).slice(2, 8)}`,
         intent,
         label: actionLabel,
         question: question.trim() || undefined,
@@ -603,7 +626,7 @@ export function SolvePage() {
       setAiError(cancelled ? (answer ? '生成已取消，已保留收到的内容。' : '生成已取消。') : errorMessage);
       if (answer) {
         setCoachTurns((turns) => [...turns, {
-          id: `${Date.now()}-${intent}`,
+          id: `${Date.now()}-${intent}-${Math.random().toString(36).slice(2, 8)}`,
           intent,
           label: actionLabel,
           question: question.trim() || undefined,
@@ -635,6 +658,12 @@ export function SolvePage() {
     void requestCoach('explain', question);
   };
 
+  const regenerateCoachTurn = (turn: AiCoachTurn) => {
+    if (busyCoach) return;
+    setMessage('正在重新生成本条回答，历史答案会保留。');
+    void requestCoach(turn.intent, turn.question ?? '', { force: true });
+  };
+
   const ensureActiveAttempt = async (draft?: { code: string; language: string; durationSeconds: number }): Promise<Attempt | undefined> => {
     if (!problem) return undefined;
     const nextDraft = draft ?? { code, language, durationSeconds: seconds };
@@ -659,18 +688,8 @@ export function SolvePage() {
     return { ...started, ...nextDraft };
   };
 
-  const openSampleResultDialog = () => {
-    const dialog = sampleResultDialogRef.current;
-    if (!dialog || dialog.open) return;
-    // WebView2 支持 showModal，但浏览器预览、旧版运行时或测试环境可能只支持 open 属性。
-    // 统一走兼容回退，避免样例已在后台运行而用户看不到任何进度。
-    try {
-      if (typeof dialog.showModal === 'function') dialog.showModal();
-      else dialog.setAttribute('open', '');
-    } catch {
-      dialog.setAttribute('open', '');
-    }
-  };
+  const openSampleResultDialog = () => setSampleResultDialogOpen(true);
+  const closeSampleResultDialog = () => setSampleResultDialogOpen(false);
 
   const openProblemReader = () => {
     const dialog = problemReaderDialogRef.current;
@@ -678,6 +697,10 @@ export function SolvePage() {
   };
 
   const openSampleEditor = (examples = problem?.examples ?? [], editorMessage = '') => {
+    if (sampleResultDialogOpen) {
+      sampleResultDialogRef.current?.close();
+      setSampleResultDialogOpen(false);
+    }
     setSampleDrafts(editableExamples(examples));
     setSampleEditorMessage(editorMessage);
     setSampleFieldError(null);
@@ -1116,41 +1139,102 @@ export function SolvePage() {
             </div>
 
             <div ref={aiPanelRef} className={styles.aiConversation} aria-label="AI 回答记录" aria-live="polite" aria-busy={busyCoach}>
-              {!visibleCoachTurns.length && !streamingAnswer && !busyCoach && (
+              {!coachTurns.length && !streamingAnswer && !busyCoach && (
                 <div className={styles.aiCoachEmpty}>
                   <Sparkles size={25} />
                   <strong>把编辑器当作共同工作区</strong>
                   <span>教练不会只复述算法思路。你可以在下方直接问某行代码、变量变化、报错原因或为什么要这样设计算法。</span>
                 </div>
               )}
-              {visibleCoachTurns.map((turn) => (
-                <article className={styles.aiCoachTurn} key={turn.id}>
-                  <header>
-                    <span>{turn.label}</span>
-                    {turn.question && <small title={turn.question}>{turn.question}</small>}
-                  </header>
-                  <AiCoachContent content={turn.answer} busy={false} complete={turn.intent === 'complete'} />
-                  {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
-                  <footer className={styles.aiCoachTurnFooter}>
-                    <button
-                      className={styles.aiCoachTurnJump}
-                      type="button"
-                      aria-label={`回到“${turn.label}”回答开头`}
-                      onClick={(event) => scrollCoachTurnToStart(event.currentTarget.closest('article'))}
-                    >
-                      <ArrowUpToLine size={14} />回到本条开头
-                    </button>
-                  </footer>
-                </article>
-              ))}
-              {busyCoach && (
-                <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
-                  <header><span>{coachIntentLabel(activeIntent)}</span><small>正在结合编辑器中的最新内容</small></header>
-                  {streamingAnswer
-                    ? <AiCoachContent content={streamingAnswer} busy complete={activeIntent === 'complete'} />
-                    : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
-                </article>
-              )}
+              <section className={styles.aiHistoryModule} aria-label="AI 代码教练记录">
+                <header className={styles.aiModuleHeader}>
+                  <strong>代码教练记录</strong>
+                  <small>{visibleCoachTurns.length ? `${visibleCoachTurns.length} 条历史回答` : '点击上方功能开始拆解'}</small>
+                </header>
+                {visibleCoachTurns.map((turn) => (
+                  <article className={styles.aiCoachTurn} key={turn.id}>
+                    <header>
+                      <span>{turn.label}</span>
+                      {turn.question && <small title={turn.question}>{turn.question}</small>}
+                    </header>
+                    <AiCoachContent content={turn.answer} busy={false} complete={turn.intent === 'complete'} />
+                    {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
+                    <footer className={styles.aiCoachTurnFooter}>
+                      <button
+                        className={styles.aiCoachTurnRegenerate}
+                        type="button"
+                        aria-label={`重新生成“${turn.label}”回答`}
+                        title="重新生成本条回答，历史答案会保留"
+                        disabled={busyCoach || !aiConfigured}
+                        onClick={() => regenerateCoachTurn(turn)}
+                      >
+                        <RefreshCw size={13} />重新生成
+                      </button>
+                      <button
+                        className={styles.aiCoachTurnJump}
+                        type="button"
+                        aria-label={`回到“${turn.label}”回答开头`}
+                        onClick={(event) => scrollCoachTurnToStart(event.currentTarget.closest('article'))}
+                      >
+                        <ArrowUpToLine size={14} />回到本条开头
+                      </button>
+                    </footer>
+                  </article>
+                ))}
+                {busyCoach && activeIntent !== 'explain' && (
+                  <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
+                    <header><span>{coachIntentLabel(activeIntent)}</span><small>正在结合编辑器中的最新内容</small></header>
+                    {streamingAnswer
+                      ? <AiCoachContent content={streamingAnswer} busy complete={activeIntent === 'complete'} />
+                      : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
+                  </article>
+                )}
+              </section>
+
+              <section className={styles.aiExplainModule} aria-label="AI 解惑对话">
+                <header className={styles.aiModuleHeader}>
+                  <strong>AI 解惑对话</strong>
+                  <small>{explainTurns.length ? `${explainTurns.length} 条问答记录` : '针对不懂的代码直接提问'}</small>
+                </header>
+                {explainTurns.map((turn) => (
+                  <article className={styles.aiCoachTurn} key={turn.id}>
+                    <header>
+                      <span>{turn.label}</span>
+                      {turn.question && <small title={turn.question}>{turn.question}</small>}
+                    </header>
+                    <AiCoachContent content={turn.answer} busy={false} complete={false} />
+                    {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
+                    <footer className={styles.aiCoachTurnFooter}>
+                      <button
+                        className={styles.aiCoachTurnRegenerate}
+                        type="button"
+                        aria-label={`重新生成“${turn.question || turn.label}”回答`}
+                        title="重新生成本条回答，历史答案会保留"
+                        disabled={busyCoach || !aiConfigured}
+                        onClick={() => regenerateCoachTurn(turn)}
+                      >
+                        <RefreshCw size={13} />重新生成
+                      </button>
+                      <button
+                        className={styles.aiCoachTurnJump}
+                        type="button"
+                        aria-label={`回到“${turn.label}”回答开头`}
+                        onClick={(event) => scrollCoachTurnToStart(event.currentTarget.closest('article'))}
+                      >
+                        <ArrowUpToLine size={14} />回到本条开头
+                      </button>
+                    </footer>
+                  </article>
+                ))}
+                {busyCoach && activeIntent === 'explain' && (
+                  <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
+                    <header><span>AI 解惑</span><small>正在结合编辑器中的最新内容</small></header>
+                    {streamingAnswer
+                      ? <AiCoachContent content={streamingAnswer} busy complete={false} />
+                      : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
+                  </article>
+                )}
+              </section>
               {aiError && !busyCoach && <div className={styles.aiStreamMessage}>{aiError}</div>}
             </div>
 
@@ -1177,13 +1261,14 @@ export function SolvePage() {
         className={`${styles.dialog} ${styles.sampleResultDialog}`}
         ref={sampleResultDialogRef}
         aria-labelledby="sample-result-title"
+        onClose={() => setSampleResultDialogOpen(false)}
       >
         <div className={styles.dialogHead}>
           <div>
             <span className={styles.solveSectionLabel}><TestTube2 size={14} />本地样例运行</span>
             <h2 id="sample-result-title">运行结果</h2>
           </div>
-          <button className="iconButton" type="button" title="关闭运行结果" aria-label="关闭运行结果" onClick={() => sampleResultDialogRef.current?.close()}><X size={17} /></button>
+          <button className="iconButton" type="button" title="关闭运行结果" aria-label="关闭运行结果" onClick={closeSampleResultDialog}><X size={17} /></button>
         </div>
         <div className={styles.sampleResultDialogBody}>
           <div className={`${styles.runResultPanel} ${runPassed === true ? styles.runResultPassed : ''} ${runPassed === false ? styles.runResultFailed : ''}`} aria-live="polite">

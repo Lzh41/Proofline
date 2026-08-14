@@ -1738,14 +1738,50 @@
   background-clip: content-box;
 }
 
+.aiHistoryModule,
+.aiExplainModule {
+  min-width: 0;
+  padding-bottom: 6px;
+}
+
+.aiExplainModule {
+  margin-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--info) 18%, transparent);
+  background: color-mix(in srgb, var(--panel-info-elevated) 36%, transparent);
+}
+
+.aiModuleHeader {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px 5px;
+}
+
+.aiModuleHeader strong {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.aiModuleHeader small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .aiCoachEmpty {
-  min-height: 100%;
+  min-height: 112px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 24px;
+  padding: 16px 24px;
   text-align: center;
   color: var(--muted);
 }
@@ -1793,11 +1829,40 @@
 
 .aiCoachTurnFooter {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
   padding: 7px 10px 9px;
   border-top: 1px solid color-mix(in srgb, var(--info) 12%, transparent);
   background: color-mix(in srgb, var(--panel-info) 74%, transparent);
 }
+
+.aiCoachTurnRegenerate {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent-soft) 62%, var(--panel-info-elevated));
+  color: var(--accent);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.aiCoachTurnRegenerate:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  transform: translateY(-1px);
+}
+
+.aiCoachTurnRegenerate:disabled { cursor: not-allowed; opacity: .42; }
 
 .aiCoachTurnJump {
   min-height: 28px;

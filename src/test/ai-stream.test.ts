@@ -168,6 +168,31 @@ describe('AI 流式响应', () => {
     expect(request.messages[0].content).toContain('最近教练对话：\n第一级已经完成入口骨架');
   });
 
+  it('连续提问会追加保存全部 AI 问答记录', async () => {
+    const response = (content: string) => new Response(JSON.stringify({
+      choices: [{ message: { content } }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response('第一条回答'))
+      .mockResolvedValueOnce(response('第二条回答'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await useAppStore.getState().requestAiHint({
+      problemId: 'problem-1', intent: 'explain', userQuestion: '第一个问题',
+    });
+    await useAppStore.getState().requestAiHint({
+      problemId: 'problem-1', intent: 'explain', userQuestion: '第二个问题',
+    });
+
+    const generations = useAppStore.getState().aiGenerations.filter((item) => item.problemId === 'problem-1');
+    expect(generations).toHaveLength(2);
+    expect(generations.map((item) => item.response)).toEqual(['第二条回答', '第一条回答']);
+    expect(generations.map((item) => item.userQuestion)).toEqual(['第二个问题', '第一个问题']);
+  });
+
   it('取消后终止请求且不丢失已经回调的内容', async () => {
     const encoder = new TextEncoder();
     vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, init: RequestInit) => {

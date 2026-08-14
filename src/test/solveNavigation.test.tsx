@@ -224,6 +224,81 @@ describe('做题页题库导航', () => {
     expect(requestAiHint).not.toHaveBeenCalled();
   });
 
+  it('代码教练展示同一题的全部历史回答，并可追加重新生成版本', async () => {
+    const requestAiHint = vi.fn(async ({ intent }: { intent?: string }) => `重新生成的${intent ?? '回答'}`);
+    useAppStore.setState((state) => ({
+      requestAiHint,
+      aiGenerations: [
+        {
+          id: 'ai-logic-old', problemId: 'algo-lis', level: 3, intent: 'algorithm-logic',
+          prompt: '算法逻辑拆解', response: '旧的逻辑拆解答案', model: 'mock-model', createdAt: 101,
+        },
+        {
+          id: 'ai-next-old', problemId: 'algo-lis', level: 2, intent: 'next-code',
+          prompt: '给下一段提示', response: '旧的下一步提示答案', model: 'mock-model', createdAt: 102,
+        },
+      ],
+      settings: {
+        ...state.settings,
+        hasAiCredential: true,
+        aiModel: 'mock-model',
+        privacyConfirmed: true,
+      } as typeof state.settings,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-lis']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('旧的逻辑拆解答案')).toBeInTheDocument();
+    expect(screen.getByText('旧的下一步提示答案')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '重新生成“算法逻辑拆解”回答' }));
+    await waitFor(() => expect(requestAiHint).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('重新生成的algorithm-logic')).toBeInTheDocument();
+    expect(screen.getByText('旧的逻辑拆解答案')).toBeInTheDocument();
+    expect(screen.getByText('旧的下一步提示答案')).toBeInTheDocument();
+  });
+
+  it('AI 解惑对话模块追加保存每次提问，不覆盖之前答案', async () => {
+    let answerIndex = 0;
+    const requestAiHint = vi.fn(async ({ userQuestion }: { userQuestion?: string }) => {
+      answerIndex += 1;
+      return `回答${answerIndex}：${userQuestion}`;
+    });
+    useAppStore.setState((state) => ({
+      requestAiHint,
+      settings: {
+        ...state.settings,
+        hasAiCredential: true,
+        aiModel: 'mock-model',
+        privacyConfirmed: true,
+      } as typeof state.settings,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    const input = await screen.findByLabelText('向 AI 代码教练提问');
+    fireEvent.change(input, { target: { value: '第一个问题' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送问题' }));
+    await waitFor(() => expect(screen.getByText('回答1：第一个问题')).toBeInTheDocument());
+
+    fireEvent.change(input, { target: { value: '第二个问题' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送问题' }));
+    await waitFor(() => expect(screen.getByText('回答2：第二个问题')).toBeInTheDocument());
+
+    const explainModule = screen.getByRole('region', { name: 'AI 解惑对话' });
+    expect(within(explainModule).getByText('回答1：第一个问题')).toBeInTheDocument();
+    expect(within(explainModule).getByText('回答2：第二个问题')).toBeInTheDocument();
+    expect(within(explainModule).getByText('2 条问答记录')).toBeInTheDocument();
+  });
+
   it('可以从长回答末尾回到当前回答开头', async () => {
     useAppStore.setState((state) => ({
       aiGenerations: [{
@@ -385,6 +460,47 @@ describe('做题页题库导航', () => {
     expect(screen.queryByText('思路笔记')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
     expect(await screen.findByRole('dialog', { name: '运行结果' })).toHaveAttribute('open');
+  });
+
+  it('运行样例先渲染运行进度再打开弹窗，避免旧布局闪现', async () => {
+    let progressAtOpen: Element | null = null;
+    const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function showModal(this: HTMLDialogElement) {
+      progressAtOpen = this.querySelector('div[aria-label]');
+      this.setAttribute('open', '');
+    });
+
+    try {
+      useAppStore.setState((state) => ({
+        ...state,
+        problems: state.problems.map((item) => item.id === 'algo-two-sum'
+          ? { ...item, examples: [{ input: '1 2', output: '3' }, { input: '3 4', output: '7' }] }
+          : item),
+        runProblemSample: vi.fn(async ({ sampleIndex = 0 }: { sampleIndex?: number }) => ({
+          ok: true,
+          output: sampleIndex === 0 ? '3' : '7',
+          durationMs: 1,
+          timedOut: false,
+          sampleIndex,
+          expectedOutput: sampleIndex === 0 ? '3' : '7',
+          actualOutput: sampleIndex === 0 ? '3' : '7',
+          passed: true,
+          generatedEntryPoint: true,
+          mode: 'function' as const,
+        })),
+      }));
+
+      render(
+        <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+          <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+        </MemoryRouter>,
+      );
+
+      fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
+      await waitFor(() => expect(screen.getByRole('dialog', { name: '运行结果' })).toHaveAttribute('open'));
+      expect(progressAtOpen).not.toBeNull();
+    } finally {
+      showModal.mockRestore();
+    }
   });
 
   it('题库选择器只把样例全部通过的题标记为已练习', async () => {

@@ -31,7 +31,7 @@ import type { AiCoachIntent } from '../lib/ai';
 import { EDITOR_FONT_SIZES } from '../lib/data';
 import { normalizeProblemExamples } from '../lib/problemExamples';
 import { formatProblemSampleResult, outputsEqual } from '../lib/problemRunner';
-import type { AiGeneration, Attempt, EditorFontSize, Problem, ProblemExample, ProblemSampleRunResult, ThoughtEvent } from '../types';
+import type { AiGeneration, Attempt, EditorFontSize, Problem, ProblemExample, ProblemSampleRunResult } from '../types';
 import { difficultyLabel, formatDuration, sourceLabel, useStoreView } from '../app/storeAdapter';
 import { EmptyState, PageHeader } from '../components/PagePrimitives';
 import { editorThemeFor } from '../app/theme';
@@ -41,8 +41,6 @@ import styles from './Pages.module.css';
 const MonacoEditor = lazy(() => import('../lib/localMonaco'));
 
 type AiStatus = 'idle' | 'streaming' | 'cancelling' | 'done' | 'cancelled' | 'error';
-type UtilityTab = 'result' | 'thought';
-
 interface AiCoachTurn {
   id: string;
   intent: AiCoachIntent;
@@ -345,8 +343,6 @@ export function SolvePage() {
   const [language, setLanguage] = useState(attempt?.language ?? store.settings.defaultLanguage ?? 'cpp');
   const [seconds, setSeconds] = useState(attempt?.durationSeconds ?? 0);
   const [running, setRunning] = useState(false);
-  const [utilityTab, setUtilityTab] = useState<UtilityTab>('result');
-  const [note, setNote] = useState('');
   const [coachTurns, setCoachTurns] = useState<AiCoachTurn[]>([]);
   const [activeIntent, setActiveIntent] = useState<AiCoachIntent>('next-code');
   const [coachQuestion, setCoachQuestion] = useState('');
@@ -373,6 +369,7 @@ export function SolvePage() {
   const codeProblemIdRef = useRef<string | undefined>(problem?.id);
   const problemReaderDialogRef = useRef<HTMLDialogElement | null>(null);
   const sampleDialogRef = useRef<HTMLDialogElement | null>(null);
+  const sampleResultDialogRef = useRef<HTMLDialogElement | null>(null);
   const aiContentRef = useRef('');
   const aiPanelRef = useRef<HTMLDivElement | null>(null);
   const solvePageRef = useRef<HTMLDivElement | null>(null);
@@ -511,14 +508,6 @@ export function SolvePage() {
     setMessage('计时已开始，代码和笔记会自动保存。');
   };
 
-  const addThought = async () => {
-    if (!attempt?.id || !note.trim()) return;
-    const event: Partial<ThoughtEvent> = { attemptId: attempt.id, type: 'note', content: note.trim(), createdAt: Date.now() };
-    await store.addThoughtEvent?.(event);
-    setNote('');
-    setMessage('思路节点已写入回放。');
-  };
-
   const requestCoach = async (intent: AiCoachIntent, question = '') => {
     if (!problem) return;
     const normalizedQuestion = normalizeCoachQuestion(question);
@@ -638,6 +627,11 @@ export function SolvePage() {
     await store.updateAttempt?.(started.id, { code, language, durationSeconds: seconds });
     draftAttemptIdRef.current = started.id;
     return { ...started, code, language, durationSeconds: seconds };
+  };
+
+  const openSampleResultDialog = () => {
+    const dialog = sampleResultDialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
   };
 
   const openProblemReader = () => {
@@ -760,7 +754,7 @@ export function SolvePage() {
     let activeAttempt: Attempt | undefined;
     setRunningCode(true);
     setRunPassed(null);
-    setUtilityTab('result');
+    openSampleResultDialog();
     setRunResult('正在准备样例和自动测试入口…');
     try {
       let runnableProblem = { ...problem, examples: runnableExamples(problem) };
@@ -999,6 +993,7 @@ export function SolvePage() {
                   ? <button className="iconButton" title="开始计时" aria-label="开始计时" type="button" onClick={begin}><Play size={14} /></button>
                   : <button className="iconButton" title="暂停计时" aria-label="暂停计时" type="button" onClick={() => setRunning(false)}><Pause size={14} /></button>}
                 <button className="button buttonAccent" type="button" disabled={runningCode} onClick={runSample}><TestTube2 size={14} />{runningCode ? '运行中' : '运行全部样例'}</button>
+                <button className="button" type="button" onClick={openSampleResultDialog}><TestTube2 size={14} />运行结果</button>
                 <button className="iconButton" type="button" title="保存草稿" aria-label="保存草稿" disabled={!attempt?.id} onClick={() => attempt?.id && store.updateAttempt?.(attempt.id, { code, language, durationSeconds: seconds })}><Save size={15} /></button>
               </div>
             </div>
@@ -1012,59 +1007,6 @@ export function SolvePage() {
               </Suspense>
             </div>
 
-            <div className={styles.codeUtility}>
-              <div className={styles.tabs}>
-                <button className={`${styles.tab} ${utilityTab === 'result' ? styles.tabActive : ''}`} type="button" onClick={() => setUtilityTab('result')}>运行结果</button>
-                <button className={`${styles.tab} ${utilityTab === 'thought' ? styles.tabActive : ''}`} type="button" onClick={() => setUtilityTab('thought')}>思路笔记</button>
-              </div>
-              {utilityTab === 'result' && (
-                <div className={`${styles.runResultPanel} ${runPassed === true ? styles.runResultPassed : ''} ${runPassed === false ? styles.runResultFailed : ''}`} aria-live="polite">
-                  {runPassed === true ? <CheckCircle2 size={16} /> : runPassed === false ? <AlertTriangle size={16} /> : <TestTube2 size={16} />}
-                  <div>
-                    <pre>{runResult}</pre>
-                    {sampleRunItems.length > 0 && (
-                      <div className={styles.sampleRunList} aria-label="样例运行进度">
-                        {sampleRunItems.map((item, index) => {
-                          const statusClass = item.status === 'passed'
-                            ? styles.sampleRunPassed
-                            : item.status === 'failed'
-                              ? styles.sampleRunFailed
-                              : item.status === 'running'
-                                ? styles.sampleRunRunning
-                                : '';
-                          return (
-                            <div className={`${styles.sampleRunItem} ${statusClass}`} key={`sample-run-${index}`}>
-                              <span className={styles.sampleRunMarker} aria-hidden="true">
-                                {item.status === 'passed' ? <CheckCircle2 size={13} /> : item.status === 'failed' ? <AlertTriangle size={13} /> : item.status === 'running' ? <RefreshCw size={13} className={styles.spin} /> : <span>{index + 1}</span>}
-                              </span>
-                              <span className={styles.sampleRunLabel}>样例 {index + 1}</span>
-                              <strong>{sampleRunStatusLabel(item.status)}</strong>
-                              {item.result && <small>{formatProblemSampleResult(item.result).split('\n')[1] ?? ''}</small>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {runPassed === false && (
-                      <div className={styles.buttonRow}>
-                        <button className="button" type="button" disabled={busyCoach || !aiConfigured} onClick={() => void requestCoach('debug')} title={!aiConfigured ? '请先在设置中配置 AI 服务' : '让 AI 结合运行结果定位错误'}>
-                          <AlertTriangle size={14} />失败复盘
-                        </button>
-                        <button className="button" type="button" onClick={() => setUtilityTab('thought')}>
-                          <Pencil size={14} />记录错因
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {utilityTab === 'thought' && (
-                <div className={styles.thoughtComposer}>
-                  <textarea className="textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder="记录刚刚的观察、报错或突破点" />
-                  <button className="button" type="button" onClick={addThought} disabled={!attempt?.id || !note.trim()}>加入回放</button>
-                </div>
-              )}
-            </div>
           </section>
 
           <aside className={styles.aiCoachPane}>
@@ -1160,6 +1102,58 @@ export function SolvePage() {
           </aside>
         </div>
       </div>
+
+      <dialog
+        className={`${styles.dialog} ${styles.sampleResultDialog}`}
+        ref={sampleResultDialogRef}
+        aria-labelledby="sample-result-title"
+      >
+        <div className={styles.dialogHead}>
+          <div>
+            <span className={styles.solveSectionLabel}><TestTube2 size={14} />本地样例运行</span>
+            <h2 id="sample-result-title">运行结果</h2>
+          </div>
+          <button className="iconButton" type="button" title="关闭运行结果" aria-label="关闭运行结果" onClick={() => sampleResultDialogRef.current?.close()}><X size={17} /></button>
+        </div>
+        <div className={styles.sampleResultDialogBody}>
+          <div className={`${styles.runResultPanel} ${runPassed === true ? styles.runResultPassed : ''} ${runPassed === false ? styles.runResultFailed : ''}`} aria-live="polite">
+            {runPassed === true ? <CheckCircle2 size={17} /> : runPassed === false ? <AlertTriangle size={17} /> : <TestTube2 size={17} />}
+            <div>
+              <pre>{runResult}</pre>
+              {sampleRunItems.length > 0 && (
+                <div className={styles.sampleRunList} aria-label="样例运行进度">
+                  {sampleRunItems.map((item, index) => {
+                    const statusClass = item.status === 'passed'
+                      ? styles.sampleRunPassed
+                      : item.status === 'failed'
+                        ? styles.sampleRunFailed
+                        : item.status === 'running'
+                          ? styles.sampleRunRunning
+                          : '';
+                    return (
+                      <div className={`${styles.sampleRunItem} ${statusClass}`} key={`sample-run-${index}`}>
+                        <span className={styles.sampleRunMarker} aria-hidden="true">
+                          {item.status === 'passed' ? <CheckCircle2 size={13} /> : item.status === 'failed' ? <AlertTriangle size={13} /> : item.status === 'running' ? <RefreshCw size={13} className={styles.spin} /> : <span>{index + 1}</span>}
+                        </span>
+                        <span className={styles.sampleRunLabel}>样例 {index + 1}</span>
+                        <strong>{sampleRunStatusLabel(item.status)}</strong>
+                        {item.result && <small>{formatProblemSampleResult(item.result).split('\n')[1] ?? ''}</small>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {runPassed === false && (
+                <div className={styles.buttonRow}>
+                  <button className="button" type="button" disabled={busyCoach || !aiConfigured} onClick={() => void requestCoach('debug')} title={!aiConfigured ? '请先在设置中配置 AI 服务' : '让 AI 结合运行结果定位错误'}>
+                    <AlertTriangle size={14} />失败复盘
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </dialog>
 
       <dialog
         className={`${styles.dialog} ${styles.problemReaderDialog}`}

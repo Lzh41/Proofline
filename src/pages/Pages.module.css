@@ -1427,7 +1427,7 @@
 
 .codeWorkbench {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(116px, 220px);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .codeWorkbench .solveToolbar {
@@ -1491,21 +1491,6 @@
   border-top: 1px solid var(--editor-line);
   border-bottom: 1px solid var(--line);
   background: var(--editor-bg);
-}
-
-.codeUtility {
-  min-width: 0;
-  min-height: 0;
-  padding: 6px 9px 8px;
-  overflow: hidden;
-  background: var(--surface-elevated);
-}
-
-.codeUtility .tabs { margin-bottom: 4px; }
-
-.codeUtility .tab {
-  min-height: 28px;
-  font-size: 10px;
 }
 
 .runResultPanel {
@@ -1591,20 +1576,6 @@
 .sampleRunPassed .sampleRunMarker, .sampleRunPassed strong { color: var(--success); }
 .sampleRunFailed { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
 .sampleRunFailed .sampleRunMarker, .sampleRunFailed strong { color: var(--danger); }
-
-.thoughtComposer {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.thoughtComposer :global(.textarea) {
-  min-height: 66px;
-  max-height: 66px;
-  resize: none;
-}
 
 .aiCoachPane {
   display: grid;
@@ -1961,7 +1932,6 @@
     overflow: visible;
   }
   .solveExamples { margin-top: 16px; }
-  .codeWorkbench { grid-template-rows: auto minmax(0, 1fr) 108px; }
   .codeWorkbench .solveToolbar { align-items: flex-start; flex-direction: column; }
   .codeWorkbench .solveToolbar .buttonRow {
     width: 100%;
@@ -1976,7 +1946,6 @@
   .aiCoachHeader .aiStatusGroup > span { display: none; }
   .coachIntents { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .coachIntentButton:last-child { grid-column: auto; }
-  .thoughtComposer { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
@@ -2177,6 +2146,47 @@
   background: color-mix(in srgb, var(--surface-elevated) 74%, var(--surface));
 }
 
+.sampleResultDialog {
+  width: min(760px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: min(680px, calc(100dvh - 32px));
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.sampleResultDialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.sampleResultDialog .dialogHead {
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.sampleResultDialog .dialogHead > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.sampleResultDialogBody {
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sampleResultDialogBody::-webkit-scrollbar { display: none; }
+
+.sampleResultDialog .runResultPanel {
+  min-height: 180px;
+  max-height: none;
+}
+
+.sampleResultDialog .runResultPanel pre { max-height: 220px; }
+
 @media (max-width: 760px) {
   .problemReaderDialog {
     width: calc(100vw - 20px);
@@ -2205,6 +2215,14 @@
     border-top: 1px solid var(--line);
     border-left: 0;
   }
+
+  .sampleResultDialog {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+
+  .sampleResultDialogBody { padding: 10px; }
 }
 
 .sampleDialog {

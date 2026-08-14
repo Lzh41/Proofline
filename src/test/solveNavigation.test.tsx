@@ -375,6 +375,18 @@ describe('做题页题库导航', () => {
     expect(await screen.findByRole('heading', { name: /旧版无 kind 题/ })).toBeVisible();
   });
 
+  it('运行结果独立弹窗打开，做题页不再显示思路笔记入口', async () => {
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText('思路笔记')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '运行结果' }));
+    expect(await screen.findByRole('dialog', { name: '运行结果' })).toHaveAttribute('open');
+  });
+
   it('题库选择器只把样例全部通过的题标记为已练习', async () => {
     useAppStore.setState((state) => ({
       attempts: [{

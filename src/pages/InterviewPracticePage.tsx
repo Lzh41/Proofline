@@ -59,6 +59,7 @@ export function InterviewPracticePage() {
   const [submitting, setSubmitting] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(true);
   const [coachOutput, setCoachOutput] = useState('');
+  const [coachOutputs, setCoachOutputs] = useState<Partial<Record<CoachAction, string>>>({});
   const [coachAction, setCoachAction] = useState<CoachAction>('feedback');
   const [coachBusy, setCoachBusy] = useState(false);
   const [coachError, setCoachError] = useState('');
@@ -129,7 +130,9 @@ export function InterviewPracticePage() {
           setCoachOutput(streamRef.current);
         },
       });
-      setCoachOutput((typeof result === 'string' ? result : streamRef.current) || 'AI 没有返回有效内容，请重新尝试。');
+      const completedOutput = (typeof result === 'string' ? result : streamRef.current) || 'AI 没有返回有效内容，请重新尝试。';
+      setCoachOutput(completedOutput);
+      setCoachOutputs((outputs) => ({ ...outputs, [action]: completedOutput }));
     } catch (error) {
       const text = error instanceof Error ? error.message : 'AI 服务暂时不可用。';
       setCoachError(text.includes('取消') ? '生成已取消，已经收到的内容会保留。' : text);
@@ -180,9 +183,9 @@ export function InterviewPracticePage() {
       await store.finishInterviewAttempt(currentAttempt.id, {
         masteryResult,
         answerText: answer,
-        aiFeedback: coachAction === 'feedback' ? coachOutput : undefined,
-        omissions: coachAction === 'omissions' ? coachOutput : undefined,
-        improvedAnswer: coachAction === 'improve' ? coachOutput : undefined,
+          aiFeedback: coachOutputs.feedback,
+          omissions: coachOutputs.omissions,
+          improvedAnswer: coachOutputs.improve,
       });
       setFinished(masteryResult);
       setMessage(masteryResult === 'mastered' ? '已记录为掌握。' : masteryResult === 'uncertain' ? '已加入巩固队列。' : '已加入重点复习队列。');

@@ -55,20 +55,19 @@ test.describe('析题个人学习闭环', () => {
 
     await expect(page.getByText('今天还没有题目')).toBeVisible();
     await page.getByRole('link', { name: '题库', exact: true }).click();
+    // 等待 HashRouter 完成导航，避免在旧页面上读取空行数后立即触发下一次导航。
+    await expect(page.getByRole('heading', { name: '每道题，都留下一条可复用的路。' })).toBeVisible();
     await expect(page.getByRole('row')).toHaveCount(0);
     await expect.poll(async () => {
       const snapshot = await readSnapshot(page);
       return snapshot?.problems.filter((problem) => problem.kind !== 'interview').length ?? -1;
     }).toBe(0);
     await page.getByRole('link', { name: '面试题', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '把零散八股，练成可表达的答案。' })).toBeVisible();
     await expect.poll(async () => {
       const snapshot = await readSnapshot(page);
       return snapshot?.problems.filter((problem) => problem.kind === 'interview').length ?? 0;
     }).toBeGreaterThan(0);
-    await expect.poll(async () => {
-      const snapshot = await readSnapshot(page);
-      return snapshot?.problems.filter((problem) => problem.kind !== 'interview').length ?? -1;
-    }).toBe(0);
   });
 
   test('从原创题卡到计时、草稿、错题复盘和今日计划均真实持久化', async ({ page }) => {
@@ -118,6 +117,9 @@ test.describe('析题个人学习闭环', () => {
     await page.keyboard.insertText(codeDraft);
     await page.getByRole('button', { name: '保存草稿' }).click();
     await expect.poll(async () => (await readSnapshot(page))?.attempts.find((attempt) => attempt.problemId === savedProblemId)?.code).toBe(codeDraft);
+    // 停止计时后再直接构造失败记录，避免后台计时写入覆盖本次测试快照。
+    await page.getByRole('button', { name: '暂停计时' }).click();
+    await expect(page.getByRole('button', { name: '开始计时' })).toBeVisible();
 
     // 练习完成由“运行全部样例”自动判定；这里直接恢复一次失败记录，继续验证错题与计划的持久化链路。
     await page.evaluate(({ key, problemId }) => {

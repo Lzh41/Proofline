@@ -34,12 +34,14 @@ export function SettingsPage() {
   };
 
   const saveAi = async () => {
-    await store.updateSettings?.({ aiBaseUrl: baseUrl.trim(), aiModel: model.trim() });
-    if (apiKey.trim()) {
-      await store.saveAiCredential?.(apiKey.trim());
-      setApiKey('');
-    }
-    setMessage('AI 配置已保存，密钥不会写入普通配置文件。');
+    await run('AI 配置已保存，密钥不会写入普通配置文件。', async () => {
+      if (!baseUrl.trim() || !model.trim()) throw new Error('请填写接口地址和模型 ID。');
+      await store.updateSettings?.({ aiBaseUrl: baseUrl.trim(), aiModel: model.trim() });
+      if (apiKey.trim()) {
+        await store.saveAiCredential?.(apiKey.trim());
+        setApiKey('');
+      }
+    });
   };
 
   return (

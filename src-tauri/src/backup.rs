@@ -90,7 +90,7 @@ fn write_backup_archive(
     destination: &Path,
     created_at: &DateTime<Local>,
 ) -> Result<(), String> {
-    let file = File::create(&destination).map_err(|error| error.to_string())?;
+    let file = File::create(destination).map_err(|error| error.to_string())?;
     let mut writer = ZipWriter::new(file);
     let options = FileOptions::default()
         .compression_method(CompressionMethod::Deflated)
@@ -148,7 +148,7 @@ fn restore_backup_from_path(
     paths: &crate::AppPaths,
     source: &Path,
 ) -> Result<Option<Value>, String> {
-    let file = File::open(&source).map_err(|error| error.to_string())?;
+    let file = File::open(source).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     let manifest: BackupManifestInput = {
         let mut entry = archive
@@ -461,14 +461,18 @@ pub fn export_data(
 }
 
 #[tauri::command]
-pub fn import_data(state: State<'_, AppState>, path: Option<String>) -> Result<Value, String> {
+pub fn import_data(_state: State<'_, AppState>, path: Option<String>) -> Result<Value, String> {
     let path = path.ok_or_else(|| "请先选择要导入的 JSON 文件".to_string())?;
+    let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+    if metadata.len() > 25 * 1024 * 1024 {
+        return Err("JSON 导入文件不能超过 25 MB".to_string());
+    }
     let raw = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let snapshot: Value = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
-    if !snapshot.is_object() {
+    let value: Value = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+    let snapshot = value.get("snapshot").cloned().unwrap_or(value);
+    if !snapshot.is_object() || !snapshot.get("schemaVersion").is_some() {
         return Err("导入文件必须是 Proofline 导出的 JSON 对象".to_string());
     }
-    db::save_snapshot(&state.paths.database, &snapshot)?;
     Ok(snapshot)
 }
 

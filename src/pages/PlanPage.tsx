@@ -12,29 +12,44 @@ export function PlanPage() {
   const navigate = useNavigate();
   const date = todayKey();
   const current = store.dailyPlans.find((item) => item.date === date);
-  const [targetMinutes, setTargetMinutes] = useState(current?.targetMinutes ?? store.settings.dailyTargetMinutes ?? 60);
-  const [targetAlgorithmProblems, setTargetAlgorithmProblems] = useState(current?.targetAlgorithmProblems ?? store.settings.dailyTargetProblems ?? 3);
-  const [targetInterviewQuestions, setTargetInterviewQuestions] = useState(current?.targetInterviewQuestions ?? store.settings.dailyTargetInterviewQuestions ?? 2);
+  const [targetMinutes, setTargetMinutes] = useState(String(current?.targetMinutes ?? store.settings.dailyTargetMinutes ?? 60));
+  const [targetAlgorithmProblems, setTargetAlgorithmProblems] = useState(String(current?.targetAlgorithmProblems ?? store.settings.dailyTargetProblems ?? 3));
+  const [targetInterviewQuestions, setTargetInterviewQuestions] = useState(String(current?.targetInterviewQuestions ?? store.settings.dailyTargetInterviewQuestions ?? 2));
+  const [targetError, setTargetError] = useState('');
   const [focusTags, setFocusTags] = useState((current?.focusTags ?? []).join('，'));
   const [ratio, setRatio] = useState(current?.difficultyRatio ?? { easy: 30, medium: 50, hard: 20 });
   const [message, setMessage] = useState('');
 
   const tasks = useMemo(() => (current?.taskProblemIds ?? []).map((id) => store.problems.find((problem) => problem.id === id)).filter(Boolean), [current?.taskProblemIds, store.problems]);
   const totalRatio = ratio.easy + ratio.medium + ratio.hard;
-  const targetProblems = targetAlgorithmProblems + targetInterviewQuestions;
+  const parsedTargets = {
+    minutes: Number(targetMinutes),
+    algorithm: Number(targetAlgorithmProblems),
+    interview: Number(targetInterviewQuestions),
+  };
+  const targetProblems = parsedTargets.algorithm + parsedTargets.interview;
+
+  const validateTargets = () => {
+    const valid = Number.isInteger(parsedTargets.minutes) && parsedTargets.minutes >= 10 && parsedTargets.minutes <= 480
+      && Number.isInteger(parsedTargets.algorithm) && parsedTargets.algorithm >= 0 && parsedTargets.algorithm <= 30
+      && Number.isInteger(parsedTargets.interview) && parsedTargets.interview >= 0 && parsedTargets.interview <= 30;
+    setTargetError(valid ? '' : '请输入有效的整数目标：时长 10-480 分钟，题目目标 0-30。');
+    return valid;
+  };
 
   const save = async () => {
     if (totalRatio !== 100) {
       setMessage('难度比例之和需要等于 100%。');
       return;
     }
+    if (!validateTargets()) return;
     const plan: Partial<DailyPlan> = {
       id: current?.id,
       date,
-      targetMinutes,
+      targetMinutes: parsedTargets.minutes,
       targetProblems,
-      targetAlgorithmProblems,
-      targetInterviewQuestions,
+      targetAlgorithmProblems: parsedTargets.algorithm,
+      targetInterviewQuestions: parsedTargets.interview,
       focusTags: focusTags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean),
       difficultyRatio: ratio,
       taskProblemIds: current?.taskProblemIds ?? [],
@@ -42,9 +57,9 @@ export function PlanPage() {
     };
     await store.savePlan?.(plan);
     await store.updateSettings?.({
-      dailyTargetMinutes: targetMinutes,
-      dailyTargetProblems: targetAlgorithmProblems,
-      dailyTargetInterviewQuestions: targetInterviewQuestions,
+      dailyTargetMinutes: parsedTargets.minutes,
+      dailyTargetProblems: parsedTargets.algorithm,
+      dailyTargetInterviewQuestions: parsedTargets.interview,
     });
     setMessage('每日目标已保存。');
   };
@@ -54,22 +69,23 @@ export function PlanPage() {
       setMessage('难度比例之和需要等于 100%。');
       return;
     }
+    if (!validateTargets()) return;
     await save();
-    await store.generateDailyPlan?.({ date, targetMinutes, targetAlgorithmProblems, targetInterviewQuestions, focusTags: focusTags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean), difficultyRatio: ratio });
+    await store.generateDailyPlan?.({ date, targetMinutes: parsedTargets.minutes, targetAlgorithmProblems: parsedTargets.algorithm, targetInterviewQuestions: parsedTargets.interview, focusTags: focusTags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean), difficultyRatio: ratio });
     setMessage('已优先安排到期复习，并按薄弱标签补齐新题。');
   };
 
   return (
     <>
       <PageHeader eyebrow="每日计划" title="让目标具体到下一道题。" description="计划会先放入到期复习题，再按关注专题和难度比例选择个人题库中的新题。" actions={<><button className="button" type="button" onClick={save}><Save size={15} />保存目标</button><button className="button buttonPrimary" type="button" onClick={generate}><RefreshCw size={15} />生成今日任务</button></>} />
-      {message && <div className={`${styles.notice} ${totalRatio !== 100 ? styles.noticeDanger : ''}`}>{totalRatio === 100 ? <Check size={17} /> : <CalendarCheck2 size={17} />}{message}</div>}
+      {(message || targetError) && <div className={`${styles.notice} ${totalRatio !== 100 || targetError ? styles.noticeDanger : ''}`}>{totalRatio === 100 && !targetError ? <Check size={17} /> : <CalendarCheck2 size={17} />}{targetError || message}</div>}
       <div className={`${styles.twoColumn} ${styles.balanced}`}>
         <section className={styles.paperPanel}>
           <SectionHeader title="目标设置" meta={date} />
           <div className={styles.formGrid} style={{ marginTop: 20 }}>
-            <label className="field"><span>学习时长（分钟）</span><input className="input" type="number" min={10} max={480} value={targetMinutes} onChange={(event) => setTargetMinutes(Number(event.target.value))} /></label>
-            <label className="field"><span>算法题目标</span><input className="input" type="number" min={0} max={30} value={targetAlgorithmProblems} onChange={(event) => setTargetAlgorithmProblems(Number(event.target.value))} /></label>
-            <label className="field"><span>面试题目标</span><input className="input" type="number" min={0} max={30} value={targetInterviewQuestions} onChange={(event) => setTargetInterviewQuestions(Number(event.target.value))} /></label>
+            <label className="field"><span>学习时长（分钟）</span><input className="input" type="number" min={10} max={480} value={targetMinutes} onChange={(event) => { setTargetMinutes(event.target.value); setTargetError(''); }} /></label>
+            <label className="field"><span>算法题目标</span><input className="input" type="number" min={0} max={30} value={targetAlgorithmProblems} onChange={(event) => { setTargetAlgorithmProblems(event.target.value); setTargetError(''); }} /></label>
+            <label className="field"><span>面试题目标</span><input className="input" type="number" min={0} max={30} value={targetInterviewQuestions} onChange={(event) => { setTargetInterviewQuestions(event.target.value); setTargetError(''); }} /></label>
             <label className={`field ${styles.formFull}`}><span>关注专题</span><input className="input" value={focusTags} onChange={(event) => setFocusTags(event.target.value)} placeholder="动态规划，二分查找，图" /></label>
             <div className={styles.formFull}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 12, fontWeight: 700 }}><span>难度比例</span><span style={{ color: totalRatio === 100 ? 'var(--accent-deep)' : 'var(--danger)' }}>合计 {totalRatio}%</span></div>

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowUpRight,
@@ -81,6 +81,7 @@ export function InterviewsPage() {
   const mastery = (searchParams.get('mastery') || 'all') as MasteryFilter;
   const [message, setMessage] = useState('');
   const [restoring, setRestoring] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(60);
   const createDialogRef = useRef<HTMLDialogElement>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState({
@@ -126,6 +127,12 @@ export function InterviewsPage() {
       return !normalizedQuery || searchableText(problem).includes(normalizedQuery);
     });
   }, [category, difficulty, format, latestMastery, mastery, problems, query, role]);
+
+  useEffect(() => {
+    // 目录超过千题时只先挂载首屏，筛选条件变化后重新从第一页开始。
+    setVisibleCount(60);
+  }, [category, difficulty, format, mastery, query, role]);
+  const visibleProblems = filtered.slice(0, visibleCount);
 
   const updateFilter = (key: string, value: string, defaultValue = 'all') => {
     setSearchParams((current) => {
@@ -263,7 +270,7 @@ export function InterviewsPage() {
           {message && <span role="status">{message}</span>}
         </div>
         <div className={styles.interviewQuestionList}>
-          {filtered.length ? filtered.map((problem) => {
+          {filtered.length ? visibleProblems.map((problem) => {
             const interview = problem.interview!;
             const status = latestMastery.get(problem.id) ?? 'unpracticed';
             return (
@@ -284,6 +291,13 @@ export function InterviewsPage() {
             <EmptyState compact title="没有匹配的面试题" message="调整岗位或筛选条件后再试。" action={<button className="button" type="button" onClick={clearFilters}><CircleHelp size={14} />重置筛选</button>} />
           )}
         </div>
+        {visibleProblems.length < filtered.length && (
+          <div className={styles.interviewLibraryFoot}>
+            <button className="button" type="button" onClick={() => setVisibleCount((count) => Math.min(count + 60, filtered.length))}>
+              加载更多（剩余 {filtered.length - visibleProblems.length} 道）
+            </button>
+          </div>
+        )}
         <footer className={styles.interviewLibraryFoot}><CheckCircle2 size={13} /><span>回答草稿、掌握度和复习记录仅保存在本机。</span></footer>
       </section>
 

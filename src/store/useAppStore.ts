@@ -47,7 +47,7 @@ import { importSnapshot } from '../lib/importer';
 import { mergeInterviewCatalog } from '../lib/interviews';
 import { searchKnowledge } from '../lib/knowledge';
 import { generatePlan } from '../lib/planner';
-import { fetchPublicProblem, inferProblemFromUrl } from '../lib/platform';
+import { fetchPublicProblem, inferProblemFromUrl, isSafeAiEndpoint } from '../lib/platform';
 import { extractProblemExamples, mergeProblemExamples } from '../lib/problemExamples';
 import { appRepository, READ_ONLY_REPOSITORY_MESSAGE } from '../lib/repository';
 import { applyReviewResult, initialReviewSchedule } from '../lib/review';
@@ -367,6 +367,8 @@ function makeMistake(input: Partial<Mistake>): Mistake {
 async function browserAiRequest(settings: AppSettings, prompt: string, onChunk?: (chunk: string) => void): Promise<string> {
   if (!browserAiKey) throw new Error('请先保存 AI 密钥');
   if (!settings.aiModel.trim()) throw new Error('请先填写模型 ID');
+  if (!isSafeAiEndpoint(settings.aiBaseUrl)) throw new Error('AI 接口地址必须使用 HTTPS；本机服务仅允许 localhost/127.0.0.1。');
+  if (new TextEncoder().encode(prompt).byteLength > 120 * 1024) throw new Error('发送给 AI 的内容超过 120 KB，请缩短题面或历史上下文。');
   browserAiController?.abort();
   const controller = new AbortController();
   browserAiController = controller;
@@ -380,7 +382,9 @@ async function browserAiRequest(settings: AppSettings, prompt: string, onChunk?:
     });
     if (!response.ok) throw new Error(`AI 服务返回 ${response.status}`);
     if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
-      const content = extractAiResponseContent(await response.json());
+      const raw = await response.text();
+      if (new TextEncoder().encode(raw).byteLength > 2 * 1024 * 1024) throw new Error('AI 非流式响应超过 2 MB，已中止。');
+      const content = extractAiResponseContent(JSON.parse(raw));
       if (!content.trim()) throw new Error('AI 服务没有返回有效内容');
       onChunk?.(content);
       return content;
@@ -391,10 +395,13 @@ async function browserAiRequest(settings: AppSettings, prompt: string, onChunk?:
     const textDecoder = new TextDecoder();
     const sseDecoder = new AiSseDecoder();
     let content = '';
+    let streamBytes = 0;
     let completed = false;
     const accept = (events: AiStreamEvent[]) => {
       for (const event of events) {
         if (event.event === 'delta') {
+          streamBytes += new TextEncoder().encode(event.content).byteLength;
+          if (streamBytes > 512 * 1024) throw new Error('AI 流式响应超过 512 KB，已中止。');
           content += event.content;
           onChunk?.(event.content);
         } else if (event.event === 'error') {
@@ -468,7 +475,15 @@ export const useAppStore = create<AppStore>((set, get) => {
               return { ...problem, examples, updatedAt: recoveredAt };
             });
             const interviewCount = snapshot.problems.filter((problem) => problem.kind === 'interview' && problem.interview?.contentOrigin === 'builtin').length;
-            if (snapshot.settings.interviewCatalogVersion < INTERVIEW_CATALOG_VERSION || interviewCount < INTERVIEW_CATALOG.length) {
+            if (snapshot.settings.browserCatalogCompact) {
+              // 浏览器缓存里的内置题只保留 catalogId；用原快照时间还原，避免每次刷新
+              // 都改写 1083 道题的 updatedAt，也避免重新写入完整目录缓存。
+              snapshot.problems = mergeInterviewCatalog(snapshot.problems, INTERVIEW_CATALOG, snapshot.updatedAt, INTERVIEW_CATALOG_VERSION);
+              snapshot.settings = { ...snapshot.settings, interviewCatalogVersion: INTERVIEW_CATALOG_VERSION };
+            } else if (
+              snapshot.settings.interviewCatalogVersion <= INTERVIEW_CATALOG_VERSION
+              && (snapshot.settings.interviewCatalogVersion < INTERVIEW_CATALOG_VERSION || interviewCount < INTERVIEW_CATALOG.length)
+            ) {
               snapshot.problems = mergeInterviewCatalog(snapshot.problems, INTERVIEW_CATALOG, recoveredAt, INTERVIEW_CATALOG_VERSION);
               snapshot.settings = { ...snapshot.settings, interviewCatalogVersion: INTERVIEW_CATALOG_VERSION };
               catalogUpdated = true;
@@ -477,6 +492,9 @@ export const useAppStore = create<AppStore>((set, get) => {
           if (isTauriRuntime()) {
             const hasAiCredential = await invoke<boolean>('has_ai_credential').catch(() => false);
             snapshot.settings = { ...snapshot.settings, hasAiCredential };
+          } else {
+            // 浏览器预览只把密钥放在当前会话内存，不把 localStorage 的旧标记当成真实凭据。
+            snapshot.settings = { ...snapshot.settings, hasAiCredential: false };
           }
           if (recoveredSamples || catalogUpdated) {
             snapshot.updatedAt = Date.now();
@@ -734,6 +752,7 @@ export const useAppStore = create<AppStore>((set, get) => {
               targetInterviewQuestions: typeof options.targetInterviewQuestions === 'number' ? options.targetInterviewQuestions : get().settings.dailyTargetInterviewQuestions,
             }),
         targetMinutes: typeof options.targetMinutes === 'number' ? options.targetMinutes : get().settings.dailyTargetMinutes,
+        completedProblemIds: get().dailyPlans.find((plan) => plan.date === (typeof options.date === 'string' ? options.date : new Date().toISOString().slice(0, 10)))?.completedProblemIds ?? [],
       });
       return get().savePlan(generated);
     },

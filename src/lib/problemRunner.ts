@@ -60,14 +60,16 @@ export async function runProblemSample(request: ProblemSampleRunRequest): Promis
     let source = request.code;
     let generatedEntryPoint = false;
     let mode: ProblemSampleRunResult['mode'] = 'stdin';
-    if (!usesJavaScriptStandardInput(source)) {
-      try {
-        source = buildJavaScriptFunctionHarness(source, input).source;
-        generatedEntryPoint = true;
-        mode = 'function';
-      } catch (error) {
-        return failure(errorMessage(error), sampleIndex, expectedOutput, true, 'function');
-      }
+    const canBuildFunction = (() => {
+      try { return buildJavaScriptFunctionHarness(source, input).source; }
+      catch { return null; }
+    })();
+    if (canBuildFunction && (!usesJavaScriptStandardInput(source) || hasJavaScriptFunctionSignature(source))) {
+      source = canBuildFunction;
+      generatedEntryPoint = true;
+      mode = 'function';
+    } else if (!canBuildFunction && !usesJavaScriptStandardInput(source)) {
+      return failure('没有识别到可测试的 JavaScript/TypeScript 解题函数，也没有明确的标准输入入口。', sampleIndex, expectedOutput, true, 'function');
     }
     const result = await runCode({ language, code: source, input, timeoutMs: request.timeoutMs });
     return finishResult(result, sampleIndex, expectedOutput, generatedEntryPoint, mode);
@@ -77,14 +79,16 @@ export async function runProblemSample(request: ProblemSampleRunRequest): Promis
     let source = request.code;
     let generatedEntryPoint = false;
     let mode: ProblemSampleRunResult['mode'] = 'stdin';
-    if (!usesPythonStandardInput(source)) {
-      try {
-        source = buildPythonFunctionHarness(source, input).source;
-        generatedEntryPoint = true;
-        mode = 'function';
-      } catch (error) {
-        return failure(errorMessage(error), sampleIndex, expectedOutput, true, 'function');
-      }
+    const canBuildFunction = (() => {
+      try { return buildPythonFunctionHarness(source, input).source; }
+      catch { return null; }
+    })();
+    if (canBuildFunction && (!usesPythonStandardInput(source) || hasPythonFunctionSignature(source))) {
+      source = canBuildFunction;
+      generatedEntryPoint = true;
+      mode = 'function';
+    } else if (!canBuildFunction && !usesPythonStandardInput(source)) {
+      return failure('没有识别到可测试的 Python 解题函数，也没有明确的标准输入入口。', sampleIndex, expectedOutput, true, 'function');
     }
     const result = await runCode({ language, code: source, input, timeoutMs: request.timeoutMs });
     return finishResult(result, sampleIndex, expectedOutput, generatedEntryPoint, mode);
@@ -365,11 +369,21 @@ function buildJavaScriptStructureHelpers(parameterKinds: ScriptValueKind[], retu
 }
 
 function usesJavaScriptStandardInput(code: string): boolean {
-  return /process\.stdin|readline\s*\(|\binput\s*\.\s*(?:trim|split|replace)\s*\(|\blines\s*\[/.test(stripCppComments(code));
+  const clean = stripCppComments(code).replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '');
+  return /(?:^|\n)\s*(?:const\s+readline|let\s+readline|var\s+readline|process\.stdin\b|require\s*\(\s*['"]readline['"]|readFileSync\s*\()/.test(clean);
 }
 
 function usesPythonStandardInput(code: string): boolean {
-  return /\binput\s*\(|sys\.stdin|stdin\.read/.test(code);
+  const clean = code.replace(/#.*$/gm, '').replace(/('{3}|"{3})[\s\S]*?\1/g, '');
+  return /(?:^|\n)\s*(?:input\s*\(|sys\.stdin\b|stdin\.read\s*\()/.test(clean);
+}
+
+function hasJavaScriptFunctionSignature(code: string): boolean {
+  return /(?:class\s+Solution\b|(?:function|const|let|var)\s+[A-Za-z_$][\w$]*\s*(?:=\s*)?(?:async\s*)?(?:function\b|\([^)]*\)\s*=>|\w+\s*\([^)]*\)))/.test(stripCppComments(code));
+}
+
+function hasPythonFunctionSignature(code: string): boolean {
+  return /(?:^|\n)\s*(?:class\s+Solution\b|def\s+[A-Za-z_]\w*\s*\()/.test(code.replace(/#.*$/gm, ''));
 }
 
 const SCRIPT_RESERVED_NAMES = new Set(['if', 'for', 'while', 'switch', 'catch', 'constructor']);
@@ -822,8 +836,26 @@ export function formatProblemSampleResult(result: ProblemSampleRunResult): strin
 
 function canonicalOutput(value: string): string {
   const trimmed = value.trim().replace(/^(?:输出|Output)\s*[:：]\s*/i, '');
-  try { return JSON.stringify(JSON.parse(trimmed)); }
-  catch { return trimmed.replace(/\s+/g, ' ').replace(/\s*([,\[\]{}])\s*/g, '$1'); }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (typeof parsed === 'string') return `string:${parsed}`;
+    if (typeof parsed === 'number' || typeof parsed === 'boolean' || parsed === null) return `${typeof parsed}:${String(parsed)}`;
+    return `json:${stableJson(parsed)}`;
+  } catch {
+    // 题面经常把字符串写成裸文本，而函数入口会 JSON.stringify 成带引号字符串。
+    const unquoted = trimmed.length >= 2 && ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))
+      ? trimmed.slice(1, -1).replace(/\\([\\"'])/g, '$1')
+      : trimmed;
+    return `text:${unquoted.replace(/\s+/g, ' ').replace(/\s*([,\[\]{}])\s*/g, '$1')}`;
+  }
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function formatSignature(signature: CppFunctionSignature): string {

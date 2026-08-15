@@ -1,9 +1,40 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AppDataSnapshot } from '../types';
+import type { AppDataSnapshot, Problem } from '../types';
 import { createEmptySnapshot, normalizeSnapshot } from './data';
 
 const STORAGE_KEY = 'xiti.app-data.v1';
 export const READ_ONLY_REPOSITORY_MESSAGE = 'SQLite 读取失败后，本地回退数据处于只读状态；请刷新并重新连接主存储';
+
+function compactBrowserSnapshot(snapshot: AppDataSnapshot): AppDataSnapshot {
+  // 浏览器预览只把 SQLite 的可选缓存写入 localStorage。内置面试目录会在
+  // Store 初始化时按稳定 catalogId 从打包目录还原，避免首次启动序列化近千道
+  // 完整参考答案，并发页面争用 localStorage 存储锁导致主线程长时间卡住。
+  if (isTauriRuntime()) return snapshot;
+  const hasBuiltinInterview = snapshot.problems.some((problem) => (
+    problem.kind === 'interview' && problem.interview?.contentOrigin === 'builtin' && problem.interview.catalogId
+  ));
+  if (!hasBuiltinInterview) return snapshot;
+  return {
+    ...snapshot,
+    settings: { ...snapshot.settings, interviewCatalogVersion: snapshot.settings.interviewCatalogVersion, browserCatalogCompact: true },
+    problems: snapshot.problems.map((problem) => {
+      const interview = problem.interview;
+      if (problem.kind !== 'interview' || interview?.contentOrigin !== 'builtin' || !interview.catalogId) return problem;
+      return {
+        id: problem.id,
+        kind: 'interview',
+        title: problem.title,
+        createdAt: problem.createdAt,
+        updatedAt: problem.updatedAt,
+        interview: {
+          catalogId: interview.catalogId,
+          contentOrigin: 'builtin',
+          archived: interview.archived,
+        } as NonNullable<Problem['interview']>,
+      } as Problem;
+    }),
+  };
+}
 
 export interface AppRepository {
   readonly kind: 'tauri-sqlite' | 'browser-local';
@@ -29,7 +60,7 @@ export class BrowserLocalRepository implements AppRepository {
 
   async save(snapshot: AppDataSnapshot): Promise<void> {
     if (typeof localStorage === 'undefined') return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(compactBrowserSnapshot(snapshot)));
   }
 }
 

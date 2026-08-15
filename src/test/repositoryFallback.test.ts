@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot } from '../lib/data';
 import { ResilientRepository } from '../lib/repository';
+import { catalogItemToProblem } from '../lib/interviews';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -116,5 +117,30 @@ describe('SQLite 读取失败回退', () => {
     await expect(new ResilientRepository().save(incoming)).resolves.toBeUndefined();
 
     expect(invoke).toHaveBeenCalledWith('save_app_data', { snapshot: incoming });
+  });
+
+  it('浏览器缓存紧凑保存内置面试题，避免首次目录写入阻塞主线程', async () => {
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
+    const incoming = createEmptySnapshot(200);
+    incoming.problems = [catalogItemToProblem({
+      id: 'browser-cache-interview',
+      question: '浏览器缓存测试题',
+      primaryRole: 'backend',
+      roles: ['backend'],
+      category: '缓存',
+      format: 'knowledge',
+      difficulty: 'medium',
+      tags: ['缓存'],
+      keyPoints: ['一', '二', '三'],
+      referenceAnswer: '这是足够长的参考答案，用于确认浏览器缓存会移除大段正文。'.repeat(8),
+      followUps: ['如何验证？'],
+    }, 200)];
+
+    await new ResilientRepository().save(incoming);
+
+    const cached = JSON.parse(localStorage.getItem('xiti.app-data.v1') ?? '{}');
+    expect(cached.settings.interviewCatalogVersion).toBe(0);
+    expect(cached.problems[0].interview.referenceAnswer).toBeUndefined();
+    expect(cached.problems[0].interview.catalogId).toBe('browser-cache-interview');
   });
 });

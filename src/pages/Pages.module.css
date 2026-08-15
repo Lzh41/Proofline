@@ -1365,6 +1365,14 @@
 
 .solveExamples::-webkit-scrollbar { display: none; }
 
+.problemReaderExamplesList {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 7px;
+  align-content: start;
+}
+
 .solveExample {
   min-width: 0;
   padding: 10px 11px;
@@ -1426,7 +1434,7 @@
 
 .codeWorkbench {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .codeWorkbench .solveToolbar {
@@ -1493,6 +1501,37 @@
   border-bottom: 1px solid var(--line);
   background: var(--editor-bg);
 }
+
+.inlineTerminal {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-elevated) 88%, var(--surface));
+}
+
+.inlineTerminalHeader {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 4px 12px;
+}
+
+.inlineTerminalTitle { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--accent); }
+.inlineTerminalTitle strong { color: var(--ink); font-size: 11px; }
+.inlineTerminalTitle small { color: var(--muted); font-size: 9px; }
+.inlineTerminalBody { min-width: 0; max-height: 230px; padding: 0 10px 10px; overflow: auto; }
+.inlineTerminalEmpty { padding: 10px; color: var(--muted); font-size: 10px; }
+.debugBreakpointField { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--muted); font-size: 9px; }
+.debugBreakpointField .input { min-height: 28px; flex: 1; padding: 0 8px; font: 10px var(--font-code); }
+.debugEventList { display: grid; gap: 5px; padding-top: 4px; }
+.debugMeta { color: var(--muted); font: 10px/1.5 var(--font-code); }
+.debugStdout, .debugStderr { margin: 0; padding: 7px 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/1.55 var(--font-code); }
+.debugStdout { border-left: 2px solid var(--info); color: var(--body); background: var(--panel-info); }
+.debugStderr { border-left: 2px solid var(--danger); color: var(--danger); background: var(--danger-soft); }
+.debugPaused { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 7px 8px; border-left: 2px solid var(--warning); color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); font-size: 10px; }
+.debugPaused span, .debugPaused small { color: var(--body); }
+.debugPaused code { width: 100%; color: var(--muted); font: 9px/1.4 var(--font-code); overflow-wrap: anywhere; }
 
 .runResultPanel {
   min-width: 0;

@@ -142,7 +142,12 @@ impl PlatformSource {
         match self {
             Self::LeetcodeCn => &["leetcode.cn", "www.leetcode.cn"],
             Self::Leetcode => &["leetcode.com", "www.leetcode.com"],
-            Self::Nowcoder => &["nowcoder.com", "www.nowcoder.com", "passport.nowcoder.com"],
+            Self::Nowcoder => &[
+                "nowcoder.com",
+                "www.nowcoder.com",
+                "ac.nowcoder.com",
+                "passport.nowcoder.com",
+            ],
         }
     }
 
@@ -536,13 +541,21 @@ async fn fetch_leetcode_problem_range(
                 error: Some("该题需要登录或订阅，已保存公开链接卡".to_string()),
             });
         } else {
-            match fetch_leetcode_problem(
-                client,
-                source,
-                &Url::parse(&source_url).expect("validated url"),
-            )
-            .await
-            {
+            let parsed_url = match Url::parse(&source_url) {
+                Ok(url) if is_allowed_platform_url(source, &url) => url,
+                _ => {
+                    failed_count += 1;
+                    items.push(PlatformBatchFetchItem {
+                        requested_id,
+                        status: "failed",
+                        source_url: Some(source_url),
+                        metadata: None,
+                        error: Some("平台题目链接校验失败".to_string()),
+                    });
+                    continue;
+                }
+            };
+            match fetch_leetcode_problem(client, source, &parsed_url).await {
                 Ok(metadata) => {
                     fetched_count += 1;
                     items.push(PlatformBatchFetchItem {
@@ -666,8 +679,21 @@ async fn fetch_nowcoder_problem_range(
             );
             continue;
         };
-        match fetch_nowcoder_problem(client, &Url::parse(&source_url).expect("validated url")).await
-        {
+        let parsed_url = match Url::parse(&source_url) {
+            Ok(url) if is_allowed_platform_url(PlatformSource::Nowcoder, &url) => url,
+            _ => {
+                failed_count += 1;
+                items.push(PlatformBatchFetchItem {
+                    requested_id,
+                    status: "failed",
+                    source_url: Some(source_url),
+                    metadata: None,
+                    error: Some("牛客题目链接校验失败".to_string()),
+                });
+                continue;
+            }
+        };
+        match fetch_nowcoder_problem(client, &parsed_url).await {
             Ok(metadata) => {
                 fetched_count += 1;
                 items.push(PlatformBatchFetchItem {

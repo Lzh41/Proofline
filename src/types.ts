@@ -261,6 +261,8 @@ export interface AppSettings {
   dailyTargetProblems: number;
   dailyTargetInterviewQuestions: number;
   interviewCatalogVersion: number;
+  /** 浏览器缓存仅保存内置面试题的稳定 ID，启动时从打包目录还原正文。 */
+  browserCatalogCompact?: boolean;
   lastSolveProblemId?: string;
   privacyConfirmed: boolean;
   theme: AppTheme;
@@ -319,6 +321,7 @@ export interface PlanOptions {
   targetInterviewQuestions?: number;
   targetMinutes?: number;
   now?: number;
+  completedProblemIds?: string[];
 }
 
 export interface RunCodeRequest {
@@ -352,3 +355,33 @@ export interface ProblemSampleRunResult extends RunCodeResult {
   generatedEntryPoint: boolean;
   mode: 'function' | 'stdin';
 }
+
+export type DebugCommand =
+  | { type: 'start'; sessionId: string; code: string; language: string; input: string; breakpoints: number[] }
+  | { type: 'continue' | 'step-over' | 'step-into' | 'step-out' | 'pause' | 'terminate'; sessionId: string };
+
+export interface DebugSourceLocation {
+  file: string;
+  line: number;
+  column: number;
+}
+
+export interface DebugStackFrame {
+  id: string;
+  name: string;
+  location: DebugSourceLocation;
+}
+
+export interface DebugScope {
+  name: string;
+  variables: Array<{ name: string; value: string; type: string }>;
+}
+
+export type DebugEvent =
+  | { type: 'started'; sessionId: string; entryFile: string }
+  | { type: 'paused'; sessionId: string; reason: 'breakpoint' | 'exception' | 'step'; location: DebugSourceLocation; stack: DebugStackFrame[]; scopes: DebugScope[] }
+  | { type: 'output'; sessionId: string; stream: 'stdout' | 'stderr'; text: string }
+  | { type: 'continued'; sessionId: string }
+  | { type: 'completed'; sessionId: string; result: RunCodeResult }
+  | { type: 'terminated'; sessionId: string; reason: string }
+  | { type: 'error'; sessionId: string; code: string; message: string };

@@ -497,3 +497,36 @@ test('桌面与 390px 窄屏保持单屏且长样例只在对话框内部滚动'
     await dialog.getByRole('button', { name: '关闭样例编辑器' }).click();
   }
 });
+
+test('样例输出进入内嵌终端并支持隐藏、暂停、单步和终止调试', async ({ page }) => {
+  await installProblem(page, { examples: [{ input: '1', output: '1' }] });
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/useAppStore.ts');
+    useAppStore.setState({
+      runProblemSample: async (request) => ({
+        ok: true,
+        output: request.problem.examples[request.sampleIndex ?? 0]?.output ?? '1',
+        durationMs: 1,
+        timedOut: false,
+        sampleIndex: request.sampleIndex ?? 0,
+        expectedOutput: '1',
+        actualOutput: '1',
+        passed: true,
+        generatedEntryPoint: false,
+        mode: 'stdin',
+      }),
+    });
+  });
+
+  await page.getByRole('button', { name: '运行全部样例' }).click();
+  await expect(page.getByLabel('样例运行进度')).toBeVisible();
+  await page.getByRole('button', { name: '隐藏运行终端' }).click();
+  await expect(page.getByLabel('样例运行进度')).not.toBeVisible();
+  await page.getByRole('button', { name: '显示运行终端' }).click();
+  await page.getByRole('button', { name: '调试当前样例' }).click();
+  await expect(page.getByText('已暂停')).toBeVisible();
+  await page.getByRole('button', { name: '单步跳过' }).click();
+  await expect(page.getByText('单步')).toBeVisible();
+  await page.getByRole('button', { name: '终止调试' }).click();
+  await expect(page.getByText('用户终止调试会话')).toBeVisible();
+});

@@ -82,7 +82,7 @@ export function generatePlan(
     targetInterviewQuestions,
     taskProblemIds,
     reviewMistakeIds,
-    completedProblemIds: [],
+    completedProblemIds: options.completedProblemIds ?? [],
     focusTags: stats.weakTags.slice(0, 3).map((item) => item.tag),
     difficultyRatio: { easy: 30, medium: 50, hard: 20 },
     createdAt: timestamp,

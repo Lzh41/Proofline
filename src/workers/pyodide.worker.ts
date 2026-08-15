@@ -24,6 +24,10 @@ interface PythonRunRequest {
   input?: string;
 }
 
+const MAX_OUTPUT_BYTES = 128 * 1024;
+const MAX_SOURCE_BYTES = 500 * 1024;
+const MAX_INPUT_BYTES = 100 * 1024;
+
 const runtimePromise = loadRuntime();
 
 self.onmessage = async (event: MessageEvent<PythonRunRequest>) => {
@@ -32,9 +36,20 @@ self.onmessage = async (event: MessageEvent<PythonRunRequest>) => {
   const startedAt = performance.now();
 
   try {
+    if (new TextEncoder().encode(code).byteLength > MAX_SOURCE_BYTES) throw new Error('源代码超过 500 KB，已停止运行。');
+    if (new TextEncoder().encode(input).byteLength > MAX_INPUT_BYTES) throw new Error('标准输入超过 100 KB，已停止运行。');
     const pyodide = await runtimePromise;
     const stdout: string[] = [];
     const stderr: string[] = [];
+    let outputBytes = 0;
+    const appendOutput = (target: string[], value: string) => {
+      const remaining = MAX_OUTPUT_BYTES - outputBytes;
+      if (remaining <= 0) throw new Error(`输出超过 ${MAX_OUTPUT_BYTES} 字节上限，已停止运行。`);
+      const clipped = value.slice(0, remaining);
+      target.push(clipped);
+      outputBytes += new TextEncoder().encode(clipped).byteLength;
+      if (clipped.length < value.length || outputBytes >= MAX_OUTPUT_BYTES) throw new Error(`输出超过 ${MAX_OUTPUT_BYTES} 字节上限，已停止运行。`);
+    };
     const inputLines = input.replace(/\r/g, '').split('\n');
     let inputIndex = 0;
 
@@ -42,8 +57,8 @@ self.onmessage = async (event: MessageEvent<PythonRunRequest>) => {
       stdin: () => inputIndex < inputLines.length ? inputLines[inputIndex++] : null,
       autoEOF: true,
     });
-    pyodide.setStdout({ batched: (value) => stdout.push(value) });
-    pyodide.setStderr({ batched: (value) => stderr.push(value) });
+    pyodide.setStdout({ batched: (value) => appendOutput(stdout, value) });
+    pyodide.setStderr({ batched: (value) => appendOutput(stderr, value) });
 
     const globals = pyodide.runPython("dict(__name__='__main__')");
     try {

@@ -5,6 +5,7 @@ import type { Problem } from '../types';
 import { difficultyLabel, sourceLabel, useStoreView } from '../app/storeAdapter';
 import { EmptyState, PageHeader } from '../components/PagePrimitives';
 import { isOcrCancelled, OCR_MAX_FILE_BYTES, recognizeProblemImage, type OfflineOcrTask } from '../lib/ocr';
+import { inferProblemFromUrl } from '../lib/platform';
 import styles from './Pages.module.css';
 
 const INITIAL_FORM = { title: '', sourceUrl: '', externalId: '', difficulty: 'unknown', tags: '', content: '' };
@@ -38,10 +39,22 @@ export function ProblemsPage() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const now = Date.now();
+    const rawUrl = form.sourceUrl.trim();
+    let detectedSource: Problem['source'] = 'manual';
+    if (rawUrl) {
+      const officialSource = (['leetcode-cn', 'leetcode', 'nowcoder'] as const).find((candidate) => {
+        try { inferProblemFromUrl(candidate, rawUrl); return true; } catch { return false; }
+      });
+      if (officialSource) detectedSource = officialSource;
+      else if (!/^https:\/\//i.test(rawUrl)) {
+        setMessage('题目链接必须使用 HTTPS，官方平台只能填写对应的精确域名。');
+        return;
+      }
+    }
     const draft: Partial<Problem> = {
       title: form.title.trim(),
-      source: form.sourceUrl.includes('leetcode.cn') ? 'leetcode-cn' : form.sourceUrl.includes('leetcode.com') ? 'leetcode' : form.sourceUrl.includes('nowcoder.com') ? 'nowcoder' : 'manual',
-      sourceUrl: form.sourceUrl.trim() || undefined,
+      source: detectedSource,
+      sourceUrl: rawUrl || undefined,
       externalId: form.externalId.trim() || undefined,
       platformStatus: 'todo',
       cacheStatus: 'manual',
@@ -51,7 +64,7 @@ export function ProblemsPage() {
       constraints: [],
       examples: [],
       attachments: [],
-      importMethod: form.sourceUrl ? 'url' : 'manual',
+      importMethod: rawUrl ? 'url' : 'manual',
       createdAt: now,
       updatedAt: now,
     };

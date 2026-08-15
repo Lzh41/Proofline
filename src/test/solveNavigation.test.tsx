@@ -470,7 +470,7 @@ describe('做题页题库导航', () => {
     expect(await screen.findByRole('heading', { name: /旧版无 kind 题/ })).toBeVisible();
   });
 
-  it('运行结果独立弹窗打开，做题页不再显示思路笔记入口', async () => {
+  it('运行结果显示在代码编辑器下方的可隐藏终端，做题页不再显示思路笔记入口', async () => {
     render(
       <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
         <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
@@ -479,17 +479,11 @@ describe('做题页题库导航', () => {
 
     expect(screen.queryByText('思路笔记')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
-    expect(await screen.findByRole('dialog', { name: '运行结果' })).toHaveAttribute('open');
+    expect(await screen.findByTestId('sample-terminal')).toBeVisible();
+    expect(screen.getByRole('log', { name: '样例运行终端' })).toBeVisible();
   });
 
-  it('运行样例先渲染运行进度再打开弹窗，避免旧布局闪现', async () => {
-    let progressAtOpen: Element | null = null;
-    const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function showModal(this: HTMLDialogElement) {
-      progressAtOpen = this.querySelector('div[aria-label]');
-      this.setAttribute('open', '');
-    });
-
-    try {
+  it('运行样例先渲染内嵌终端，再逐条更新运行进度', async () => {
       useAppStore.setState((state) => ({
         ...state,
         problems: state.problems.map((item) => item.id === 'algo-two-sum'
@@ -516,11 +510,8 @@ describe('做题页题库导航', () => {
       );
 
       fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
-      await waitFor(() => expect(screen.getByRole('dialog', { name: '运行结果' })).toHaveAttribute('open'));
-      expect(progressAtOpen).not.toBeNull();
-    } finally {
-      showModal.mockRestore();
-    }
+      await waitFor(() => expect(screen.getByRole('log', { name: '样例运行终端' })).toBeVisible());
+      expect(screen.getByLabelText('样例运行进度')).toBeInTheDocument();
   });
 
   it('题库选择器只把样例全部通过的题标记为已练习', async () => {
@@ -594,7 +585,7 @@ describe('做题页题库导航', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: '运行全部样例' }));
-    expect(screen.getByRole('dialog', { name: '运行结果' })).toHaveAttribute('open', '');
+    expect(screen.getByRole('log', { name: '样例运行终端' })).toBeVisible();
 
     await waitFor(() => {
       const saved = useAppStore.getState().attempts.find((item) => item.problemId === 'algo-two-sum');

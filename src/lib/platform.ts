@@ -4,13 +4,29 @@ import { createId } from './ids';
 const PLATFORM_HOSTS: Record<PlatformSource, readonly string[]> = {
   'leetcode-cn': ['leetcode.cn', 'www.leetcode.cn'],
   leetcode: ['leetcode.com', 'www.leetcode.com'],
-  nowcoder: ['nowcoder.com', 'www.nowcoder.com'],
+  nowcoder: ['nowcoder.com', 'www.nowcoder.com', 'ac.nowcoder.com'],
 };
 
 export function isAllowedPlatformUrl(source: PlatformSource, value: string): boolean {
   try {
     const url = new URL(value);
     return url.protocol === 'https:' && PLATFORM_HOSTS[source].includes(url.hostname.toLowerCase());
+  } catch { return false; }
+}
+
+export function isSafeExternalUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && Boolean(url.hostname);
+  } catch { return false; }
+}
+
+export function isSafeAiEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const loopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+    return (url.protocol === 'https:' || (url.protocol === 'http:' && loopback)) && Boolean(url.hostname);
   } catch { return false; }
 }
 

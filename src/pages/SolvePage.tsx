@@ -21,16 +21,21 @@ import {
   Save,
   Search,
   Square,
+  Bug,
+  SkipForward,
+  Terminal,
   TestTube2,
   Trash2,
   X,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AiCoachIntent } from '../lib/ai';
+import { DebugSession } from '../lib/debugSession';
+import { isAllowedPlatformUrl, isSafeExternalUrl } from '../lib/platform';
 import { EDITOR_FONT_SIZES } from '../lib/data';
 import { normalizeProblemExamples } from '../lib/problemExamples';
 import { formatProblemSampleResult, outputsEqual } from '../lib/problemRunner';
-import type { AiGeneration, Attempt, EditorFontSize, Problem, ProblemExample, ProblemSampleRunResult } from '../types';
+import type { AiGeneration, Attempt, DebugCommand, DebugEvent, EditorFontSize, Problem, ProblemExample, ProblemSampleRunResult } from '../types';
 import { difficultyLabel, formatDuration, sourceLabel, useStoreView } from '../app/storeAdapter';
 import { EmptyState, PageHeader } from '../components/PagePrimitives';
 import { editorThemeFor } from '../app/theme';
@@ -354,25 +359,29 @@ export function SolvePage() {
   const [runPassed, setRunPassed] = useState<boolean | null>(null);
   const [runningCode, setRunningCode] = useState(false);
   const [sampleRunItems, setSampleRunItems] = useState<SampleRunItem[]>([]);
-  // 运行结果弹窗由 React 状态统一控制，避免 runSample 直接调用 showModal 导致布局抢先重绘。
-  const [sampleResultDialogOpen, setSampleResultDialogOpen] = useState(false);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleDrafts, setSampleDrafts] = useState<ProblemExample[]>(() => editableExamples(problem?.examples ?? []));
   const [sampleEditorMessage, setSampleEditorMessage] = useState('');
   const [sampleFieldError, setSampleFieldError] = useState<SampleFieldError | null>(null);
   const [allowEmptySamples, setAllowEmptySamples] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([]);
+  const [debugActive, setDebugActive] = useState(false);
+  const [debugBreakpointDraft, setDebugBreakpointDraft] = useState('');
+  const debugSessionRef = useRef<DebugSession | null>(null);
+  const debugSessionIdRef = useRef('');
   const saveTimer = useRef<number | undefined>(undefined);
   const loadedProblemIdRef = useRef<string | undefined>(undefined);
   const runningCodeRef = useRef(false);
   const draftAttemptIdRef = useRef<string | undefined>(attempt?.id);
   const draftCreatePromiseRef = useRef<Promise<Attempt | void> | null>(null);
+  const secondsRef = useRef(seconds);
   const requestGenerationRef = useRef(0);
   const currentProblemIdRef = useRef(problem?.id);
   // 记录当前编辑器代码属于哪道题，防止切换题目时把上一题的代码误存进新题的草稿
   const codeProblemIdRef = useRef<string | undefined>(problem?.id);
   const problemReaderDialogRef = useRef<HTMLDialogElement | null>(null);
   const sampleDialogRef = useRef<HTMLDialogElement | null>(null);
-  const sampleResultDialogRef = useRef<HTMLDialogElement | null>(null);
   const aiContentRef = useRef('');
   const aiPanelRef = useRef<HTMLDivElement | null>(null);
   const coachQuestionRef = useRef<HTMLTextAreaElement | null>(null);
@@ -400,6 +409,7 @@ export function SolvePage() {
     [coachTurns],
   );
   currentProblemIdRef.current = problem?.id;
+  secondsRef.current = seconds;
   draftAttemptIdRef.current = attempt?.problemId === problem?.id ? attempt?.id : undefined;
 
   const isCurrentProblemRequest = (generation: number, problemId: string) => (
@@ -407,27 +417,20 @@ export function SolvePage() {
   );
 
   useEffect(() => {
-    const dialog = sampleResultDialogRef.current;
-    if (!dialog) return;
-    if (sampleResultDialogOpen) {
-      if (dialog.open) return;
-      // WebView2、浏览器预览和测试环境对 showModal 的支持不完全一致，统一回退到 open 属性。
-      try {
-        if (typeof dialog.showModal === 'function') dialog.showModal();
-        else dialog.setAttribute('open', '');
-      } catch {
-        dialog.setAttribute('open', '');
-      }
-      return;
-    }
-    if (dialog.open) dialog.close();
-  }, [sampleResultDialogOpen]);
-
-  useEffect(() => {
     if (!running) return;
     const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
   }, [running]);
+
+  useEffect(() => {
+    if (!running || !attempt?.id || !store.updateAttempt) return;
+    // 计时中的时长需要及时落盘，避免窗口刷新或进程异常时丢失最近几秒的练习记录。
+    // 2 秒间隔足以降低写入频率，同时让恢复/同步读取不会长期停留在 0 秒。
+    const timer = window.setInterval(() => {
+      void store.updateAttempt?.(attempt.id, { durationSeconds: secondsRef.current });
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [attempt?.id, running, store.updateAttempt]);
 
   useEffect(() => {
     if (!problem?.id || !store.updateAttempt) return;
@@ -458,7 +461,7 @@ export function SolvePage() {
         draftAttemptIdRef.current = started.id;
       }
       if (currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId) return;
-      await store.updateAttempt?.(targetAttemptId, { code, language, durationSeconds: seconds });
+       await store.updateAttempt?.(targetAttemptId, { code, language, durationSeconds: secondsRef.current });
     };
 
     window.clearTimeout(saveTimer.current);
@@ -469,7 +472,7 @@ export function SolvePage() {
       window.clearTimeout(saveTimer.current);
       void persistDraft();
     };
-  }, [attempt?.id, code, language, problem, seconds, store.startAttempt, store.updateAttempt]);
+  }, [attempt?.id, code, language, problem, store.startAttempt, store.updateAttempt]);
 
   useEffect(() => {
     if (!problem?.id) return;
@@ -511,8 +514,19 @@ export function SolvePage() {
     runningCodeRef.current = false;
     setRunningCode(false);
     setSampleBusy(false);
-    setSampleResultDialogOpen(false);
+    debugSessionRef.current = null;
+    debugSessionIdRef.current = '';
+    setDebugEvents([]);
+    setDebugActive(false);
+    // 切换到新题时展示干净的终端摘要，避免上一题的运行状态被误读；用户仍可手动隐藏。
+    setTerminalOpen(true);
   }, [problem?.id]);
+
+  useEffect(() => () => {
+    const session = debugSessionRef.current;
+    if (session && debugSessionIdRef.current) void session.command({ type: 'terminate', sessionId: debugSessionIdRef.current });
+    debugSessionRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!problem?.id || store.settings.lastSolveProblemId === problem.id) return;
@@ -666,6 +680,39 @@ export function SolvePage() {
     void requestCoach('explain', question);
   };
 
+  const startDebug = () => {
+    if (!problem || debugActive) return;
+    const sessionId = `${problem.id}-${Date.now()}`;
+    const sampleInput = problem.examples[0]?.input ?? problem.sampleTestCase ?? '';
+    const session = new DebugSession({
+      sessionId,
+      code,
+      language,
+      input: sampleInput,
+      breakpoints: debugBreakpointDraft.split(/[,，\s]+/).map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0),
+      onEvent: (event) => {
+        if (event.sessionId !== sessionId) return;
+        setDebugEvents((events) => [...events, event].slice(-300));
+        if (event.type === 'completed' || event.type === 'terminated' || event.type === 'error') {
+          setDebugActive(false);
+        }
+      },
+    });
+    debugSessionRef.current = session;
+    debugSessionIdRef.current = sessionId;
+    setDebugEvents([]);
+    setDebugActive(true);
+    setTerminalOpen(true);
+    session.start();
+  };
+
+  const sendDebugCommand = (type: Exclude<DebugCommand, { type: 'start' }>['type']) => {
+    const session = debugSessionRef.current;
+    const sessionId = debugSessionIdRef.current;
+    if (!session || !sessionId) return;
+    void session.command({ type, sessionId });
+  };
+
   const regenerateCoachTurn = (turn: AiCoachTurn) => {
     if (busyCoach) return;
     setMessage('正在重新生成本条回答，历史答案会保留。');
@@ -696,19 +743,12 @@ export function SolvePage() {
     return { ...started, ...nextDraft };
   };
 
-  const openSampleResultDialog = () => setSampleResultDialogOpen(true);
-  const closeSampleResultDialog = () => setSampleResultDialogOpen(false);
-
   const openProblemReader = () => {
     const dialog = problemReaderDialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
   };
 
   const openSampleEditor = (examples = problem?.examples ?? [], editorMessage = '') => {
-    if (sampleResultDialogOpen) {
-      sampleResultDialogRef.current?.close();
-      setSampleResultDialogOpen(false);
-    }
     setSampleDrafts(editableExamples(examples));
     setSampleEditorMessage(editorMessage);
     setSampleFieldError(null);
@@ -832,10 +872,8 @@ export function SolvePage() {
     setRunningCode(true);
     setRunPassed(null);
     setRunResult('正在准备样例和自动测试入口…');
-    // 立即打开结果面板，让编译或解释器启动期间也能看到“准备中/等待中”状态。
-    // 结果列表随后随每个样例完成而更新，不依赖 requestAnimationFrame（桌面 WebView
-    // 在窗口失焦时可能会节流 RAF，导致后台运行但结果面板始终不出现）。
-    openSampleResultDialog();
+    // 样例结果直接写入编辑器下方的终端抽屉，避免运行时弹出小窗口。
+    setTerminalOpen(true);
     try {
       let runnableProblem = { ...problem, examples: runnableExamples(problem) };
       if (!runnableProblem.examples.length) {
@@ -1024,7 +1062,13 @@ export function SolvePage() {
                 </span>
               )}
               {problem.sourceUrl && (
-                <button className="button" type="button" onClick={() => window.open(problem.sourceUrl, '_blank')}>
+                <button className="button" type="button" onClick={() => {
+                  const safe = ['leetcode-cn', 'leetcode', 'nowcoder'].includes(problem.source)
+                    ? isAllowedPlatformUrl(problem.source as 'leetcode-cn' | 'leetcode' | 'nowcoder', problem.sourceUrl ?? '')
+                    : isSafeExternalUrl(problem.sourceUrl ?? '');
+                  if (!safe) { setMessage('链接未通过 HTTPS 或官方域名校验，已拒绝打开。'); return; }
+                  window.open(problem.sourceUrl, '_blank', 'noopener,noreferrer');
+                }}>
                   <ExternalLink size={14} />官方题面
                 </button>
               )}
@@ -1093,7 +1137,7 @@ export function SolvePage() {
                 </select>
                 {!running
                   ? <button className="iconButton" title="开始计时" aria-label="开始计时" type="button" onClick={begin}><Play size={14} /></button>
-                  : <button className="iconButton" title="暂停计时" aria-label="暂停计时" type="button" onClick={() => setRunning(false)}><Pause size={14} /></button>}
+                   : <button className="iconButton" title="暂停计时" aria-label="暂停计时" type="button" onClick={() => { setRunning(false); if (attempt?.id) void store.updateAttempt?.(attempt.id, { durationSeconds: secondsRef.current }); }}><Pause size={14} /></button>}
                 <button className="button buttonAccent" type="button" disabled={runningCode} onClick={runSample}><TestTube2 size={14} />{runningCode ? '运行中' : '运行全部样例'}</button>
                 <button className="iconButton" type="button" title="保存草稿" aria-label="保存草稿" disabled={!attempt?.id} onClick={() => attempt?.id && store.updateAttempt?.(attempt.id, { code, language, durationSeconds: seconds })}><Save size={15} /></button>
               </div>
@@ -1107,6 +1151,43 @@ export function SolvePage() {
                 }} theme={editorTheme} options={{ minimap: { enabled: false }, fontSize: editorFontSize, fontFamily: 'JetBrains Mono, Consolas, monospace', scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 16 }, wordWrap: 'on' }} />
               </Suspense>
             </div>
+
+            <section className={`${styles.inlineTerminal} ${terminalOpen ? styles.inlineTerminalOpen : ''}`} data-testid="sample-terminal" aria-label="样例运行终端" role="log" aria-live="polite">
+              <header className={styles.inlineTerminalHeader}>
+                <div className={styles.inlineTerminalTitle}><Terminal size={14} /><strong>运行终端</strong><small>{debugActive ? '调试会话' : '样例输出'}</small></div>
+                <div className={styles.buttonRow}>
+                  {terminalOpen && !debugActive && <button className="button" type="button" onClick={startDebug} disabled={runningCode}><Bug size={13} />调试当前样例</button>}
+                  {debugActive && <>
+                    <button className="iconButton" type="button" title="继续运行" aria-label="继续运行" onClick={() => sendDebugCommand('continue')}><Play size={13} /></button>
+                    <button className="iconButton" type="button" title="单步跳过" aria-label="单步跳过" onClick={() => sendDebugCommand('step-over')}><SkipForward size={13} /></button>
+                    <button className="iconButton" type="button" title="单步进入" aria-label="单步进入" onClick={() => sendDebugCommand('step-into')}><ArrowUpToLine size={13} /></button>
+                    <button className="iconButton" type="button" title="单步跳出" aria-label="单步跳出" onClick={() => sendDebugCommand('step-out')}><ArrowUpToLine size={13} /></button>
+                    <button className="iconButton" type="button" title="暂停" aria-label="暂停" onClick={() => sendDebugCommand('pause')}><Pause size={13} /></button>
+                    <button className="iconButton" type="button" title="终止调试" aria-label="终止调试" onClick={() => sendDebugCommand('terminate')}><Square size={13} /></button>
+                  </>}
+                  <button className="iconButton" type="button" title={terminalOpen ? '隐藏运行终端' : '显示运行终端'} aria-label={terminalOpen ? '隐藏运行终端' : '显示运行终端'} onClick={() => setTerminalOpen((open) => !open)}>{terminalOpen ? <X size={14} /> : <Terminal size={14} />}</button>
+                </div>
+              </header>
+              {terminalOpen && <div className={styles.inlineTerminalBody}>
+                {!debugActive && <label className={styles.debugBreakpointField}><span>断点行号</span><input className="input" value={debugBreakpointDraft} onChange={(event) => setDebugBreakpointDraft(event.target.value)} placeholder="例如：3, 8" aria-label="调试断点行号" /></label>}
+                {!debugEvents.length && <div className={styles.inlineTerminalEmpty}>运行样例或启动调试后，输出、错误和暂停位置会显示在这里。</div>}
+                {debugEvents.length > 0 && <div className={styles.debugEventList}>
+                  {debugEvents.map((event, index) => {
+                    if (event.type === 'paused') return <div className={styles.debugPaused} key={`${event.type}-${index}`}><Bug size={12} /><strong>已暂停</strong><span>{event.location.file}:{event.location.line}</span><small>{event.reason === 'breakpoint' ? '命中断点' : event.reason === 'exception' ? '异常' : '单步'}</small>{event.scopes[0]?.variables.length ? <code>{event.scopes[0].variables.map((item) => `${item.name} = ${item.value}`).join(' · ')}</code> : null}</div>;
+                    if (event.type === 'output') return <pre className={event.stream === 'stderr' ? styles.debugStderr : styles.debugStdout} key={`${event.type}-${index}`}>{event.text}</pre>;
+                    if (event.type === 'started') return <div className={styles.debugMeta} key={`${event.type}-${index}`}>已启动 {event.entryFile}</div>;
+                    if (event.type === 'continued') return <div className={styles.debugMeta} key={`${event.type}-${index}`}>继续运行…</div>;
+                    if (event.type === 'completed') return <div className={styles.debugMeta} key={`${event.type}-${index}`}>{event.result.ok ? '调试运行完成。' : '调试运行失败。'}</div>;
+                    if (event.type === 'terminated') return <div className={styles.debugMeta} key={`${event.type}-${index}`}>{event.reason}</div>;
+                    return <div className={styles.debugStderr} key={`${event.type}-${index}`}>{event.message}</div>;
+                  })}
+                </div>}
+                {!debugActive && <div className={`${styles.runResultPanel} ${runPassed === true ? styles.runResultPassed : ''} ${runPassed === false ? styles.runResultFailed : ''}`}>
+                  {runPassed === true ? <CheckCircle2 size={16} /> : runPassed === false ? <AlertTriangle size={16} /> : <TestTube2 size={16} />}
+                  <div><pre>{runResult}</pre>{sampleRunItems.length > 0 && <div className={styles.sampleRunList} aria-label="样例运行进度">{sampleRunItems.map((item, index) => <div className={`${styles.sampleRunItem} ${item.status === 'passed' ? styles.sampleRunPassed : item.status === 'failed' ? styles.sampleRunFailed : item.status === 'running' ? styles.sampleRunRunning : ''}`} key={`inline-sample-${index}`}><span className={styles.sampleRunMarker}>{item.status === 'passed' ? <CheckCircle2 size={12} /> : item.status === 'failed' ? <AlertTriangle size={12} /> : item.status === 'running' ? <RefreshCw size={12} className={styles.spin} /> : <span>{index + 1}</span>}</span><span className={styles.sampleRunLabel}>样例 {index + 1}</span><strong>{sampleRunStatusLabel(item.status)}</strong></div>)}</div>}</div>
+                </div>}
+              </div>}
+            </section>
 
           </section>
 
@@ -1304,59 +1385,6 @@ export function SolvePage() {
       </div>
 
       <dialog
-        className={`${styles.dialog} ${styles.sampleResultDialog}`}
-        ref={sampleResultDialogRef}
-        aria-labelledby="sample-result-title"
-        onClose={() => setSampleResultDialogOpen(false)}
-      >
-        <div className={styles.dialogHead}>
-          <div>
-            <span className={styles.solveSectionLabel}><TestTube2 size={14} />本地样例运行</span>
-            <h2 id="sample-result-title">运行结果</h2>
-          </div>
-          <button className="iconButton" type="button" title="关闭运行结果" aria-label="关闭运行结果" onClick={closeSampleResultDialog}><X size={17} /></button>
-        </div>
-        <div className={styles.sampleResultDialogBody}>
-          <div className={`${styles.runResultPanel} ${runPassed === true ? styles.runResultPassed : ''} ${runPassed === false ? styles.runResultFailed : ''}`} aria-live="polite">
-            {runPassed === true ? <CheckCircle2 size={17} /> : runPassed === false ? <AlertTriangle size={17} /> : <TestTube2 size={17} />}
-            <div>
-              <pre>{runResult}</pre>
-              {sampleRunItems.length > 0 && (
-                <div className={styles.sampleRunList} aria-label="样例运行进度">
-                  {sampleRunItems.map((item, index) => {
-                    const statusClass = item.status === 'passed'
-                      ? styles.sampleRunPassed
-                      : item.status === 'failed'
-                        ? styles.sampleRunFailed
-                        : item.status === 'running'
-                          ? styles.sampleRunRunning
-                          : '';
-                    return (
-                      <div className={`${styles.sampleRunItem} ${statusClass}`} key={`sample-run-${index}`}>
-                        <span className={styles.sampleRunMarker} aria-hidden="true">
-                          {item.status === 'passed' ? <CheckCircle2 size={13} /> : item.status === 'failed' ? <AlertTriangle size={13} /> : item.status === 'running' ? <RefreshCw size={13} className={styles.spin} /> : <span>{index + 1}</span>}
-                        </span>
-                        <span className={styles.sampleRunLabel}>样例 {index + 1}</span>
-                        <strong>{sampleRunStatusLabel(item.status)}</strong>
-                        {item.result && <small>{formatProblemSampleResult(item.result).split('\n')[1] ?? ''}</small>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {runPassed === false && (
-                <div className={styles.buttonRow}>
-                  <button className="button" type="button" disabled={busyCoach || !aiConfigured} onClick={() => void requestCoach('debug')} title={!aiConfigured ? '请先在设置中配置 AI 服务' : '让 AI 结合运行结果定位错误'}>
-                    <AlertTriangle size={14} />失败复盘
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </dialog>
-
-      <dialog
         className={`${styles.dialog} ${styles.problemReaderDialog}`}
         ref={problemReaderDialogRef}
         aria-labelledby="problem-reader-title"
@@ -1373,7 +1401,7 @@ export function SolvePage() {
             <div className={styles.problemReaderText}>{problem.content || '当前学习卡只保存了题目链接。'}</div>
           </article>
           <aside className={styles.problemReaderExamples} aria-label="题目样例">
-            <div className={styles.solveExamples}>
+            <div className={styles.problemReaderExamplesList}>
               {problem.examples.length ? problem.examples.map((example, index) => (
                 <div className={styles.solveExample} key={`${example.input}-${index}`}>
                   <strong>样例 {index + 1}</strong>

@@ -7,6 +7,9 @@ export interface LocalRunCodeRequest {
   timeoutMs?: number;
 }
 
+const MAX_SOURCE_BYTES = 500 * 1024;
+const MAX_INPUT_BYTES = 100 * 1024;
+
 interface PythonWorkerMessage {
   kind: 'ready' | 'result' | 'boot-error';
   id?: number;
@@ -36,6 +39,9 @@ let pythonRunId = 0;
 let pythonQueue: Promise<void> = Promise.resolve();
 
 export function runCode(request: LocalRunCodeRequest): Promise<RunCodeResult> {
+  const encoder = new TextEncoder();
+  if (encoder.encode(request.code).byteLength > MAX_SOURCE_BYTES) return Promise.resolve({ ok: false, output: '', error: '源代码超过 500 KB，已停止运行。', durationMs: 0, timedOut: false });
+  if (encoder.encode(request.input ?? '').byteLength > MAX_INPUT_BYTES) return Promise.resolve({ ok: false, output: '', error: '标准输入超过 100 KB，已停止运行。', durationMs: 0, timedOut: false });
   const language = request.language.toLowerCase();
   if (language === 'cpp' || language === 'c++' || language === 'cpp17') {
     return Promise.resolve({

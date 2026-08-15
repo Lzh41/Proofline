@@ -1,12 +1,27 @@
 import { transpile } from 'typescript';
 import type { RunCodeRequest, RunCodeResult } from '../types';
 
+const MAX_OUTPUT_BYTES = 128 * 1024;
+const MAX_SOURCE_BYTES = 500 * 1024;
+const MAX_INPUT_BYTES = 100 * 1024;
+
 self.onmessage = (event: MessageEvent<RunCodeRequest>) => {
   const startedAt = performance.now();
   const request = event.data;
   const output: string[] = [];
-  const write = (...values: unknown[]) => output.push(values.map(formatValue).join(' '));
+  let outputBytes = 0;
+  const write = (...values: unknown[]) => {
+    const text = values.map(formatValue).join(' ');
+    const remaining = MAX_OUTPUT_BYTES - outputBytes;
+    if (remaining <= 0) throw new Error(`输出超过 ${MAX_OUTPUT_BYTES} 字节上限，已停止运行。`);
+    const clipped = text.slice(0, remaining);
+    output.push(clipped);
+    outputBytes += new TextEncoder().encode(clipped).byteLength;
+    if (clipped.length < text.length || outputBytes >= MAX_OUTPUT_BYTES) throw new Error(`输出超过 ${MAX_OUTPUT_BYTES} 字节上限，已停止运行。`);
+  };
   try {
+    if (new TextEncoder().encode(request.code).byteLength > MAX_SOURCE_BYTES) throw new Error('源代码超过 500 KB，已停止运行。');
+    if (new TextEncoder().encode(request.input ?? '').byteLength > MAX_INPUT_BYTES) throw new Error('标准输入超过 100 KB，已停止运行。');
     const source = request.language === 'typescript'
       ? transpile(request.code, { target: 9, module: 0, strict: true })
       : request.code;

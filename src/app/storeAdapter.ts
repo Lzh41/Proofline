@@ -37,6 +37,10 @@ export interface AppSettingsView {
   dailyTargetInterviewQuestions?: number;
   interviewCatalogVersion?: number;
   lastSolveProblemId?: string;
+  solveProblemAreaHeight?: number;
+  solveProblemTextWidth?: number;
+  solveWorkbenchCodeWidth?: number;
+  solveTerminalHeight?: number;
   privacyConfirmed?: boolean;
   theme?: AppTheme;
 }

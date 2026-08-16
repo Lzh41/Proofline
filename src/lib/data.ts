@@ -25,6 +25,11 @@ export function normalizeEditorFontSize(value: unknown): EditorFontSize {
   return EDITOR_FONT_SIZES.includes(value as EditorFontSize) ? value as EditorFontSize : 16;
 }
 
+function normalizeLayoutDimension(value: unknown, minimum: number, maximum: number): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  return Math.min(maximum, Math.max(minimum, Math.round(value)));
+}
+
 export function createEmptySnapshot(now = Date.now()): AppDataSnapshot {
   return {
     schemaVersion: 2,
@@ -109,6 +114,10 @@ export function normalizeSnapshot(value: unknown): AppDataSnapshot {
   settings.lastSolveProblemId = typeof settings.lastSolveProblemId === 'string' && settings.lastSolveProblemId.trim()
     ? settings.lastSolveProblemId
     : undefined;
+  settings.solveProblemAreaHeight = normalizeLayoutDimension(settings.solveProblemAreaHeight, 150, 720);
+  settings.solveProblemTextWidth = normalizeLayoutDimension(settings.solveProblemTextWidth, 220, 1600);
+  settings.solveWorkbenchCodeWidth = normalizeLayoutDimension(settings.solveWorkbenchCodeWidth, 300, 1800);
+  settings.solveTerminalHeight = normalizeLayoutDimension(settings.solveTerminalHeight, 96, 420);
   return {
     schemaVersion: 2,
     problems: normalizeProblems(raw.problems, schemaVersion),

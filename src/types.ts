@@ -264,6 +264,10 @@ export interface AppSettings {
   /** 浏览器缓存仅保存内置面试题的稳定 ID，启动时从打包目录还原正文。 */
   browserCatalogCompact?: boolean;
   lastSolveProblemId?: string;
+  solveProblemAreaHeight?: number;
+  solveProblemTextWidth?: number;
+  solveWorkbenchCodeWidth?: number;
+  solveTerminalHeight?: number;
   privacyConfirmed: boolean;
   theme: AppTheme;
 }

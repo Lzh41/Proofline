@@ -6,6 +6,7 @@ async function installExaminer(page: Page) {
   await page.goto('/#/interviews');
   await page.evaluate(async () => {
     const { useAppStore } = await import('/src/store/useAppStore.ts');
+    await useAppStore.getState().initialize();
     const settings = useAppStore.getState().settings;
     useAppStore.setState({
       settings: { ...settings, hasAiCredential: true, aiModel: 'e2e-model', privacyConfirmed: true },

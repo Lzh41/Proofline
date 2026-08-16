@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { lazy, memo, startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   AlertTriangle,
   ArrowUpToLine,
@@ -68,6 +68,9 @@ interface SampleRunItem {
 }
 
 type ResizeKind = 'problemArea' | 'problemText' | 'workbench' | 'terminal';
+
+type LayoutSettingKey = 'solveProblemAreaHeight' | 'solveProblemTextWidth' | 'solveWorkbenchCodeWidth' | 'solveTerminalHeight';
+type LayoutSettingPatch = Partial<Record<LayoutSettingKey, number | undefined>>;
 
 interface ResizeSession {
   kind: ResizeKind;
@@ -342,15 +345,13 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
   fontSize: number;
   onChange: (value: string) => void;
 }) {
-  const [value, setValue] = useState(code);
-  const propCodeRef = useRef(code);
-  const valueRef = useRef(code);
+  const editorRef = useRef<{ getValue: () => string; setValue: (value: string) => void } | null>(null);
+  const renderedCodeRef = useRef(code);
 
   useEffect(() => {
-    if (propCodeRef.current === code) return;
-    propCodeRef.current = code;
-    valueRef.current = code;
-    setValue(code);
+    if (renderedCodeRef.current === code) return;
+    renderedCodeRef.current = code;
+    if (editorRef.current && editorRef.current.getValue() !== code) editorRef.current.setValue(code);
   }, [code]);
 
   return (
@@ -358,11 +359,10 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
       <MonacoEditor
         height="100%"
         language={language === 'cpp' ? 'cpp' : language}
-        value={value}
+        defaultValue={code}
+        onMount={(editor) => { editorRef.current = editor; }}
         onChange={(nextValue) => {
           const nextCode = nextValue ?? '';
-          valueRef.current = nextCode;
-          setValue(nextCode);
           onChange(nextCode);
         }}
         theme={theme}
@@ -427,10 +427,10 @@ export function SolvePage() {
   const [sampleFieldError, setSampleFieldError] = useState<SampleFieldError | null>(null);
   const [allowEmptySamples, setAllowEmptySamples] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
-  const [problemAreaHeight, setProblemAreaHeight] = useState<number | null>(null);
-  const [problemTextWidth, setProblemTextWidth] = useState<number | null>(null);
-  const [workbenchCodeWidth, setWorkbenchCodeWidth] = useState<number | null>(null);
-  const [terminalHeight, setTerminalHeight] = useState<number | null>(null);
+  const [problemAreaHeight, setProblemAreaHeight] = useState<number | null>(() => store.settings.solveProblemAreaHeight ?? null);
+  const [problemTextWidth, setProblemTextWidth] = useState<number | null>(() => store.settings.solveProblemTextWidth ?? null);
+  const [workbenchCodeWidth, setWorkbenchCodeWidth] = useState<number | null>(() => store.settings.solveWorkbenchCodeWidth ?? null);
+  const [terminalHeight, setTerminalHeight] = useState<number | null>(() => store.settings.solveTerminalHeight ?? null);
   const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([]);
   const [debugActive, setDebugActive] = useState(false);
   const [debugBreakpointDraft, setDebugBreakpointDraft] = useState('');
@@ -438,6 +438,8 @@ export function SolvePage() {
   const debugSessionIdRef = useRef('');
   const saveTimer = useRef<number | undefined>(undefined);
   const codeStateTimerRef = useRef<number | undefined>(undefined);
+  const layoutSaveTimerRef = useRef<number | undefined>(undefined);
+  const pendingLayoutPatchRef = useRef<LayoutSettingPatch>({});
   const codeRef = useRef(code);
   const loadedProblemIdRef = useRef<string | undefined>(undefined);
   const runningCodeRef = useRef(false);
@@ -461,6 +463,40 @@ export function SolvePage() {
   const editorFontSize = store.settings.editorFontSize ?? 16;
   const aiConfigured = Boolean(store.requestAiHint && store.settings.hasAiCredential && store.settings.aiModel?.trim());
 
+  const flushLayoutSave = useCallback(() => {
+    window.clearTimeout(layoutSaveTimerRef.current);
+    layoutSaveTimerRef.current = undefined;
+    const nextPatch = pendingLayoutPatchRef.current;
+    pendingLayoutPatchRef.current = {};
+    if (Object.keys(nextPatch).length) void store.updateSettings?.(nextPatch);
+  }, [store.updateSettings]);
+
+  const queueLayoutSave = useCallback((patch: LayoutSettingPatch) => {
+    pendingLayoutPatchRef.current = { ...pendingLayoutPatchRef.current, ...patch };
+    window.clearTimeout(layoutSaveTimerRef.current);
+    layoutSaveTimerRef.current = window.setTimeout(flushLayoutSave, 180);
+  }, [flushLayoutSave]);
+
+  const updateProblemAreaHeight = useCallback((value: number | null) => {
+    setProblemAreaHeight(value);
+    queueLayoutSave({ solveProblemAreaHeight: value ?? undefined });
+  }, [queueLayoutSave]);
+
+  const updateProblemTextWidth = useCallback((value: number | null) => {
+    setProblemTextWidth(value);
+    queueLayoutSave({ solveProblemTextWidth: value ?? undefined });
+  }, [queueLayoutSave]);
+
+  const updateWorkbenchCodeWidth = useCallback((value: number | null) => {
+    setWorkbenchCodeWidth(value);
+    queueLayoutSave({ solveWorkbenchCodeWidth: value ?? undefined });
+  }, [queueLayoutSave]);
+
+  const updateTerminalHeight = useCallback((value: number | null) => {
+    setTerminalHeight(value);
+    queueLayoutSave({ solveTerminalHeight: value ?? undefined });
+  }, [queueLayoutSave]);
+
   const updateEditorCode = useCallback((nextCode: string, immediate = false) => {
     codeRef.current = nextCode;
     window.clearTimeout(codeStateTimerRef.current);
@@ -472,8 +508,9 @@ export function SolvePage() {
     // Monaco 直接写入 ref，稍后合并一次 React 状态，避免每个字符重排整个做题页。
     codeStateTimerRef.current = window.setTimeout(() => {
       codeStateTimerRef.current = undefined;
-      setCode(codeRef.current);
-    }, 120);
+      // 编辑器本身是非受控的；将页面状态同步放入 transition，避免每个字符阻塞 Monaco 的输入帧。
+      startTransition(() => setCode(codeRef.current));
+    }, 320);
   }, []);
   const handleEditorChange = useCallback((nextCode: string) => {
     codeProblemIdRef.current = problem?.id;
@@ -506,8 +543,23 @@ export function SolvePage() {
   );
 
   useEffect(() => {
-    return () => window.clearTimeout(codeStateTimerRef.current);
-  }, []);
+    return () => {
+      window.clearTimeout(codeStateTimerRef.current);
+      flushLayoutSave();
+    };
+  }, [flushLayoutSave]);
+
+  useEffect(() => {
+    setProblemAreaHeight(store.settings.solveProblemAreaHeight ?? null);
+    setProblemTextWidth(store.settings.solveProblemTextWidth ?? null);
+    setWorkbenchCodeWidth(store.settings.solveWorkbenchCodeWidth ?? null);
+    setTerminalHeight(store.settings.solveTerminalHeight ?? null);
+  }, [
+    store.settings.solveProblemAreaHeight,
+    store.settings.solveProblemTextWidth,
+    store.settings.solveWorkbenchCodeWidth,
+    store.settings.solveTerminalHeight,
+  ]);
 
   useEffect(() => {
     if (!running) return;
@@ -561,10 +613,9 @@ export function SolvePage() {
     saveTimer.current = window.setTimeout(() => {
       void persistDraft();
     }, 500);
-    return () => {
-      window.clearTimeout(saveTimer.current);
-      void persistDraft();
-    };
+    // 代码状态变化时只取消旧定时器，不要在 effect 清理阶段立即写库。
+    // 否则每次输入触发的 React 重渲染都会变成一次同步 SQLite 写入，造成明显卡顿。
+    return () => window.clearTimeout(saveTimer.current);
   }, [attempt?.id, code, language, problem, store.startAttempt, store.updateAttempt]);
 
   useEffect(() => {
@@ -645,25 +696,26 @@ export function SolvePage() {
       if (session.kind === 'problemArea') {
         const available = Math.max(0, session.containerHeight - 220);
         const next = Math.min(Math.max(150, session.initialSize + event.clientY - session.startY), available);
-        setProblemAreaHeight(next);
+        updateProblemAreaHeight(next);
       } else if (session.kind === 'problemText') {
         const available = Math.max(0, session.containerWidth - 180 - 24);
         const next = Math.min(Math.max(220, session.initialSize + event.clientX - session.startX), available);
-        setProblemTextWidth(next);
+        updateProblemTextWidth(next);
       } else if (session.kind === 'workbench') {
         const available = Math.max(0, session.containerWidth - 280 - 8);
         const next = Math.min(Math.max(300, session.initialSize + event.clientX - session.startX), available);
-        setWorkbenchCodeWidth(next);
+        updateWorkbenchCodeWidth(next);
       } else {
         const available = Math.max(0, session.containerHeight - 150);
         const next = Math.min(Math.max(96, session.initialSize + session.startY - event.clientY), Math.min(420, available));
-        setTerminalHeight(next);
+        updateTerminalHeight(next);
       }
     };
     const stopResize = () => {
       resizeSessionRef.current = null;
       document.body.style.removeProperty('cursor');
       document.body.style.removeProperty('user-select');
+      flushLayoutSave();
     };
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', stopResize);
@@ -673,7 +725,7 @@ export function SolvePage() {
       window.removeEventListener('pointerup', stopResize);
       window.removeEventListener('pointercancel', stopResize);
     };
-  }, []);
+  }, [flushLayoutSave, updateProblemAreaHeight, updateProblemTextWidth, updateTerminalHeight, updateWorkbenchCodeWidth]);
 
   useLayoutEffect(() => {
     const content = solvePageRef.current?.closest('main');
@@ -700,7 +752,9 @@ export function SolvePage() {
     const rect = container?.getBoundingClientRect();
     if (!rect) return;
     const panelRect = panel?.getBoundingClientRect();
-    const previousRect = panel?.previousElementSibling?.getBoundingClientRect();
+    const previousRect = kind === 'workbench'
+      ? event.currentTarget.previousElementSibling?.getBoundingClientRect()
+      : panel?.previousElementSibling?.getBoundingClientRect();
     const initialSize = kind === 'problemArea'
       ? (problemAreaHeight ?? Math.max(150, previousRect?.height ?? rect.height * 0.28))
       : kind === 'problemText'
@@ -728,7 +782,7 @@ export function SolvePage() {
     ...(workbenchCodeWidth ? { '--workbench-code-column': `${workbenchCodeWidth}px` } : {}),
   } as CSSProperties;
   const terminalStyle = terminalOpen && terminalHeight
-    ? ({ '--terminal-height': `${terminalHeight}px` } as CSSProperties)
+    ? ({ '--terminal-height': `${terminalHeight}px`, maxHeight: 'none' } as CSSProperties)
     : undefined;
 
   const begin = async () => {
@@ -860,7 +914,7 @@ export function SolvePage() {
     const sampleInput = problem.examples[0]?.input ?? problem.sampleTestCase ?? '';
     const session = new DebugSession({
       sessionId,
-      code,
+      code: codeRef.current,
       language,
       input: sampleInput,
       breakpoints: debugBreakpointDraft.split(/[,，\s]+/).map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0),
@@ -1208,7 +1262,7 @@ export function SolvePage() {
 
   return (
     <div ref={solvePageRef} className={styles.solvePage}>
-      <div className={styles.solveWorkspace}>
+      <div className={styles.solveWorkspace} style={resizeStyle}>
         <section className={styles.solveProblem}>
           <div className={styles.solveProblemHeader}>
             <div className={styles.solveProblemIdentity}>
@@ -1267,16 +1321,16 @@ export function SolvePage() {
               data-testid="problem-text-resizer"
               tabIndex={0}
               onPointerDown={(event) => beginResize('problemText', event)}
-              onDoubleClick={() => setProblemTextWidth(null)}
+              onDoubleClick={() => updateProblemTextWidth(null)}
               onKeyDown={(event) => {
                 if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
                   event.preventDefault();
                   const delta = event.key === 'ArrowRight' ? 24 : -24;
-                  setProblemTextWidth((value) => Math.max(220, (value ?? 420) + delta));
+                  updateProblemTextWidth(Math.max(220, (problemTextWidth ?? 420) + delta));
                 }
                 if (event.key === 'Home' || event.key === 'End') {
                   event.preventDefault();
-                  setProblemTextWidth(event.key === 'Home' ? 220 : null);
+                  updateProblemTextWidth(event.key === 'Home' ? 220 : null);
                 }
               }}
             />
@@ -1306,16 +1360,16 @@ export function SolvePage() {
           data-testid="problem-area-resizer"
           tabIndex={0}
           onPointerDown={(event) => beginResize('problemArea', event)}
-          onDoubleClick={() => setProblemAreaHeight(null)}
+          onDoubleClick={() => updateProblemAreaHeight(null)}
           onKeyDown={(event) => {
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
               event.preventDefault();
               const delta = event.key === 'ArrowDown' ? 24 : -24;
-              setProblemAreaHeight((value) => Math.max(150, (value ?? 220) + delta));
+              updateProblemAreaHeight(Math.max(150, (problemAreaHeight ?? 220) + delta));
             }
             if (event.key === 'Home' || event.key === 'End') {
               event.preventDefault();
-              setProblemAreaHeight(event.key === 'Home' ? 150 : null);
+              updateProblemAreaHeight(event.key === 'Home' ? 150 : null);
             }
           }}
         />
@@ -1332,7 +1386,8 @@ export function SolvePage() {
                 <select className="select" value={language} onChange={(event) => {
                   const nextLanguage = event.target.value;
                   const currentSnippet = findProblemCodeSnippet(problem, language);
-                  const editorIsPristine = !code.trim() || code === DEFAULT_CODE || code === currentSnippet;
+                  const currentCode = codeRef.current;
+                  const editorIsPristine = !currentCode.trim() || currentCode === DEFAULT_CODE || currentCode === currentSnippet;
                   setLanguage(nextLanguage);
                   if (editorIsPristine) {
                     codeProblemIdRef.current = problem?.id;
@@ -1360,7 +1415,7 @@ export function SolvePage() {
               </div>
             </div>
 
-            <div className={styles.solveEditor}>
+            <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
               <CodeEditorSurface code={code} language={language} theme={editorTheme} fontSize={editorFontSize} onChange={handleEditorChange} />
             </div>
 
@@ -1373,21 +1428,21 @@ export function SolvePage() {
                 data-testid="terminal-resizer"
                 tabIndex={terminalOpen ? 0 : -1}
                 onPointerDown={(event) => beginResize('terminal', event)}
-                onDoubleClick={() => setTerminalHeight(null)}
+                onDoubleClick={() => updateTerminalHeight(null)}
                 onKeyDown={(event) => {
                   if (!terminalOpen) return;
                   if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
                     event.preventDefault();
                     const delta = event.key === 'ArrowUp' ? 24 : -24;
-                    setTerminalHeight((value) => Math.max(96, (value ?? 180) + delta));
+                    updateTerminalHeight(Math.max(96, (terminalHeight ?? 180) + delta));
                   }
                   if (event.key === 'Home') {
                     event.preventDefault();
-                    setTerminalHeight(96);
+                    updateTerminalHeight(96);
                   }
                   if (event.key === 'End') {
                     event.preventDefault();
-                    setTerminalHeight(null);
+                    updateTerminalHeight(null);
                   }
                 }}
               />
@@ -1437,16 +1492,16 @@ export function SolvePage() {
             data-testid="workbench-resizer"
             tabIndex={0}
             onPointerDown={(event) => beginResize('workbench', event)}
-            onDoubleClick={() => setWorkbenchCodeWidth(null)}
+            onDoubleClick={() => updateWorkbenchCodeWidth(null)}
             onKeyDown={(event) => {
               if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
                 event.preventDefault();
                 const delta = event.key === 'ArrowRight' ? 24 : -24;
-                setWorkbenchCodeWidth((value) => Math.max(300, (value ?? 520) + delta));
+                updateWorkbenchCodeWidth(Math.max(300, (workbenchCodeWidth ?? 520) + delta));
               }
               if (event.key === 'Home' || event.key === 'End') {
                 event.preventDefault();
-                setWorkbenchCodeWidth(event.key === 'Home' ? 300 : null);
+                updateWorkbenchCodeWidth(event.key === 'Home' ? 300 : null);
               }
             }}
           />

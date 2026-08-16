@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useEffect, useRef } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot } from '../lib/data';
@@ -16,22 +17,29 @@ HTMLDialogElement.prototype.showModal ??= function showModal() {
 
 vi.mock('../lib/localMonaco', () => ({
   default: ({
-    value,
+    defaultValue,
     onChange,
     options,
   }: {
-    value: string;
+    defaultValue: string;
     onChange?: (value: string) => void;
     options?: { fontSize?: number };
-  }) => (
-    <textarea
-      aria-label="代码编辑器 Mock"
-      data-font-size={String(options?.fontSize ?? '')}
-      style={{ fontSize: options?.fontSize ? `${options.fontSize}px` : undefined }}
-      value={value}
-      onChange={(event) => onChange?.(event.target.value)}
-    />
-  ),
+  }) => {
+    const editorRef = useRef<HTMLTextAreaElement>(null);
+    useEffect(() => {
+      if (editorRef.current && editorRef.current.value !== defaultValue) editorRef.current.value = defaultValue;
+    }, [defaultValue]);
+    return (
+      <textarea
+        ref={editorRef}
+        aria-label="代码编辑器 Mock"
+        data-font-size={String(options?.fontSize ?? '')}
+        style={{ fontSize: options?.fontSize ? `${options.fontSize}px` : undefined }}
+        defaultValue={defaultValue}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
+    );
+  },
 }));
 
 function algorithmProblem(overrides: Partial<Problem>): Problem {

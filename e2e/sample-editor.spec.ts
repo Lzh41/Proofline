@@ -32,6 +32,7 @@ async function installProblem(page: Page, overrides: Partial<ProblemFixture> = {
   };
 
   await page.addInitScript(({ key, now, values }) => {
+    if (localStorage.getItem(key)) return;
     localStorage.setItem(key, JSON.stringify({
       schemaVersion: 1,
       problems: values.map((value, index) => ({
@@ -77,6 +78,7 @@ async function installAiCoachProbe(page: Page) {
   await page.evaluate(async () => {
     const moduleUrl = '/src/store/useAppStore.ts';
     const { useAppStore } = await import(moduleUrl);
+    await useAppStore.getState().initialize();
     const seenIntents: string[] = [];
     const testWindow = window as typeof window & { __aiCoachIntents?: string[] };
     testWindow.__aiCoachIntents = seenIntents;
@@ -100,6 +102,7 @@ async function installDeferredRecoveryProbe(page: Page) {
   await page.evaluate(async () => {
     const moduleUrl = '/src/store/useAppStore.ts';
     const { useAppStore } = await import(moduleUrl);
+    await useAppStore.getState().initialize();
     const recoverIds: string[] = [];
     const runnerProblemIds: string[] = [];
     let releaseRecovery: (() => void) | undefined;
@@ -146,6 +149,7 @@ async function installDeferredRunner(page: Page) {
   await page.evaluate(async () => {
     const moduleUrl = '/src/store/useAppStore.ts';
     const { useAppStore } = await import(moduleUrl);
+    await useAppStore.getState().initialize();
     let releaseRunner: (() => void) | undefined;
     const testWindow = window as typeof window & {
       __sampleRunnerStarted?: number;
@@ -182,6 +186,7 @@ async function installRunnerProbe(page: Page) {
   await page.evaluate(async () => {
     const moduleUrl = '/src/store/useAppStore.ts';
     const { useAppStore } = await import(moduleUrl);
+    await useAppStore.getState().initialize();
     const calls: RunnerCall[] = [];
     (window as typeof window & { __sampleRunnerCalls?: RunnerCall[] }).__sampleRunnerCalls = calls;
     useAppStore.setState({
@@ -219,6 +224,7 @@ async function installDelayedProblemUpdate(page: Page) {
   await page.evaluate(async () => {
     const moduleUrl = '/src/store/useAppStore.ts';
     const { useAppStore } = await import(moduleUrl);
+    await useAppStore.getState().initialize();
     const originalUpdate = useAppStore.getState().updateProblem;
     let release: (() => void) | undefined;
     (window as typeof window & { __releaseSampleSave?: () => void }).__releaseSampleSave = () => release?.();
@@ -503,6 +509,7 @@ test('样例输出进入内嵌终端并支持隐藏、暂停、单步和终止�
   await installProblem(page, { examples: [{ input: '1', output: '1' }] });
   await page.evaluate(async () => {
     const { useAppStore } = await import('/src/store/useAppStore.ts');
+    await useAppStore.getState().initialize();
     useAppStore.setState({
       runProblemSample: async (request) => ({
         ok: true,
@@ -530,4 +537,98 @@ test('样例输出进入内嵌终端并支持隐藏、暂停、单步和终止�
   await expect(page.getByText('单步')).toBeVisible();
   await page.getByRole('button', { name: '终止调试' }).click();
   await expect(page.getByText('用户终止调试会话')).toBeVisible();
+});
+
+test('拖动终端后实际高度随网格行扩展且底部不留空白', async ({ page }) => {
+  await installProblem(page, { examples: [{ input: '1', output: '1' }] });
+  await page.getByRole('button', { name: '显示运行终端' }).click();
+
+  const terminal = page.getByTestId('sample-terminal');
+  const resizer = page.getByTestId('terminal-resizer');
+  const before = await terminal.evaluate((element) => element.getBoundingClientRect().height);
+  const handleBox = await resizer.boundingBox();
+  expect(handleBox).toBeTruthy();
+  if (!handleBox) return;
+
+  const startX = handleBox.x + handleBox.width / 2;
+  const startY = handleBox.y + handleBox.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, startY - 160, { steps: 8 });
+  await page.mouse.up();
+
+  const layout = await page.evaluate(() => {
+    const terminalElement = document.querySelector<HTMLElement>('[data-testid="sample-terminal"]');
+    const workbenchElement = document.querySelector<HTMLElement>('[class*="codeWorkbench"]');
+    if (!terminalElement || !workbenchElement) return null;
+    const terminalRect = terminalElement.getBoundingClientRect();
+    const workbenchRect = workbenchElement.getBoundingClientRect();
+    return {
+      terminalHeight: terminalRect.height,
+      terminalBottom: terminalRect.bottom,
+      workbenchBottom: workbenchRect.bottom,
+      maxHeight: getComputedStyle(terminalElement).maxHeight,
+      gridTerminalHeight: Number.parseFloat(getComputedStyle(workbenchElement).gridTemplateRows.split(' ').at(-1) ?? '0'),
+    };
+  });
+
+  expect(layout).toBeTruthy();
+  expect(layout?.terminalHeight).toBeGreaterThan(before + 70);
+  expect(layout?.maxHeight).toBe('none');
+  expect(Math.abs((layout?.terminalBottom ?? 0) - (layout?.workbenchBottom ?? 0))).toBeLessThanOrEqual(1.5);
+  expect(Math.abs((layout?.gridTerminalHeight ?? 0) - (layout?.terminalHeight ?? 0))).toBeLessThanOrEqual(1.5);
+});
+
+test('题干与工作台布局拖动后保存并在重新打开时恢复', async ({ page }) => {
+  await installProblem(page, { examples: [{ input: '1', output: '1' }] });
+  const problemHandle = page.getByTestId('problem-area-resizer');
+  const workbenchHandle = page.getByTestId('workbench-resizer');
+  const before = await page.evaluate(() => ({
+    problemHeight: document.querySelector<HTMLElement>('[class*="solveProblem"]')?.getBoundingClientRect().height ?? 0,
+    codeWidth: document.querySelector<HTMLElement>('[class*="codeWorkbench"]')?.getBoundingClientRect().width ?? 0,
+  }));
+
+  const problemBox = await problemHandle.boundingBox();
+  expect(problemBox).toBeTruthy();
+  if (!problemBox) return;
+  const problemX = problemBox.x + problemBox.width / 2;
+  const problemY = problemBox.y + problemBox.height / 2;
+  await page.mouse.move(problemX, problemY);
+  await page.mouse.down();
+  await page.mouse.move(problemX, problemY + 80, { steps: 8 });
+  await page.mouse.up();
+
+  const workbenchBox = await workbenchHandle.boundingBox();
+  expect(workbenchBox).toBeTruthy();
+  if (!workbenchBox) return;
+  const workbenchX = workbenchBox.x + workbenchBox.width / 2;
+  const workbenchY = workbenchBox.y + workbenchBox.height / 2;
+  await page.mouse.move(workbenchX, workbenchY);
+  await page.mouse.down();
+  await page.mouse.move(workbenchX + 80, workbenchY, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(240);
+
+  const after = await page.evaluate(() => ({
+    problemHeight: document.querySelector<HTMLElement>('[class*="solveProblem"]')?.getBoundingClientRect().height ?? 0,
+    codeWidth: document.querySelector<HTMLElement>('[class*="codeWorkbench"]')?.getBoundingClientRect().width ?? 0,
+    aiWidth: document.querySelector<HTMLElement>('[class*="aiCoachPane"]')?.getBoundingClientRect().width ?? 0,
+    settings: JSON.parse(localStorage.getItem('xiti.app-data.v1') ?? '{}').settings ?? {},
+  }));
+
+  expect(after.problemHeight).toBeGreaterThan(before.problemHeight + 40);
+  expect(after.codeWidth).toBeGreaterThan(before.codeWidth + 40);
+  expect(after.aiWidth).toBeGreaterThan(240);
+  expect(after.settings.solveProblemAreaHeight).toBeGreaterThan(0);
+  expect(after.settings.solveWorkbenchCodeWidth).toBeGreaterThan(0);
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: /样例编辑测试题/ })).toBeVisible();
+  await page.waitForTimeout(240);
+  const restored = await page.evaluate(() => ({
+    problemHeight: document.querySelector<HTMLElement>('[class*="solveProblem"]')?.getBoundingClientRect().height ?? 0,
+    codeWidth: document.querySelector<HTMLElement>('[class*="codeWorkbench"]')?.getBoundingClientRect().width ?? 0,
+  }));
+  expect(Math.abs(restored.problemHeight - after.problemHeight)).toBeLessThan(2);
+  expect(Math.abs(restored.codeWidth - after.codeWidth)).toBeLessThan(2);
 });

@@ -445,6 +445,8 @@ export function SolvePage() {
   const runningCodeRef = useRef(false);
   const draftAttemptIdRef = useRef<string | undefined>(attempt?.id);
   const draftCreatePromiseRef = useRef<Promise<Attempt | void> | null>(null);
+  const draftPersistRef = useRef<() => Promise<void>>(async () => undefined);
+  const languageRef = useRef(language);
   const secondsRef = useRef(seconds);
   const requestGenerationRef = useRef(0);
   const currentProblemIdRef = useRef(problem?.id);
@@ -535,6 +537,7 @@ export function SolvePage() {
     [coachTurns],
   );
   currentProblemIdRef.current = problem?.id;
+  languageRef.current = language;
   secondsRef.current = seconds;
   draftAttemptIdRef.current = attempt?.problemId === problem?.id ? attempt?.id : undefined;
 
@@ -579,16 +582,17 @@ export function SolvePage() {
 
   useEffect(() => {
     if (!problem?.id || !store.updateAttempt) return;
-    const templateCode = findProblemCodeSnippet(problem, language) ?? DEFAULT_CODE;
     const capturedCodeProblemId = codeProblemIdRef.current;
     const capturedProblemId = problem.id;
     // 切换题目瞬间 code 可能还是上一题的代码：只有代码确实属于当前题目时才允许自动建草稿，
     // 否则会把上一题的签名误存进新题的 attempt（历史错位数据的来源）。
     const codeBelongsToProblem = capturedCodeProblemId === problem.id;
-    const shouldCreateDraft = !attempt?.id && code.trim() && code !== templateCode && codeBelongsToProblem;
-    if (!attempt?.id && !shouldCreateDraft) return;
-
     const persistDraft = async () => {
+      const latestCode = codeRef.current;
+      const latestLanguage = languageRef.current;
+      const latestTemplateCode = findProblemCodeSnippet(problem, latestLanguage) ?? DEFAULT_CODE;
+      const shouldCreateDraft = !attempt?.id && latestCode.trim() && latestCode !== latestTemplateCode && codeBelongsToProblem;
+      if (!attempt?.id && !shouldCreateDraft) return;
       // effect cleanup 发生在题目切换的 render 之后，此时 draftAttemptIdRef 可能已经指向新题。
       // 只允许仍属于当前题目的闭包落盘，杜绝上一题代码写入新题记录。
       if (!codeBelongsToProblem
@@ -598,7 +602,7 @@ export function SolvePage() {
       let targetAttemptId = draftAttemptIdRef.current;
       if (!targetAttemptId) {
         if (!store.startAttempt) return;
-        if (!draftCreatePromiseRef.current) draftCreatePromiseRef.current = Promise.resolve(store.startAttempt(problem.id, language));
+        if (!draftCreatePromiseRef.current) draftCreatePromiseRef.current = Promise.resolve(store.startAttempt(problem.id, latestLanguage));
         const started = await draftCreatePromiseRef.current;
         draftCreatePromiseRef.current = null;
         if (!started?.id || currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId) return;
@@ -606,8 +610,9 @@ export function SolvePage() {
         draftAttemptIdRef.current = started.id;
       }
       if (currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId) return;
-       await store.updateAttempt?.(targetAttemptId, { code, language, durationSeconds: secondsRef.current });
+      await store.updateAttempt?.(targetAttemptId, { code: latestCode, language: latestLanguage, durationSeconds: secondsRef.current });
     };
+    draftPersistRef.current = persistDraft;
 
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -617,6 +622,11 @@ export function SolvePage() {
     // 否则每次输入触发的 React 重渲染都会变成一次同步 SQLite 写入，造成明显卡顿。
     return () => window.clearTimeout(saveTimer.current);
   }, [attempt?.id, code, language, problem, store.startAttempt, store.updateAttempt]);
+
+  useEffect(() => () => {
+    window.clearTimeout(saveTimer.current);
+    void draftPersistRef.current();
+  }, []);
 
   useEffect(() => {
     if (!problem?.id) return;

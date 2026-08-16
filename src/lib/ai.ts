@@ -149,9 +149,9 @@ export function buildHintPrompt(input: {
 }): string {
   const intent = input.intent ?? legacyIntent(input.level);
   const language = normalizeHintLanguage(input.language ?? input.attempt?.language);
-  const noteContext = input.notes?.slice(0, 5).map((note) => `- ${note.title}: ${note.content.slice(0, 500)}`).join('\n') ?? '无';
+  const noteContext = input.notes?.slice(0, 3).map((note) => `- ${clip(note.title, 120)}: ${clip(note.content, 350)}`).join('\n') ?? '无';
   const previousGuidance = recentGuidance(input.previousGuidance);
-  const runFeedback = input.recentRunError?.trim().slice(0, 5_000) || '尚无运行反馈。';
+  const runFeedback = clip(input.recentRunError, 3_000) || '尚无运行反馈。';
   const hasPracticeAnalysis = Boolean(input.analysisContext?.trim());
   const answerFormat = hasPracticeAnalysis
     ? '这是一次“最近练习复盘”任务。请严格按以下顺序输出：## 共同考点 -> ## 逐题关键思路 -> ## 错误模式 -> ## 可迁移模板 -> ## 下一轮复习清单。必须覆盖待整理记录中的每一道题，引用其中真实的题目、结果和代码现象；不要输出泛泛鼓励。'
@@ -177,17 +177,17 @@ export function buildHintPrompt(input: {
         : intent === 'explain'
           ? '本轮重点是把用户问到的不懂之处讲清楚。不要为了显得完整而重写整题；如果用户想直接看最终答案，引导其使用“给完整代码”。'
           : '本轮不得输出完整解答，也不得用多个片段拼成变相完整答案。一次只解决当前最重要的问题，让用户可以马上继续编码或运行。',
-    `题目：${input.problem.title}`,
+    `题目：${clip(input.problem.title, 300)}`,
     `难度：${input.problem.difficulty}`,
-    `标签：${input.problem.tags.join('、') || '未知'}`,
-    `题面：\n${input.problem.content || '仅有链接，请基于已有信息明确指出不确定性。'}`,
+    `标签：${input.problem.tags.slice(0, 12).map((tag) => clip(tag, 80)).join('、') || '未知'}`,
+    `题面：\n${clip(input.problem.content, 10_000) || '仅有链接，请基于已有信息明确指出不确定性。'}`,
     `当前语言：${language}`,
-    `当前代码：\n${(input.code ?? input.attempt?.code ?? '').slice(0, 12_000) || '尚未编写'}`,
+    `当前代码：\n${clip(input.code ?? input.attempt?.code, 8_000) || '尚未编写'}`,
     `最近运行反馈：\n${runFeedback}`,
-    `用户补充问题：\n${input.userQuestion?.trim().slice(0, 2_000) || '无'}`,
+    `用户补充问题：\n${clip(input.userQuestion, 1_500) || '无'}`,
     `最近教练对话：\n${previousGuidance}`,
     `个人知识片段：\n${noteContext}`,
-    input.analysisContext?.trim() ? `待整理的最近练习记录：\n${input.analysisContext.slice(0, 24_000)}` : '',
+    input.analysisContext?.trim() ? `待整理的最近练习记录：\n${clip(input.analysisContext, 12_000)}` : '',
   ].filter(Boolean).join('\n\n');
 }
 
@@ -206,13 +206,13 @@ export function buildInterviewPrompt(input: InterviewPromptInput): string {
     `知识分类：${detail.category}`,
     `题型：${detail.format}`,
     `难度：${input.problem.difficulty}`,
-    `题目：${input.problem.title}`,
-    `题目补充：${input.problem.content || '无'}`,
-    `用户当前回答：\n${answerText.slice(0, 12_000)}`,
+    `题目：${clip(input.problem.title, 300)}`,
+    `题目补充：${clip(input.problem.content, 8_000) || '无'}`,
+    `用户当前回答：\n${clip(answerText, 8_000)}`,
     `参考要点（用于检查覆盖度，不得原样照抄）：\n${detail.keyPoints.map((point, index) => `${index + 1}. ${point}`).join('\n')}`,
     `内置追问方向：\n${detail.followUps.map((question, index) => `${index + 1}. ${question}`).join('\n')}`,
-    `上一轮反馈：\n${input.previousFeedback?.trim().slice(0, 5_000) || '无'}`,
-    `用户补充问题：\n${input.userQuestion?.trim().slice(0, 2_000) || '无'}`,
+    `上一轮反馈：\n${clip(input.previousFeedback, 3_000) || '无'}`,
+    `用户补充问题：\n${clip(input.userQuestion, 1_500) || '无'}`,
   ].join('\n\n');
 }
 
@@ -325,9 +325,15 @@ function legacyIntent(level?: number): AiCoachIntent {
 function recentGuidance(guidance?: string): string {
   const value = guidance?.trim();
   if (!value) return '无，这是本题的第一次教练请求。';
-  const maxChars = 8_000;
+  const maxChars = 4_000;
   if (value.length <= maxChars) return value;
   return `[较早对话已省略，仅保留最近 ${maxChars} 字]\n${value.slice(-maxChars)}`;
+}
+
+function clip(value: string | undefined, maxChars: number): string {
+  const text = value?.trim() ?? '';
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n[内容已截断]`;
 }
 
 function normalizeHintLanguage(language?: string): string {

@@ -166,6 +166,48 @@ describe('AI 流式响应', () => {
     });
     const request = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
     expect(request.messages[0].content).toContain('最近教练对话：\n第一级已经完成入口骨架');
+    expect(request.max_tokens).toBe(1_536);
+    expect(request.temperature).toBe(0.2);
+  });
+
+  it('接口地址已经包含聊天路径时不会重复拼接，并保留可控输出上限', async () => {
+    await useAppStore.getState().updateSettings({ aiBaseUrl: 'http://127.0.0.1:3456/v1/chat/completions' });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: '已回答' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await useAppStore.getState().requestAiHint({ problemId: 'problem-1', intent: 'explain' });
+
+    expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:3456/v1/chat/completions');
+    const request = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(request.max_tokens).toBe(1_536);
+  });
+
+  it('推理模型使用兼容的完成长度参数，避免因 temperature 或 max_tokens 被接口拒绝', async () => {
+    await useAppStore.getState().updateSettings({ aiModel: 'gpt-5-mini' });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: '推理模型已回答' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await useAppStore.getState().requestAiHint({ problemId: 'problem-1', intent: 'explain' });
+
+    const request = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(request.max_completion_tokens).toBe(1_536);
+    expect(request).not.toHaveProperty('temperature');
+    expect(request).not.toHaveProperty('max_tokens');
+  });
+
+  it('过长题面会被截断，避免把近百 KB 上下文直接发送给模型', () => {
+    const promptText = buildHintPrompt({
+      intent: 'explain',
+      problem: problem({ content: '题面'.repeat(20_000) }),
+      code: 'const answer = 1;',
+    });
+
+    expect(promptText).toContain('[内容已截断]');
+    expect(new TextEncoder().encode(promptText).byteLength).toBeLessThan(40_000);
   });
 
   it('连续提问会追加保存全部 AI 问答记录', async () => {

@@ -1,6 +1,6 @@
 [package]
 name = "proofline"
-version = "0.1.2"
+version = "0.1.3"
 description = "Proofline - 从题目推导到可验证解法的算法学习工作台"
 authors = ["Proofline contributors"]
 edition = "2021"

@@ -10,7 +10,10 @@ use uuid::Uuid;
 
 const KEYRING_SERVICE: &str = "com.xiti.desktop";
 const KEYRING_USER: &str = "ai-api-key";
+const AI_TIMEOUT_SECS: u64 = 45;
+const MAX_PROMPT_BYTES: usize = 96 * 1024;
 const MAX_STREAM_BUFFER_BYTES: usize = 2 * 1024 * 1024;
+const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "event", rename_all = "camelCase")]
@@ -278,6 +281,9 @@ pub async fn request_ai_hint(
     if prompt.trim().is_empty() {
         return Err("AI 提示内容不能为空".to_string());
     }
+    if prompt.len() > MAX_PROMPT_BYTES {
+        return Err("发送给 AI 的内容超过 96 KB，请缩短题面或历史上下文。".to_string());
+    }
     let intent = intent.unwrap_or_else(|| {
         if prompt_level(&prompt) >= 5 {
             "complete".to_string()
@@ -289,15 +295,21 @@ pub async fn request_ai_hint(
     let key = credential_entry()?
         .get_password()
         .map_err(|_| "尚未保存 AI API 密钥".to_string())?;
-    let request_body = json!({
+    let mut request_body = json!({
         "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.2,
         "stream": true
     });
+    let token_budget = completion_token_budget(&intent, &prompt);
+    if uses_reasoning_model(&model) {
+        request_body["max_completion_tokens"] = json!(token_budget);
+    } else {
+        request_body["temperature"] = json!(0.2);
+        request_body["max_tokens"] = json!(token_budget);
+    }
     let token = CancellationToken::new();
     let request_id = Uuid::new_v4();
     {
@@ -311,7 +323,7 @@ pub async fn request_ai_hint(
         *active = Some((request_id, token.clone()));
     }
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_secs(AI_TIMEOUT_SECS))
         .build()
         .map_err(|error| error.to_string())?;
     let operation = async {
@@ -335,9 +347,20 @@ pub async fn request_ai_hint(
             .and_then(|value| value.to_str().ok())
             .is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"));
         if !is_event_stream {
-            let body: Value = response
-                .json()
+            if response
+                .content_length()
+                .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
+            {
+                return Err("AI 非流式响应超过 2 MB，已中止。".to_string());
+            }
+            let raw = response
+                .bytes()
                 .await
+                .map_err(|error| format!("AI 响应读取失败：{error}"))?;
+            if raw.len() > MAX_RESPONSE_BYTES {
+                return Err("AI 非流式响应超过 2 MB，已中止。".to_string());
+            }
+            let body: Value = serde_json::from_slice(&raw)
                 .map_err(|error| format!("AI 响应不是有效 JSON：{error}"))?;
             let content =
                 extract_content(&body).ok_or_else(|| "AI 响应中没有可显示的内容".to_string())?;
@@ -351,11 +374,16 @@ pub async fn request_ai_hint(
 
         let mut decoder = SseDecoder::default();
         let mut content = String::new();
+        let mut response_bytes = 0usize;
         while let Some(chunk) = response
             .chunk()
             .await
             .map_err(|error| request_error("AI 流式读取失败", error))?
         {
+            response_bytes = response_bytes.saturating_add(chunk.len());
+            if response_bytes > MAX_RESPONSE_BYTES {
+                return Err("AI 流式响应超过 2 MB，已中止。".to_string());
+            }
             for event in decoder.push(&chunk)? {
                 if let AiStreamEvent::Delta { content: delta } = &event {
                     content.push_str(delta);
@@ -439,10 +467,34 @@ fn extract_content_value(content: &Value) -> Option<String> {
 
 fn request_error(context: &str, error: reqwest::Error) -> String {
     if error.is_timeout() {
-        "AI 请求超时（60 秒）".to_string()
+        format!(
+            "AI 请求超时（{} 秒），请检查接口地址、模型 ID 或网络连接。",
+            AI_TIMEOUT_SECS
+        )
     } else {
         format!("{context}：{error}")
     }
+}
+
+fn completion_token_budget(intent: &str, prompt: &str) -> u32 {
+    if intent == "interview-examiner" || prompt.contains("本轮请求：生成主题面试题") {
+        3_000
+    } else if intent == "complete" || prompt.contains("本轮请求：给完整代码") {
+        4_096
+    } else {
+        1_536
+    }
+}
+
+fn uses_reasoning_model(model: &str) -> bool {
+    let normalized = model.trim().to_ascii_lowercase();
+    normalized.contains("gpt-5")
+        || normalized.starts_with("o1")
+        || normalized.starts_with("o3")
+        || normalized.starts_with("o4")
+        || normalized.contains("/o1")
+        || normalized.contains("/o3")
+        || normalized.contains("/o4")
 }
 
 fn truncate(value: &str, max_chars: usize) -> String {
@@ -532,6 +584,16 @@ mod tests {
         assert!(interview.contains("不得套用算法代码教练"));
         assert!(!interview.contains("## 代码片段"));
         assert!(!interview.contains("C++17"));
+    }
+
+    #[test]
+    fn reasoning_models_use_new_completion_parameters() {
+        assert!(uses_reasoning_model("gpt-5-mini"));
+        assert!(uses_reasoning_model("openai/o3-mini"));
+        assert!(!uses_reasoning_model("gpt-4o-mini"));
+        assert_eq!(completion_token_budget("explain", ""), 1_536);
+        assert_eq!(completion_token_budget("complete", ""), 4_096);
+        assert_eq!(completion_token_budget("interview-examiner", ""), 3_000);
     }
 
     #[test]

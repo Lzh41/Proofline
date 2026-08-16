@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   AlertTriangle,
   ArrowUpToLine,
@@ -65,6 +65,17 @@ type SampleRunItemStatus = 'pending' | 'running' | 'passed' | 'failed' | 'unknow
 interface SampleRunItem {
   status: SampleRunItemStatus;
   result?: ProblemSampleRunResult;
+}
+
+type ResizeKind = 'problemArea' | 'problemText' | 'workbench' | 'terminal';
+
+interface ResizeSession {
+  kind: ResizeKind;
+  startX: number;
+  startY: number;
+  initialSize: number;
+  containerWidth: number;
+  containerHeight: number;
 }
 
 function sampleRunStatus(results: ProblemSampleRunResult[]): boolean | null {
@@ -318,6 +329,57 @@ function problemPickerLabel(problem: Problem, practicedProblemIds: ReadonlySet<s
   return `${practicedProblemIds.has(problem.id) ? '✓ 已练习' : '○ 未练习'} · ${problemDisplayTitle(problem)}`;
 }
 
+const CodeEditorSurface = memo(function CodeEditorSurface({
+  code,
+  language,
+  theme,
+  fontSize,
+  onChange,
+}: {
+  code: string;
+  language: string;
+  theme: string;
+  fontSize: number;
+  onChange: (value: string) => void;
+}) {
+  const [value, setValue] = useState(code);
+  const propCodeRef = useRef(code);
+  const valueRef = useRef(code);
+
+  useEffect(() => {
+    if (propCodeRef.current === code) return;
+    propCodeRef.current = code;
+    valueRef.current = code;
+    setValue(code);
+  }, [code]);
+
+  return (
+    <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
+      <MonacoEditor
+        height="100%"
+        language={language === 'cpp' ? 'cpp' : language}
+        value={value}
+        onChange={(nextValue) => {
+          const nextCode = nextValue ?? '';
+          valueRef.current = nextCode;
+          setValue(nextCode);
+          onChange(nextCode);
+        }}
+        theme={theme}
+        options={{
+          minimap: { enabled: false },
+          fontSize,
+          fontFamily: 'JetBrains Mono, Consolas, monospace',
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          padding: { top: 16 },
+          wordWrap: 'on',
+        }}
+      />
+    </Suspense>
+  );
+});
+
 export function SolvePage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -365,12 +427,18 @@ export function SolvePage() {
   const [sampleFieldError, setSampleFieldError] = useState<SampleFieldError | null>(null);
   const [allowEmptySamples, setAllowEmptySamples] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [problemAreaHeight, setProblemAreaHeight] = useState<number | null>(null);
+  const [problemTextWidth, setProblemTextWidth] = useState<number | null>(null);
+  const [workbenchCodeWidth, setWorkbenchCodeWidth] = useState<number | null>(null);
+  const [terminalHeight, setTerminalHeight] = useState<number | null>(null);
   const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([]);
   const [debugActive, setDebugActive] = useState(false);
   const [debugBreakpointDraft, setDebugBreakpointDraft] = useState('');
   const debugSessionRef = useRef<DebugSession | null>(null);
   const debugSessionIdRef = useRef('');
   const saveTimer = useRef<number | undefined>(undefined);
+  const codeStateTimerRef = useRef<number | undefined>(undefined);
+  const codeRef = useRef(code);
   const loadedProblemIdRef = useRef<string | undefined>(undefined);
   const runningCodeRef = useRef(false);
   const draftAttemptIdRef = useRef<string | undefined>(attempt?.id);
@@ -384,12 +452,33 @@ export function SolvePage() {
   const sampleDialogRef = useRef<HTMLDialogElement | null>(null);
   const aiContentRef = useRef('');
   const aiPanelRef = useRef<HTMLDivElement | null>(null);
+  const aiModuleScrollRefs = useRef<Partial<Record<AiCoachIntent, HTMLDivElement | null>>>({});
   const coachQuestionRef = useRef<HTMLTextAreaElement | null>(null);
   const solvePageRef = useRef<HTMLDivElement | null>(null);
+  const resizeSessionRef = useRef<ResizeSession | null>(null);
   const resolvedTheme = useResolvedTheme(store.settings.theme ?? 'dark');
   const editorTheme = editorThemeFor(resolvedTheme);
   const editorFontSize = store.settings.editorFontSize ?? 16;
   const aiConfigured = Boolean(store.requestAiHint && store.settings.hasAiCredential && store.settings.aiModel?.trim());
+
+  const updateEditorCode = useCallback((nextCode: string, immediate = false) => {
+    codeRef.current = nextCode;
+    window.clearTimeout(codeStateTimerRef.current);
+    if (immediate) {
+      codeStateTimerRef.current = undefined;
+      setCode(nextCode);
+      return;
+    }
+    // Monaco 直接写入 ref，稍后合并一次 React 状态，避免每个字符重排整个做题页。
+    codeStateTimerRef.current = window.setTimeout(() => {
+      codeStateTimerRef.current = undefined;
+      setCode(codeRef.current);
+    }, 120);
+  }, []);
+  const handleEditorChange = useCallback((nextCode: string) => {
+    codeProblemIdRef.current = problem?.id;
+    updateEditorCode(nextCode);
+  }, [problem?.id, updateEditorCode]);
   const visibleCoachTurns = useMemo(() => {
     // 五个教练功能各自只展示最新回答；AI 解惑模块单独保留完整多轮记录。
     const latestByIntent = new Map<AiCoachIntent, AiCoachTurn>();
@@ -415,6 +504,10 @@ export function SolvePage() {
   const isCurrentProblemRequest = (generation: number, problemId: string) => (
     requestGenerationRef.current === generation && currentProblemIdRef.current === problemId
   );
+
+  useEffect(() => {
+    return () => window.clearTimeout(codeStateTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!running) return;
@@ -484,7 +577,7 @@ export function SolvePage() {
     const nextLanguage = attempt?.language ?? store.settings.defaultLanguage ?? 'cpp';
     setLanguage(nextLanguage);
     codeProblemIdRef.current = problem?.id;
-    setCode(initialEditorCode(problem, attempt, nextLanguage, algorithmProblems));
+    updateEditorCode(initialEditorCode(problem, attempt, nextLanguage, algorithmProblems), true);
     setSeconds(attempt?.durationSeconds ?? 0);
     const restoredTurns = store.aiGenerations
       .filter((generation) => generation.problemId === problem?.id && generation.response.trim())
@@ -518,8 +611,8 @@ export function SolvePage() {
     debugSessionIdRef.current = '';
     setDebugEvents([]);
     setDebugActive(false);
-    // 切换到新题时展示干净的终端摘要，避免上一题的运行状态被误读；用户仍可手动隐藏。
-    setTerminalOpen(true);
+    // 切换题目时终端默认保持隐藏，避免上一题的输出遮挡新题代码；运行或调试后仍可手动打开。
+    setTerminalOpen(false);
   }, [problem?.id]);
 
   useEffect(() => () => {
@@ -534,10 +627,53 @@ export function SolvePage() {
   }, [problem?.id, store.settings.lastSolveProblemId, store.updateSettings]);
 
   useEffect(() => {
-    if (busyCoach && aiPanelRef.current) {
-      aiPanelRef.current.scrollTop = aiPanelRef.current.scrollHeight;
-    }
-  }, [streamingAnswer, busyCoach]);
+    if (!busyCoach) return;
+    const panel = aiModuleScrollRefs.current[activeIntent];
+    if (panel) panel.scrollTop = panel.scrollHeight;
+  }, [activeIntent, streamingAnswer, busyCoach]);
+
+  useEffect(() => {
+    if (activeIntent !== 'explain') return;
+    const frame = window.requestAnimationFrame(() => coachQuestionRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeIntent]);
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const session = resizeSessionRef.current;
+      if (!session) return;
+      if (session.kind === 'problemArea') {
+        const available = Math.max(0, session.containerHeight - 220);
+        const next = Math.min(Math.max(150, session.initialSize + event.clientY - session.startY), available);
+        setProblemAreaHeight(next);
+      } else if (session.kind === 'problemText') {
+        const available = Math.max(0, session.containerWidth - 180 - 24);
+        const next = Math.min(Math.max(220, session.initialSize + event.clientX - session.startX), available);
+        setProblemTextWidth(next);
+      } else if (session.kind === 'workbench') {
+        const available = Math.max(0, session.containerWidth - 280 - 8);
+        const next = Math.min(Math.max(300, session.initialSize + event.clientX - session.startX), available);
+        setWorkbenchCodeWidth(next);
+      } else {
+        const available = Math.max(0, session.containerHeight - 150);
+        const next = Math.min(Math.max(96, session.initialSize + session.startY - event.clientY), Math.min(420, available));
+        setTerminalHeight(next);
+      }
+    };
+    const stopResize = () => {
+      resizeSessionRef.current = null;
+      document.body.style.removeProperty('cursor');
+      document.body.style.removeProperty('user-select');
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const content = solvePageRef.current?.closest('main');
@@ -547,21 +683,60 @@ export function SolvePage() {
   }, [problem?.id]);
 
   const scrollCoachTurnToStart = (turn: HTMLElement | null) => {
-    const panel = aiPanelRef.current;
+    const modulePanel = turn?.closest<HTMLElement>('[data-ai-scroll]');
+    const panel = modulePanel ?? aiPanelRef.current;
     if (!turn || !panel) return;
-    const targetTop = Math.max(
-      0,
-      panel.scrollTop + turn.getBoundingClientRect().top - panel.getBoundingClientRect().top - 8,
-    );
+    const targetTop = modulePanel
+      ? Math.max(0, turn.offsetTop - panel.offsetTop - 8)
+      : Math.max(0, panel.scrollTop + turn.getBoundingClientRect().top - panel.getBoundingClientRect().top - 8);
     if (typeof panel.scrollTo === 'function') panel.scrollTo({ top: targetTop, behavior: 'smooth' });
     else panel.scrollTop = targetTop;
   };
+
+  const beginResize = (kind: ResizeKind, event: ReactPointerEvent<HTMLDivElement>) => {
+    if (kind === 'terminal' && !terminalOpen) return;
+    const panel = event.currentTarget.parentElement;
+    const container = kind === 'terminal' ? panel?.parentElement : panel;
+    const rect = container?.getBoundingClientRect();
+    if (!rect) return;
+    const panelRect = panel?.getBoundingClientRect();
+    const previousRect = panel?.previousElementSibling?.getBoundingClientRect();
+    const initialSize = kind === 'problemArea'
+      ? (problemAreaHeight ?? Math.max(150, previousRect?.height ?? rect.height * 0.28))
+      : kind === 'problemText'
+      ? (problemTextWidth ?? Math.max(220, previousRect?.width ?? rect.width * 0.62))
+        : kind === 'workbench'
+        ? (workbenchCodeWidth ?? Math.max(300, previousRect?.width ?? rect.width * 0.58))
+        : (terminalHeight ?? Math.min(230, Math.max(140, panelRect?.height ?? 180)));
+    resizeSessionRef.current = {
+      kind,
+      startX: event.clientX,
+      startY: event.clientY,
+      initialSize,
+      containerWidth: rect.width,
+      containerHeight: rect.height,
+    };
+    document.body.style.cursor = kind === 'problemArea' || kind === 'terminal' ? 'row-resize' : 'col-resize';
+    document.body.style.userSelect = 'none';
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const resizeStyle = {
+    ...(problemAreaHeight ? { '--solve-problem-row': `${problemAreaHeight}px` } : {}),
+    ...(problemTextWidth ? { '--problem-text-column': `${problemTextWidth}px` } : {}),
+    ...(workbenchCodeWidth ? { '--workbench-code-column': `${workbenchCodeWidth}px` } : {}),
+  } as CSSProperties;
+  const terminalStyle = terminalOpen && terminalHeight
+    ? ({ '--terminal-height': `${terminalHeight}px` } as CSSProperties)
+    : undefined;
 
   const begin = async () => {
     if (!problem) return;
     if (!attempt || attempt.endedAt) {
       const started = await store.startAttempt?.(problem.id, language);
-      if (started?.id && code.trim()) await store.updateAttempt?.(started.id, { code, language });
+      const currentCode = codeRef.current;
+      if (started?.id && currentCode.trim()) await store.updateAttempt?.(started.id, { code: currentCode, language });
     }
     setRunning(true);
     setMessage('计时已开始，代码和笔记会自动保存。');
@@ -582,9 +757,8 @@ export function SolvePage() {
       setAiError('');
       setMessage('已显示这道题保存的 AI 回答。');
       window.requestAnimationFrame(() => {
-        const module = aiPanelRef.current?.querySelector<HTMLElement>(`[data-ai-module="${intent}"]`);
-        if (module?.scrollIntoView) module.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        else if (aiPanelRef.current) aiPanelRef.current.scrollTop = aiPanelRef.current.scrollHeight;
+        const panel = aiModuleScrollRefs.current[intent];
+        if (panel?.scrollTo) panel.scrollTo({ top: 0, behavior: 'smooth' });
       });
       return;
     }
@@ -616,7 +790,7 @@ export function SolvePage() {
         problemId: problem.id,
         attemptId: attempt?.id,
         intent,
-        code,
+        code: codeRef.current,
         language,
         previousGuidance: conversationContext(coachTurns, intent),
         recentRunError: runResult,
@@ -721,7 +895,7 @@ export function SolvePage() {
 
   const ensureActiveAttempt = async (draft?: { code: string; language: string; durationSeconds: number }): Promise<Attempt | undefined> => {
     if (!problem) return undefined;
-    const nextDraft = draft ?? { code, language, durationSeconds: seconds };
+    const nextDraft = draft ?? { code: codeRef.current, language, durationSeconds: seconds };
     if (attempt?.id && !attempt.endedAt && attempt.result === 'unfinished') {
       await store.updateAttempt?.(attempt.id, nextDraft);
       draftAttemptIdRef.current = attempt.id;
@@ -861,7 +1035,7 @@ export function SolvePage() {
     runningCodeRef.current = true;
     const requestGeneration = requestGenerationRef.current;
     const problemId = problem.id;
-    const codeToRun = code;
+    const codeToRun = codeRef.current;
     const languageToRun = language;
     const durationAtStart = seconds;
     let activeAttempt: Attempt | undefined;
@@ -1083,8 +1257,29 @@ export function SolvePage() {
               </button>
             </div>
           </div>
-          <div className={styles.solveProblemBody} key={problem.id}>
+          <div className={styles.solveProblemBody} key={problem.id} style={resizeStyle}>
             <div className={styles.problemText}>{problem.content || '当前学习卡只保存了题目链接。可打开官方题面阅读，并在下方直接编写解题函数。'}</div>
+            <div
+              className={styles.problemBodyResizeHandle}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整题干和样例区域宽度"
+              data-testid="problem-text-resizer"
+              tabIndex={0}
+              onPointerDown={(event) => beginResize('problemText', event)}
+              onDoubleClick={() => setProblemTextWidth(null)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                  event.preventDefault();
+                  const delta = event.key === 'ArrowRight' ? 24 : -24;
+                  setProblemTextWidth((value) => Math.max(220, (value ?? 420) + delta));
+                }
+                if (event.key === 'Home' || event.key === 'End') {
+                  event.preventDefault();
+                  setProblemTextWidth(event.key === 'Home' ? 220 : null);
+                }
+              }}
+            />
             <div className={styles.solveExamples}>
               {problem.examples.length ? problem.examples.map((example, index) => (
                 <div className={styles.solveExample} key={`${example.input}-${index}`}>
@@ -1103,7 +1298,29 @@ export function SolvePage() {
           </div>
         </section>
 
-        <div className={styles.solveWorkbench}>
+        <div
+          className={styles.workspaceResizeHandle}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="调整题干区高度"
+          data-testid="problem-area-resizer"
+          tabIndex={0}
+          onPointerDown={(event) => beginResize('problemArea', event)}
+          onDoubleClick={() => setProblemAreaHeight(null)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+              event.preventDefault();
+              const delta = event.key === 'ArrowDown' ? 24 : -24;
+              setProblemAreaHeight((value) => Math.max(150, (value ?? 220) + delta));
+            }
+            if (event.key === 'Home' || event.key === 'End') {
+              event.preventDefault();
+              setProblemAreaHeight(event.key === 'Home' ? 150 : null);
+            }
+          }}
+        />
+
+        <div className={styles.solveWorkbench} style={resizeStyle}>
           <section className={styles.codeWorkbench}>
             <div className={styles.solveToolbar}>
               <div className={styles.codeWorkbenchTitle}>
@@ -1119,7 +1336,7 @@ export function SolvePage() {
                   setLanguage(nextLanguage);
                   if (editorIsPristine) {
                     codeProblemIdRef.current = problem?.id;
-                    setCode(findProblemCodeSnippet(problem, nextLanguage) ?? DEFAULT_CODE);
+                    updateEditorCode(findProblemCodeSnippet(problem, nextLanguage) ?? DEFAULT_CODE, true);
                   }
                 }} aria-label="编程语言">
                   <option value="cpp">C++17</option>
@@ -1139,20 +1356,41 @@ export function SolvePage() {
                   ? <button className="iconButton" title="开始计时" aria-label="开始计时" type="button" onClick={begin}><Play size={14} /></button>
                    : <button className="iconButton" title="暂停计时" aria-label="暂停计时" type="button" onClick={() => { setRunning(false); if (attempt?.id) void store.updateAttempt?.(attempt.id, { durationSeconds: secondsRef.current }); }}><Pause size={14} /></button>}
                 <button className="button buttonAccent" type="button" disabled={runningCode} onClick={runSample}><TestTube2 size={14} />{runningCode ? '运行中' : '运行全部样例'}</button>
-                <button className="iconButton" type="button" title="保存草稿" aria-label="保存草稿" disabled={!attempt?.id} onClick={() => attempt?.id && store.updateAttempt?.(attempt.id, { code, language, durationSeconds: seconds })}><Save size={15} /></button>
+                <button className="iconButton" type="button" title="保存草稿" aria-label="保存草稿" disabled={!attempt?.id} onClick={() => attempt?.id && store.updateAttempt?.(attempt.id, { code: codeRef.current, language, durationSeconds: seconds })}><Save size={15} /></button>
               </div>
             </div>
 
             <div className={styles.solveEditor}>
-              <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
-                <MonacoEditor height="100%" language={language === 'cpp' ? 'cpp' : language} value={code} onChange={(value) => {
-                  codeProblemIdRef.current = problem?.id;
-                  setCode(value ?? '');
-                }} theme={editorTheme} options={{ minimap: { enabled: false }, fontSize: editorFontSize, fontFamily: 'JetBrains Mono, Consolas, monospace', scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 16 }, wordWrap: 'on' }} />
-              </Suspense>
+              <CodeEditorSurface code={code} language={language} theme={editorTheme} fontSize={editorFontSize} onChange={handleEditorChange} />
             </div>
 
-            <section className={`${styles.inlineTerminal} ${terminalOpen ? styles.inlineTerminalOpen : ''}`} data-testid="sample-terminal" aria-label="样例运行终端" role="log" aria-live="polite">
+            <section className={`${styles.inlineTerminal} ${terminalOpen ? styles.inlineTerminalOpen : ''}`} style={terminalStyle} data-testid="sample-terminal" aria-label="样例运行终端" role="log" aria-live="polite">
+              <div
+                className={styles.terminalResizeHandle}
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="调整运行终端高度"
+                data-testid="terminal-resizer"
+                tabIndex={terminalOpen ? 0 : -1}
+                onPointerDown={(event) => beginResize('terminal', event)}
+                onDoubleClick={() => setTerminalHeight(null)}
+                onKeyDown={(event) => {
+                  if (!terminalOpen) return;
+                  if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    const delta = event.key === 'ArrowUp' ? 24 : -24;
+                    setTerminalHeight((value) => Math.max(96, (value ?? 180) + delta));
+                  }
+                  if (event.key === 'Home') {
+                    event.preventDefault();
+                    setTerminalHeight(96);
+                  }
+                  if (event.key === 'End') {
+                    event.preventDefault();
+                    setTerminalHeight(null);
+                  }
+                }}
+              />
               <header className={styles.inlineTerminalHeader}>
                 <div className={styles.inlineTerminalTitle}><Terminal size={14} /><strong>运行终端</strong><small>{debugActive ? '调试会话' : '样例输出'}</small></div>
                 <div className={styles.buttonRow}>
@@ -1191,6 +1429,27 @@ export function SolvePage() {
 
           </section>
 
+          <div
+            className={styles.workbenchResizeHandle}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整代码区和 AI 教练区宽度"
+            data-testid="workbench-resizer"
+            tabIndex={0}
+            onPointerDown={(event) => beginResize('workbench', event)}
+            onDoubleClick={() => setWorkbenchCodeWidth(null)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                const delta = event.key === 'ArrowRight' ? 24 : -24;
+                setWorkbenchCodeWidth((value) => Math.max(300, (value ?? 520) + delta));
+              }
+              if (event.key === 'Home' || event.key === 'End') {
+                event.preventDefault();
+                setWorkbenchCodeWidth(event.key === 'Home' ? 300 : null);
+              }
+            }}
+          />
           <aside className={styles.aiCoachPane}>
             <div className={styles.aiCoachHeader}>
               <div className={styles.aiCoachIdentity}>
@@ -1243,8 +1502,8 @@ export function SolvePage() {
             </div>
 
             <div ref={aiPanelRef} className={styles.aiConversation} aria-label="AI 回答记录" aria-live="polite" aria-busy={busyCoach}>
-              <div className={styles.aiCoachModules} aria-label="六个独立 AI 模块">
-                {COACH_ACTIONS.map((action) => {
+              <div className={styles.aiCoachModules} aria-label="当前 AI 模块">
+                {COACH_ACTIONS.filter((action) => action.intent === activeIntent).map((action) => {
                   const turn = visibleCoachTurns.find((item) => item.intent === action.intent);
                   const isStreaming = busyCoach && activeIntent === action.intent;
                   return (
@@ -1254,18 +1513,24 @@ export function SolvePage() {
                       data-ai-module={action.intent}
                       key={action.intent}
                     >
-                      <header className={styles.aiModuleHeader}>
+                   <header className={styles.aiModuleHeader}>
                         <div className={styles.aiModuleTitle}>
                           <action.icon size={14} />
                           <strong>{action.label}</strong>
                         </div>
                         <small>{turn ? '仅保留最新回答' : action.description}</small>
                       </header>
-                      {!turn && !isStreaming && (
-                        <div className={styles.aiCoachModuleEmpty}>点击上方“{action.label}”开始。</div>
-                      )}
-                      {turn && (
-                        <article className={styles.aiCoachTurn} key={turn.id}>
+                      <div
+                        className={styles.aiModuleConversation}
+                        data-ai-scroll={action.intent}
+                        aria-label={`${action.label}对话内容`}
+                        ref={(node) => { aiModuleScrollRefs.current[action.intent] = node; }}
+                      >
+                        {!turn && !isStreaming && (
+                          <div className={styles.aiCoachModuleEmpty}>点击上方“{action.label}”开始。</div>
+                        )}
+                        {turn && (
+                          <article className={styles.aiCoachTurn} key={turn.id}>
                           <header>
                             <span>{turn.label}</span>
                             {turn.question && <small title={turn.question}>{turn.question}</small>}
@@ -1292,33 +1557,40 @@ export function SolvePage() {
                               <ArrowUpToLine size={14} />回到本条开头
                             </button>
                           </footer>
-                        </article>
-                      )}
-                      {isStreaming && (
-                        <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
-                          <header><span>{action.label}</span><small>正在结合编辑器中的最新内容</small></header>
-                          {streamingAnswer
-                            ? <AiCoachContent content={streamingAnswer} busy complete={action.intent === 'complete'} />
-                            : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
-                        </article>
-                      )}
+                          </article>
+                        )}
+                        {isStreaming && (
+                          <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
+                            <header><span>{action.label}</span><small>正在结合编辑器中的最新内容</small></header>
+                            {streamingAnswer
+                              ? <AiCoachContent content={streamingAnswer} busy complete={action.intent === 'complete'} />
+                              : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
+                          </article>
+                        )}
+                      </div>
                     </section>
                   );
                 })}
 
-                <section className={`${styles.aiCoachModule} ${styles.aiExplainModule} ${activeIntent === 'explain' ? styles.aiCoachModuleActive : ''}`} aria-label="AI 解惑对话" data-ai-module="explain">
+                {activeIntent === 'explain' && <section className={`${styles.aiCoachModule} ${styles.aiExplainModule} ${styles.aiCoachModuleActive}`} aria-label="AI 解惑对话" data-ai-module="explain">
                   <header className={styles.aiModuleHeader}>
                     <div className={styles.aiModuleTitle}>
                       <Bot size={14} />
                       <strong>AI 解惑对话</strong>
                     </div>
-                    <small>{explainTurns.length ? `${explainTurns.length} 条问答记录` : '全部问答按时间保存'}</small>
-                  </header>
-                  {!explainTurns.length && !busyCoach && (
-                    <div className={styles.aiExplainEmpty}>在下方输入具体问题，所有问答都会保留在这个模块中。</div>
-                  )}
-                  {explainTurns.map((turn) => (
-                    <article className={styles.aiCoachTurn} key={turn.id}>
+                     <small>{explainTurns.length ? `${explainTurns.length} 条问答记录` : '全部问答按时间保存'}</small>
+                   </header>
+                   <div
+                     className={styles.aiModuleConversation}
+                     data-ai-scroll="explain"
+                     aria-label="AI 解惑对话内容"
+                     ref={(node) => { aiModuleScrollRefs.current.explain = node; }}
+                   >
+                     {!explainTurns.length && !busyCoach && (
+                       <div className={styles.aiExplainEmpty}>在下方输入具体问题，所有问答都会保留在这个模块中。</div>
+                     )}
+                     {explainTurns.map((turn) => (
+                       <article className={styles.aiCoachTurn} key={turn.id}>
                       <header>
                         <span>{turn.label}</span>
                         {turn.question && <small title={turn.question}>{turn.question}</small>}
@@ -1345,17 +1617,18 @@ export function SolvePage() {
                           <ArrowUpToLine size={14} />回到本条开头
                         </button>
                       </footer>
-                    </article>
-                  ))}
-                  {busyCoach && activeIntent === 'explain' && (
-                    <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
-                      <header><span>AI 解惑</span><small>正在结合编辑器中的最新内容</small></header>
-                      {streamingAnswer
-                        ? <AiCoachContent content={streamingAnswer} busy complete={false} />
-                        : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
-                    </article>
-                  )}
-                  <div className={styles.aiCoachComposer}>
+                       </article>
+                     ))}
+                     {busyCoach && activeIntent === 'explain' && (
+                       <article className={`${styles.aiCoachTurn} ${styles.aiCoachTurnStreaming}`}>
+                         <header><span>AI 解惑</span><small>正在结合编辑器中的最新内容</small></header>
+                         {streamingAnswer
+                           ? <AiCoachContent content={streamingAnswer} busy complete={false} />
+                           : <div className={styles.aiStreamWaiting}>正在读取题面、代码和最近运行反馈…</div>}
+                       </article>
+                     )}
+                   </div>
+                   <div className={styles.aiCoachComposer}>
                     <div className={styles.aiComposerLabel}>
                       <strong>AI 解惑输入</strong>
                       <span>问具体代码、报错或概念，所有问答都会保留</span>
@@ -1375,7 +1648,7 @@ export function SolvePage() {
                     />
                     <button className="iconButton" type="button" title="发送问题" aria-label="发送问题" disabled={busyCoach || !coachQuestion.trim()} onClick={sendQuestion}><Play size={14} /></button>
                   </div>
-                </section>
+                </section>}
               </div>
               {aiError && !busyCoach && <div className={styles.aiStreamMessage}>{aiError}</div>}
             </div>

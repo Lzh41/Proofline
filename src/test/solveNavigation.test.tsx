@@ -141,15 +141,15 @@ describe('做题页题库导航', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByLabelText('向 AI 代码教练提问')).toBeInTheDocument();
     const explainShortcut = screen.getByRole('button', { name: 'AI 解惑' });
     expect(explainShortcut).toBeInTheDocument();
     fireEvent.click(explainShortcut);
-    expect(screen.getByLabelText('向 AI 代码教练提问')).toHaveFocus();
+    expect(await screen.findByLabelText('向 AI 代码教练提问')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('向 AI 代码教练提问')).toHaveFocus());
     expect(screen.queryByText('检查边界')).not.toBeInTheDocument();
   });
 
-  it('五个教练功能不显示额外输入框，并固定展示第六个 AI 解惑模块', async () => {
+  it('默认只显示当前教练模块，AI 解惑输入仅属于解惑模块', async () => {
     render(
       <MemoryRouter initialEntries={['/solve/algo-lis']}>
         <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
@@ -158,12 +158,44 @@ describe('做题页题库导航', () => {
 
     expect(await screen.findByLabelText('AI 代码教练快捷操作')).toBeInTheDocument();
     expect(screen.queryAllByRole('button', { name: '重新生成回答' })).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'AI 解惑' }));
     expect(screen.getByRole('region', { name: 'AI 解惑对话' })).toBeVisible();
     expect(screen.getByText('AI 解惑输入')).toBeVisible();
     expect(Array.from(document.querySelectorAll<HTMLElement>('[data-ai-module]')).map((module) => module.dataset.aiModule))
-      .toEqual(['analyze', 'algorithm-logic', 'next-code', 'debug', 'complete', 'explain']);
+      .toEqual(['explain']);
     expect(screen.getByLabelText('向 AI 代码教练提问').closest('[data-ai-module]'))
       .toHaveAttribute('data-ai-module', 'explain');
+  });
+
+  it('点击不同教练模块时只切换当前模块的回答', async () => {
+    useAppStore.setState((state) => ({
+      aiGenerations: [
+        {
+          id: 'ai-logic-visible', problemId: 'algo-lis', level: 3, intent: 'algorithm-logic',
+          prompt: '算法逻辑拆解', response: '逻辑模块回答', model: 'mock-model', createdAt: 101,
+        },
+        {
+          id: 'ai-next-visible', problemId: 'algo-lis', level: 2, intent: 'next-code',
+          prompt: '给下一段提示', response: '下一段模块回答', model: 'mock-model', createdAt: 102,
+        },
+      ],
+      settings: { ...state.settings, privacyConfirmed: true } as typeof state.settings,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-lis']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('下一段模块回答')).toBeInTheDocument();
+    expect(screen.queryByText('逻辑模块回答')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /算法逻辑拆解/ }));
+    expect(await screen.findByText('逻辑模块回答')).toBeInTheDocument();
+    expect(screen.queryByText('下一段模块回答')).not.toBeInTheDocument();
+    expect(document.querySelectorAll<HTMLElement>('[data-ai-module]')).toHaveLength(1);
+    expect(document.querySelector('[data-ai-module]')).toHaveAttribute('data-ai-module', 'algorithm-logic');
   });
 
   it('AI 解惑由输入问题触发', async () => {
@@ -184,6 +216,7 @@ describe('做题页题库导航', () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'AI 解惑' }));
     const input = await screen.findByLabelText('向 AI 代码教练提问');
     fireEvent.change(input, { target: { value: '为什么这里要用哈希表？' } });
     fireEvent.click(screen.getByRole('button', { name: '发送问题' }));
@@ -272,14 +305,18 @@ describe('做题页题库导航', () => {
       </MemoryRouter>,
     );
 
+    expect(await screen.findByText('旧的下一步提示答案')).toBeInTheDocument();
+    expect(screen.queryByText('旧的逻辑拆解答案')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /算法逻辑拆解/ }));
     expect(await screen.findByText('旧的逻辑拆解答案')).toBeInTheDocument();
-    expect(screen.getByText('旧的下一步提示答案')).toBeInTheDocument();
+    expect(screen.queryByText('旧的下一步提示答案')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '重新生成“算法逻辑拆解”回答' }));
     await waitFor(() => expect(requestAiHint).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('重新生成的algorithm-logic')).toBeInTheDocument();
     expect(screen.queryByText('旧的逻辑拆解答案')).not.toBeInTheDocument();
-    expect(screen.getByText('旧的下一步提示答案')).toBeInTheDocument();
+    expect(screen.queryByText('旧的下一步提示答案')).not.toBeInTheDocument();
   });
 
   it('AI 解惑对话模块追加保存每次提问，不覆盖之前答案', async () => {
@@ -304,6 +341,7 @@ describe('做题页题库导航', () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'AI 解惑' }));
     const input = await screen.findByLabelText('向 AI 代码教练提问');
     fireEvent.change(input, { target: { value: '第一个问题' } });
     fireEvent.click(screen.getByRole('button', { name: '发送问题' }));
@@ -340,14 +378,14 @@ describe('做题页题库导航', () => {
       </MemoryRouter>,
     );
 
-    const panel = await screen.findByLabelText('AI 回答记录');
+    const panel = await screen.findByLabelText('算法逻辑拆解对话内容');
     const jump = await screen.findByRole('button', { name: '回到“算法逻辑拆解”回答开头' });
     const turn = jump.closest('article');
     expect(turn).not.toBeNull();
 
     panel.scrollTop = 500;
-    panel.getBoundingClientRect = () => ({ top: 100 } as DOMRect);
-    if (turn) turn.getBoundingClientRect = () => ({ top: -220 } as DOMRect);
+    Object.defineProperty(panel, 'offsetTop', { configurable: true, value: 0 });
+    if (turn) Object.defineProperty(turn, 'offsetTop', { configurable: true, value: 180 });
     const scrollTo = vi.fn();
     panel.scrollTo = scrollTo;
 
@@ -385,6 +423,7 @@ describe('做题页题库导航', () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'AI 解惑' }));
     const input = await screen.findByLabelText('向 AI 代码教练提问');
     fireEvent.change(input, { target: { value: '为什么先查再放？' } });
     fireEvent.click(screen.getByRole('button', { name: '发送问题' }));
@@ -845,5 +884,26 @@ describe('做题页题库导航', () => {
       expect(useAppStore.getState().attempts.find((item) => item.id === 'attempt-palindrome-stale')?.code).toBe(palindromeTemplate);
     });
     expect(useAppStore.getState().attempts.find((item) => item.id === 'attempt-median')?.code).toBe(medianTemplate);
+  });
+
+  it('做题工作台默认隐藏终端并提供可访问的布局拖动分隔条', async () => {
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: /1\. 两数之和/ })).toBeVisible();
+    expect(screen.getByTestId('problem-area-resizer')).toHaveAttribute('aria-label', '调整题干区高度');
+    expect(screen.getByTestId('problem-text-resizer')).toHaveAttribute('aria-orientation', 'vertical');
+    expect(screen.getByTestId('workbench-resizer')).toHaveAttribute('aria-label', '调整代码区和 AI 教练区宽度');
+    const terminalResizer = screen.getByTestId('terminal-resizer');
+    expect(terminalResizer).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.keyDown(screen.getByTestId('workbench-resizer'), { key: 'ArrowRight' });
+    expect(screen.getByTestId('workbench-resizer').parentElement?.style.getPropertyValue('--workbench-code-column')).toBe('544px');
+
+    fireEvent.click(screen.getByRole('button', { name: '显示运行终端' }));
+    expect(screen.getByTestId('terminal-resizer')).toHaveAttribute('tabindex', '0');
   });
 });

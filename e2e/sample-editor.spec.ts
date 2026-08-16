@@ -272,6 +272,7 @@ test('旧题恢复请求在切题后失效且不得覆盖新题运行状态', as
   await expect.poll(() => page.evaluate(() => (
     window as typeof window & { __sampleRunnerProblemIds?: string[] }
   ).__sampleRunnerProblemIds ?? [])).toHaveLength(0);
+  await page.getByRole('button', { name: '显示运行终端' }).click();
   await expect(page.getByText('还没有运行样例。', { exact: false })).toBeVisible();
   await expect(page.getByText('旧题输出', { exact: false })).not.toBeVisible();
 });

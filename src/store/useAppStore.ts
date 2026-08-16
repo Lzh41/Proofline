@@ -61,6 +61,25 @@ let browserAiController: AbortController | null = null;
 let persistenceQueue: Promise<void> = Promise.resolve();
 let initializationPromise: Promise<void> | null = null;
 
+const AI_REQUEST_TIMEOUT_MS = 45_000;
+const AI_PROMPT_MAX_BYTES = 96 * 1024;
+const AI_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
+
+function aiCompletionsUrl(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/\/+$/, '');
+  return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
+}
+
+function completionTokenBudget(prompt: string): number {
+  if (prompt.includes('本轮请求：生成主题面试题')) return 3_000;
+  if (prompt.includes('本轮请求：给完整代码')) return 4_096;
+  return 1_536;
+}
+
+function usesReasoningModel(model: string): boolean {
+  return /(?:^|[/:_-])(gpt-5(?:[/:_-]|$)|o[134](?:[/:_-]|$))/i.test(model.trim());
+}
+
 type AiHintRequest = {
   problemId: string;
   attemptId?: string;
@@ -368,22 +387,39 @@ async function browserAiRequest(settings: AppSettings, prompt: string, onChunk?:
   if (!browserAiKey) throw new Error('请先保存 AI 密钥');
   if (!settings.aiModel.trim()) throw new Error('请先填写模型 ID');
   if (!isSafeAiEndpoint(settings.aiBaseUrl)) throw new Error('AI 接口地址必须使用 HTTPS；本机服务仅允许 localhost/127.0.0.1。');
-  if (new TextEncoder().encode(prompt).byteLength > 120 * 1024) throw new Error('发送给 AI 的内容超过 120 KB，请缩短题面或历史上下文。');
+  if (new TextEncoder().encode(prompt).byteLength > AI_PROMPT_MAX_BYTES) throw new Error('发送给 AI 的内容超过 96 KB，请缩短题面或历史上下文。');
   browserAiController?.abort();
   const controller = new AbortController();
   browserAiController = controller;
-  const timer = globalThis.setTimeout(() => controller.abort(new Error('AI 请求超时（60 秒）')), 60_000);
+  const timer = globalThis.setTimeout(() => controller.abort(new Error('AI 请求超时（45 秒），请检查接口地址、模型 ID 或网络连接。')), AI_REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${settings.aiBaseUrl.replace(/\/$/, '')}/chat/completions`, {
+    const response = await fetch(aiCompletionsUrl(settings.aiBaseUrl), {
       method: 'POST',
       signal: controller.signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${browserAiKey}` },
-      body: JSON.stringify({ model: settings.aiModel, messages: [{ role: 'user', content: prompt }], stream: true }),
+      body: JSON.stringify({
+        model: settings.aiModel.trim(),
+        messages: [{ role: 'user', content: prompt }],
+        ...(usesReasoningModel(settings.aiModel)
+          ? { max_completion_tokens: completionTokenBudget(prompt) }
+          : { temperature: 0.2, max_tokens: completionTokenBudget(prompt) }),
+        stream: true,
+      }),
     });
-    if (!response.ok) throw new Error(`AI 服务返回 ${response.status}`);
+    if (!response.ok) {
+      const raw = await response.text();
+      let detail = raw.trim();
+      try {
+        const parsed = JSON.parse(raw) as { error?: { message?: unknown } };
+        if (typeof parsed.error?.message === 'string') detail = parsed.error.message;
+      } catch {
+        // 非 JSON 错误响应仍保留截断后的原文，避免只显示无上下文的状态码。
+      }
+      throw new Error(`AI 服务返回 ${response.status}${detail ? `：${detail.slice(0, 500)}` : ''}`);
+    }
     if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
       const raw = await response.text();
-      if (new TextEncoder().encode(raw).byteLength > 2 * 1024 * 1024) throw new Error('AI 非流式响应超过 2 MB，已中止。');
+      if (new TextEncoder().encode(raw).byteLength > AI_RESPONSE_MAX_BYTES) throw new Error('AI 非流式响应超过 2 MB，已中止。');
       const content = extractAiResponseContent(JSON.parse(raw));
       if (!content.trim()) throw new Error('AI 服务没有返回有效内容');
       onChunk?.(content);

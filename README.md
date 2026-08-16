@@ -16,7 +16,7 @@
   <a href="https://github.com/Lzh41/Proofline"><img src="https://img.shields.io/github/stars/Lzh41/Proofline?style=flat-square&color=E8B86D" alt="GitHub stars" /></a>
 </p>
 
-> 当前版本：`0.1.1` · Windows x64 · Tauri 2 · React 19 · SQLite
+> 当前版本：`0.1.3` · Windows x64 · Tauri 2 · React 19 · SQLite
 
 ## 先看它在做什么
 

@@ -1,6 +1,7 @@
-import Editor, { loader } from '@monaco-editor/react';
+import Editor, { loader, type EditorProps } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import 'monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js';
 import 'monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js';
 import 'monaco-editor/esm/vs/basic-languages/python/python.contribution.js';
@@ -89,4 +90,69 @@ monaco.editor.defineTheme(MONACO_THEME_NAMES.dark, {
   },
 });
 
-export default Editor;
+const CHANGE_SYNC_DELAY = 500;
+
+/**
+ * @monaco-editor/react 收到 onChange 后会在每次内容变化时读取完整模型。
+ * 大文件逐键读取会抢占编辑器渲染时间，因此只在一轮编辑停顿后同步。
+ */
+export default function LocalMonacoEditor({ onChange, onMount, ...props }: EditorProps) {
+  const onChangeRef = useRef(onChange);
+  const onMountRef = useRef(onMount);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const pendingEventRef = useRef<monaco.editor.IModelContentChangedEvent | null>(null);
+  const syncTimerRef = useRef<number | undefined>(undefined);
+  const editorSubscriptionsRef = useRef<monaco.IDisposable[]>([]);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+    onMountRef.current = onMount;
+  }, [onChange, onMount]);
+
+  const flushPendingChange = useCallback(() => {
+    window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = undefined;
+
+    const editor = editorRef.current;
+    const event = pendingEventRef.current;
+    pendingEventRef.current = null;
+    if (!editor || !event) return;
+
+    const model = editor.getModel();
+    if (!model || model.isDisposed()) return;
+    onChangeRef.current?.(model.getValue(), event);
+  }, []);
+
+  const disposeEditorSubscriptions = useCallback(() => {
+    editorSubscriptionsRef.current.forEach((subscription) => subscription.dispose());
+    editorSubscriptionsRef.current = [];
+  }, []);
+
+  useLayoutEffect(() => () => {
+    disposeEditorSubscriptions();
+    flushPendingChange();
+    editorRef.current = null;
+  }, [disposeEditorSubscriptions, flushPendingChange]);
+
+  const handleMount = useCallback<NonNullable<EditorProps['onMount']>>((editor, api) => {
+    if (editorRef.current && editorRef.current !== editor) {
+      disposeEditorSubscriptions();
+      flushPendingChange();
+    }
+
+    editorRef.current = editor;
+    onMountRef.current?.(editor, api);
+    disposeEditorSubscriptions();
+    editorSubscriptionsRef.current = [
+      editor.onDidChangeModelContent((event) => {
+        pendingEventRef.current = event;
+        window.clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = window.setTimeout(flushPendingChange, CHANGE_SYNC_DELAY);
+      }),
+      // 失焦早于工具栏按钮的 click，运行和调试无需等待空闲定时器也能读取最新代码。
+      editor.onDidBlurEditorText(flushPendingChange),
+    ];
+  }, [disposeEditorSubscriptions, flushPendingChange]);
+
+  return <Editor {...props} onMount={handleMount} />;
+}

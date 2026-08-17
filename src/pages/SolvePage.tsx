@@ -1,4 +1,5 @@
 import { lazy, memo, startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import type { EditorProps } from '@monaco-editor/react';
 import {
   AlertTriangle,
   ArrowUpToLine,
@@ -347,6 +348,26 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
 }) {
   const editorRef = useRef<{ getValue: () => string; setValue: (value: string) => void } | null>(null);
   const renderedCodeRef = useRef(code);
+  const editorOptions = useMemo<EditorProps['options']>(() => ({
+    minimap: { enabled: false },
+    fontSize,
+    fontFamily: 'JetBrains Mono, Consolas, monospace',
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    padding: { top: 16 },
+    // 保留分栏拖动所需的自动布局，关闭会随每次编辑重新计算的高频装饰与软换行。
+    wordWrap: 'off',
+    codeLens: false,
+    folding: false,
+    occurrencesHighlight: 'off',
+    selectionHighlight: false,
+    parameterHints: { enabled: false },
+    quickSuggestions: false,
+    suggestOnTriggerCharacters: false,
+    wordBasedSuggestions: 'off',
+    renderValidationDecorations: 'off',
+    stickyScroll: { enabled: false },
+  }), [fontSize]);
 
   useEffect(() => {
     if (renderedCodeRef.current === code) return;
@@ -363,18 +384,12 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
         onMount={(editor) => { editorRef.current = editor; }}
         onChange={(nextValue) => {
           const nextCode = nextValue ?? '';
+          // 记录编辑器自身的最新文本，避免延迟同步 React 状态时再次读取完整 Monaco 模型。
+          renderedCodeRef.current = nextCode;
           onChange(nextCode);
         }}
         theme={theme}
-        options={{
-          minimap: { enabled: false },
-          fontSize,
-          fontFamily: 'JetBrains Mono, Consolas, monospace',
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          padding: { top: 16 },
-          wordWrap: 'on',
-        }}
+        options={editorOptions}
       />
     </Suspense>
   );

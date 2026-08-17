@@ -90,7 +90,7 @@ monaco.editor.defineTheme(MONACO_THEME_NAMES.dark, {
   },
 });
 
-const CHANGE_SYNC_DELAY = 500;
+const CHANGE_SYNC_DELAY = 700;
 
 /**
  * @monaco-editor/react 收到 onChange 后会在每次内容变化时读取完整模型。

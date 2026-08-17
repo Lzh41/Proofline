@@ -45,6 +45,11 @@ import styles from './Pages.module.css';
 
 const MonacoEditor = lazy(() => import('../lib/localMonaco'));
 
+// 编辑器文本本身由 Monaco 非受控维护；页面状态只需在短暂停顿后合并一次。
+// 草稿保存与页面状态同步错开，避免每个删除操作都触发完整页面重渲染和 SQLite 快照写入。
+const EDITOR_STATE_SYNC_DELAY = 320;
+const DRAFT_SAVE_DELAY = 500;
+
 type AiStatus = 'idle' | 'streaming' | 'cancelling' | 'done' | 'cancelled' | 'error';
 interface AiCoachTurn {
   id: string;
@@ -527,7 +532,7 @@ export function SolvePage() {
       codeStateTimerRef.current = undefined;
       // 编辑器本身是非受控的；将页面状态同步放入 transition，避免每个字符阻塞 Monaco 的输入帧。
       startTransition(() => setCode(codeRef.current));
-    }, 320);
+    }, EDITOR_STATE_SYNC_DELAY);
   }, []);
   const handleEditorChange = useCallback((nextCode: string) => {
     codeProblemIdRef.current = problem?.id;
@@ -632,7 +637,7 @@ export function SolvePage() {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
       void persistDraft();
-    }, 500);
+    }, DRAFT_SAVE_DELAY);
     // 代码状态变化时只取消旧定时器，不要在 effect 清理阶段立即写库。
     // 否则每次输入触发的 React 重渲染都会变成一次同步 SQLite 写入，造成明显卡顿。
     return () => window.clearTimeout(saveTimer.current);

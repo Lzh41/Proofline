@@ -14,7 +14,9 @@ use std::os::windows::process::CommandExt;
 
 const MAX_SOURCE_BYTES: usize = 512_000;
 const MAX_OUTPUT_BYTES: usize = 128_000;
-const COMPILE_TIMEOUT: Duration = Duration::from_secs(20);
+// Windows CI 首次调用 MinGW/LLVM 时可能需要几十秒完成工具链冷启动；
+// 编译仍有明确上限，但不应因为冷启动被误判为 runner 故障。
+const COMPILE_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -93,7 +95,10 @@ fn run_cpp_code_blocking(request: NativeCodeRunRequest) -> Result<NativeCodeRunR
         return Ok(NativeCodeRunResult {
             ok: false,
             output: compile.stdout,
-            error: Some("C++17 编译超过 20 秒，已强制终止。".to_string()),
+            error: Some(format!(
+                "C++17 编译超过 {} 秒，已强制终止。",
+                COMPILE_TIMEOUT.as_secs()
+            )),
             duration_ms: compile.duration.as_secs_f64() * 1000.0,
             timed_out: true,
         });
@@ -306,7 +311,9 @@ mod tests {
 
     #[test]
     fn cpp_runner_compiles_and_executes_when_compiler_is_available() {
-        let _guard = CPP_TEST_LOCK.lock().unwrap();
+        let _guard = CPP_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if find_cpp_compiler().is_err() {
             return;
         }
@@ -322,7 +329,9 @@ mod tests {
 
     #[test]
     fn cpp_runner_terminates_an_infinite_loop() {
-        let _guard = CPP_TEST_LOCK.lock().unwrap();
+        let _guard = CPP_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if find_cpp_compiler().is_err() {
             return;
         }

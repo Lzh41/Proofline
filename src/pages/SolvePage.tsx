@@ -1,5 +1,6 @@
 import { lazy, memo, startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import type { EditorProps } from '@monaco-editor/react';
+import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import {
   AlertTriangle,
   ArrowUpToLine,
@@ -275,6 +276,85 @@ const LANGUAGE_ALIASES: Record<string, string[]> = {
   typescript: ['typescript', 'ts'],
 };
 
+interface StickyScope {
+  lineNumber: number;
+  endLineNumber: number;
+  label: string;
+  indent: number;
+}
+
+function stickyIndent(line: string): number {
+  let indent = 0;
+  for (const character of line) {
+    if (character === ' ') indent += 1;
+    else if (character === '\t') indent += 4;
+    else break;
+  }
+  return indent;
+}
+
+function stickyDeclaration(line: string, language: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('*')) return null;
+  const typeMatch = trimmed.match(/^(?:(?:export|default|public|private|protected|static|abstract|final|async)\s+)*(class|struct|interface|enum)\s+([A-Za-z_$][\w$]*)/);
+  if (typeMatch) return `${typeMatch[1]} ${typeMatch[2]}`;
+  if (language === 'python') {
+    const functionMatch = trimmed.match(/^(?:async\s+)?def\s+([A-Za-z_$][\w$]*)/);
+    if (functionMatch) return `${functionMatch[1]}()`;
+    return null;
+  }
+  const namedFunction = trimmed.match(/^(?:(?:export|default|async)\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/);
+  if (namedFunction) return `${namedFunction[1]}()`;
+  const arrowFunction = trimmed.match(/^(?:(?:export|default)\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/);
+  if (arrowFunction && (language === 'javascript' || language === 'typescript')) return `${arrowFunction[1]}()`;
+  const method = trimmed.match(/^(?:(?:export|default|public|private|protected|static|async|virtual|inline|constexpr|const|final)\s+)*(?:[A-Za-z_$][\w$:<>&*\[\]]*\s+)?(~?[A-Za-z_$][\w$]*)\s*\([^;\n]*\)\s*(?::\s*[^{}]+)?(?:\{|$)/);
+  if (method && !new Set(['if', 'for', 'while', 'switch', 'catch', 'with', 'return']).has(method[1])) return `${method[1]}()`;
+  return null;
+}
+
+export function stickyScopeRanges(lines: string[], language: string): StickyScope[] {
+  const scopes: StickyScope[] = [];
+  const braceBefore: number[] = [];
+  const braceAfter: number[] = [];
+  let depth = 0;
+  lines.forEach((line, index) => {
+    braceBefore[index] = depth;
+    depth = Math.max(0, depth + (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length);
+    braceAfter[index] = depth;
+    const label = stickyDeclaration(line, language);
+    if (label) scopes.push({ lineNumber: index + 1, endLineNumber: lines.length, label, indent: stickyIndent(line) });
+  });
+  scopes.forEach((scope, scopeIndex) => {
+    const lineIndex = scope.lineNumber - 1;
+    const openingLine = lines.findIndex((line, index) => index >= lineIndex && index < Math.min(lines.length, lineIndex + 3) && line.includes('{'));
+    if (openingLine === lineIndex && lines[lineIndex].includes('}')) {
+      scope.endLineNumber = scope.lineNumber;
+      return;
+    }
+    if (openingLine >= 0) {
+      const openingDepth = braceAfter[openingLine];
+      for (let index = openingLine + 1; index < lines.length; index += 1) {
+        if (braceAfter[index] < openingDepth) {
+          scope.endLineNumber = index + 1;
+          break;
+        }
+      }
+    } else {
+      const nextScope = scopes.slice(scopeIndex + 1).find((next) => next.indent <= scope.indent);
+      if (nextScope) scope.endLineNumber = Math.max(scope.lineNumber, nextScope.lineNumber - 1);
+    }
+    if (scope.endLineNumber < scope.lineNumber) scope.endLineNumber = scope.lineNumber;
+  });
+  return scopes;
+}
+
+export function visibleStickyScopes(lines: string[], language: string, firstVisibleLine: number): StickyScope[] {
+  return stickyScopeRanges(lines, language)
+    .filter((scope) => scope.lineNumber < firstVisibleLine && scope.endLineNumber >= firstVisibleLine)
+    .sort((left, right) => left.lineNumber - right.lineNumber)
+    .slice(-3);
+}
+
 const PLATFORM_SOURCES = new Set<Problem['source']>(['leetcode-cn', 'leetcode', 'nowcoder']);
 
 function editableExamples(examples: readonly ProblemExample[]): ProblemExample[] {
@@ -351,7 +431,9 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
   fontSize: number;
   onChange: (value: string) => void;
 }) {
-  const editorRef = useRef<{ getValue: () => string; setValue: (value: string) => void } | null>(null);
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const stickySubscriptionsRef = useRef<Array<{ dispose: () => void }>>([]);
+  const [stickyScopes, setStickyScopes] = useState<StickyScope[]>([]);
   const renderedCodeRef = useRef(code);
   const editorOptions = useMemo<EditorProps['options']>(() => ({
     minimap: { enabled: false },
@@ -363,15 +445,28 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     // 保留分栏拖动所需的自动布局，关闭会随每次编辑重新计算的高频装饰与软换行。
     wordWrap: 'off',
     codeLens: false,
-    folding: false,
+    folding: true,
     occurrencesHighlight: 'off',
     selectionHighlight: false,
-    parameterHints: { enabled: false },
-    quickSuggestions: false,
-    suggestOnTriggerCharacters: false,
-    wordBasedSuggestions: 'off',
+    parameterHints: { enabled: true },
+    quickSuggestions: { other: true, comments: false, strings: false },
+    suggestOnTriggerCharacters: true,
+    wordBasedSuggestions: 'currentDocument',
+    suggestSelection: 'first',
+    tabCompletion: 'on',
+    acceptSuggestionOnCommitCharacter: true,
+    autoClosingBrackets: 'always',
+    autoClosingQuotes: 'always',
+    autoIndent: 'full',
+    suggest: { filterGraceful: true, showMethods: true, showFunctions: true, showVariables: true, showKeywords: true, showSnippets: true },
     renderValidationDecorations: 'off',
-    stickyScroll: { enabled: false },
+    stickyScroll: {
+      enabled: true,
+      maxLineCount: 3,
+      // 基础语言贡献没有完整 AST；缩进模型跨 C++/Python/JS/TS 都能稳定识别声明行。
+      defaultModel: 'indentationModel',
+      scrollWithEditor: true,
+    },
   }), [fontSize]);
 
   useEffect(() => {
@@ -380,23 +475,55 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     if (editorRef.current && editorRef.current.getValue() !== code) editorRef.current.setValue(code);
   }, [code]);
 
+  useEffect(() => () => {
+    stickySubscriptionsRef.current.forEach((subscription) => subscription.dispose());
+    stickySubscriptionsRef.current = [];
+  }, []);
+
   return (
-    <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
-      <MonacoEditor
-        height="100%"
-        language={language === 'cpp' ? 'cpp' : language}
-        defaultValue={code}
-        onMount={(editor) => { editorRef.current = editor; }}
-        onChange={(nextValue) => {
-          const nextCode = nextValue ?? '';
-          // 记录编辑器自身的最新文本，避免延迟同步 React 状态时再次读取完整 Monaco 模型。
-          renderedCodeRef.current = nextCode;
-          onChange(nextCode);
-        }}
-        theme={theme}
-        options={editorOptions}
-      />
-    </Suspense>
+    <div className={styles.editorSurface}>
+      {stickyScopes.length > 0 && (
+        <div className={styles.editorSticky} aria-label="当前代码作用域" role="status">
+          {stickyScopes.map((scope) => (
+            <span className={styles.editorStickyLine} key={`${scope.lineNumber}-${scope.label}`}>
+              <small>{scope.lineNumber}</small>{scope.label}
+            </span>
+          ))}
+        </div>
+      )}
+      <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
+        <MonacoEditor
+          height="100%"
+          language={language === 'cpp' ? 'cpp' : language}
+          defaultValue={code}
+          onMount={(editor) => {
+            editorRef.current = editor;
+            stickySubscriptionsRef.current.forEach((subscription) => subscription.dispose());
+            const syncStickyScopes = () => {
+              const model = editor.getModel();
+              const visibleRange = editor.getVisibleRanges()[0];
+              const currentPosition = editor.getPosition();
+              const firstVisibleLine = visibleRange?.startLineNumber ?? currentPosition?.lineNumber ?? 1;
+              setStickyScopes(model ? visibleStickyScopes(model.getLinesContent(), language, firstVisibleLine) : []);
+            };
+            syncStickyScopes();
+            stickySubscriptionsRef.current = [
+              editor.onDidScrollChange(syncStickyScopes),
+              editor.onDidChangeModelContent(syncStickyScopes),
+              editor.onDidChangeCursorPosition(syncStickyScopes),
+            ];
+          }}
+          onChange={(nextValue) => {
+            const nextCode = nextValue ?? '';
+            // 记录编辑器自身的最新文本，避免延迟同步 React 状态时再次读取完整 Monaco 模型。
+            renderedCodeRef.current = nextCode;
+            onChange(nextCode);
+          }}
+          theme={theme}
+          options={editorOptions}
+        />
+      </Suspense>
+    </div>
   );
 });
 

@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot } from '../lib/data';
-import { SolvePage } from '../pages/SolvePage';
+import { SolvePage, visibleStickyScopes } from '../pages/SolvePage';
 import { useAppStore } from '../store/useAppStore';
 import type { Problem } from '../types';
 
@@ -23,7 +23,12 @@ vi.mock('../lib/localMonaco', () => ({
   }: {
     defaultValue: string;
     onChange?: (value: string) => void;
-    options?: { fontSize?: number };
+    options?: {
+      fontSize?: number;
+      stickyScroll?: { enabled?: boolean };
+      tabCompletion?: string;
+      quickSuggestions?: unknown;
+    };
   }) => {
     const editorRef = useRef<HTMLTextAreaElement>(null);
     useEffect(() => {
@@ -34,6 +39,9 @@ vi.mock('../lib/localMonaco', () => ({
         ref={editorRef}
         aria-label="代码编辑器 Mock"
         data-font-size={String(options?.fontSize ?? '')}
+        data-sticky-scroll={String(options?.stickyScroll?.enabled ?? false)}
+        data-tab-completion={String(options?.tabCompletion ?? '')}
+        data-quick-suggestions={String(options?.quickSuggestions !== undefined)}
         style={{ fontSize: options?.fontSize ? `${options.fontSize}px` : undefined }}
         defaultValue={defaultValue}
         onChange={(event) => onChange?.(event.target.value)}
@@ -99,6 +107,41 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('做题页题库导航', () => {
+  it('按语言识别当前函数和类作用域，供 sticky 标题使用', () => {
+    const cppLines = `class Solver {
+public:
+    int add(int a, int b) {
+        return a + b;
+    }
+};
+int helper(int value) {
+    return value * 2;
+}`.split('\n');
+    expect(visibleStickyScopes(cppLines, 'cpp', 4).map((scope) => scope.label)).toEqual(['class Solver', 'add()']);
+
+    const pythonLines = `class Solver:
+    def add(self, value):
+        return value + 1
+
+def helper(value):
+    return value * 2`.split('\n');
+    expect(visibleStickyScopes(pythonLines, 'python', 3).map((scope) => scope.label)).toEqual(['class Solver', 'add()']);
+
+    const scriptLines = `class Solver {
+  add(value) {
+    return value + 1;
+  }
+}
+const helper = (value) => value * 2;`.split('\n');
+    expect(visibleStickyScopes(scriptLines, 'javascript', 3).map((scope) => scope.label)).toEqual(['class Solver', 'add()']);
+
+    const typeLines = `interface Solver {
+  value: number;
+}
+const helper = (value: number): number => value * 2;`.split('\n');
+    expect(visibleStickyScopes(typeLines, 'typescript', 2).map((scope) => scope.label)).toEqual(['interface Solver']);
+  });
+
   it('直接打开做题页时恢复上次关闭前的题目', async () => {
     useAppStore.setState((state) => ({
       settings: { ...state.settings, lastSolveProblemId: 'algo-lis' } as typeof state.settings,
@@ -467,6 +510,19 @@ describe('做题页题库导航', () => {
 
     await waitFor(() => expect(screen.getByLabelText('代码编辑器 Mock')).toHaveAttribute('data-font-size', '20'));
     expect((useAppStore.getState().settings as { editorFontSize?: number }).editorFontSize).toBe(20);
+  });
+
+  it('编辑器启用 sticky scroll 与 IDE 补全交互选项', async () => {
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    const editor = await screen.findByLabelText('代码编辑器 Mock');
+    expect(editor).toHaveAttribute('data-sticky-scroll', 'true');
+    expect(editor).toHaveAttribute('data-tab-completion', 'on');
+    expect(editor).toHaveAttribute('data-quick-suggestions', 'true');
   });
 
   it('长题面通过独立阅读层完整显示并保留换行', async () => {

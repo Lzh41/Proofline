@@ -78,8 +78,8 @@ Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从�
 
 前往 [Releases](https://github.com/Lzh41/Proofline/releases) 下载：
 
-- `Proofline_0.1.3_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
-- `Proofline_0.1.3_x64-portable.exe`：Windows x64 便携版，免安装运行。
+- `Proofline_0.1.4_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
+- `Proofline_0.1.4_x64-portable.exe`：Windows x64 便携版，免安装运行。
 
 当前版本未配置商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。下载后请先核对 Release 页面中的 SHA-256。若系统没有 WebView2 Runtime，安装阶段需要联网下载安装运行时。
 

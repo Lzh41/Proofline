@@ -432,8 +432,6 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
   onChange: (value: string) => void;
 }) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const stickySubscriptionsRef = useRef<Array<{ dispose: () => void }>>([]);
-  const [stickyScopes, setStickyScopes] = useState<StickyScope[]>([]);
   const renderedCodeRef = useRef(code);
   const editorOptions = useMemo<EditorProps['options']>(() => ({
     minimap: { enabled: false },
@@ -463,8 +461,8 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     stickyScroll: {
       enabled: true,
       maxLineCount: 3,
-      // 基础语言贡献没有完整 AST；缩进模型跨 C++/Python/JS/TS 都能稳定识别声明行。
-      defaultModel: 'indentationModel',
+      // 使用统一文档符号范围，让原生 sticky widget 保留真实代码行的高亮、缩进和行高。
+      defaultModel: 'outlineModel',
       scrollWithEditor: true,
     },
   }), [fontSize]);
@@ -475,22 +473,8 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     if (editorRef.current && editorRef.current.getValue() !== code) editorRef.current.setValue(code);
   }, [code]);
 
-  useEffect(() => () => {
-    stickySubscriptionsRef.current.forEach((subscription) => subscription.dispose());
-    stickySubscriptionsRef.current = [];
-  }, []);
-
   return (
     <div className={styles.editorSurface}>
-      {stickyScopes.length > 0 && (
-        <div className={styles.editorSticky} aria-label="当前代码作用域" role="status">
-          {stickyScopes.map((scope) => (
-            <span className={styles.editorStickyLine} key={`${scope.lineNumber}-${scope.label}`}>
-              <small>{scope.lineNumber}</small>{scope.label}
-            </span>
-          ))}
-        </div>
-      )}
       <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
         <MonacoEditor
           height="100%"
@@ -498,20 +482,6 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
           defaultValue={code}
           onMount={(editor) => {
             editorRef.current = editor;
-            stickySubscriptionsRef.current.forEach((subscription) => subscription.dispose());
-            const syncStickyScopes = () => {
-              const model = editor.getModel();
-              const visibleRange = editor.getVisibleRanges()[0];
-              const currentPosition = editor.getPosition();
-              const firstVisibleLine = visibleRange?.startLineNumber ?? currentPosition?.lineNumber ?? 1;
-              setStickyScopes(model ? visibleStickyScopes(model.getLinesContent(), language, firstVisibleLine) : []);
-            };
-            syncStickyScopes();
-            stickySubscriptionsRef.current = [
-              editor.onDidScrollChange(syncStickyScopes),
-              editor.onDidChangeModelContent(syncStickyScopes),
-              editor.onDidChangeCursorPosition(syncStickyScopes),
-            ];
           }}
           onChange={(nextValue) => {
             const nextCode = nextValue ?? '';

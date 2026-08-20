@@ -232,7 +232,7 @@ function declarationForLine(line: string, language: string): { name: string; kin
     };
   }
 
-  const pythonFunction = language === 'python' && trimmed.match(/^(?:async\\s+)?def\\s+([A-Za-z_$][\\w$]*)/);
+  const pythonFunction = language === 'python' && trimmed.match(/^(?:async\s+)?def\s+([A-Za-z_$][\w$]*)/);
   if (pythonFunction) {
     const name = pythonFunction[1];
     return { name, kind: monaco.languages.SymbolKind.Function, nameStartColumn: line.indexOf(name) + 1 };

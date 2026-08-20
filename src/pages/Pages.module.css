@@ -1555,43 +1555,6 @@
   overflow: hidden;
 }
 
-.editorSticky {
-  position: absolute;
-  z-index: 8;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 24px;
-  padding: 3px 12px 3px 54px;
-  border-bottom: 1px solid color-mix(in srgb, var(--editor-line) 86%, transparent);
-  color: var(--body);
-  background: color-mix(in srgb, var(--editor-bg) 95%, var(--accent));
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 12%, transparent);
-  pointer-events: none;
-  font-family: var(--font-code);
-  font-size: 10px;
-  line-height: 1.55;
-}
-
-.editorStickyLine {
-  display: flex;
-  align-items: center;
-  min-height: 16px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.editorStickyLine small {
-  width: 28px;
-  margin-right: 8px;
-  color: var(--muted);
-  font-size: 9px;
-  text-align: right;
-}
-
 .inlineTerminal {
   min-width: 0;
   min-height: 42px;

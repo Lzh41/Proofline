@@ -190,6 +190,11 @@ type ParsedDocumentSymbol = {
   endLineNumber: number;
 };
 
+type DocumentSymbolTreeNode = {
+  symbol: ParsedDocumentSymbol;
+  children: DocumentSymbolTreeNode[];
+};
+
 const SYMBOL_EXCLUSIONS = new Set([
   'if', 'for', 'while', 'switch', 'catch', 'with', 'else', 'try', 'do', 'return', 'sizeof',
 ]);
@@ -260,6 +265,52 @@ function declarationForLine(line: string, language: string): { name: string; kin
   return null;
 }
 
+function containsSymbol(parent: ParsedDocumentSymbol, child: ParsedDocumentSymbol): boolean {
+  return parent.lineNumber < child.lineNumber && parent.endLineNumber >= child.endLineNumber;
+}
+
+function buildDocumentSymbolTree(symbols: ParsedDocumentSymbol[]): DocumentSymbolTreeNode[] {
+  const roots: DocumentSymbolTreeNode[] = [];
+  const stack: DocumentSymbolTreeNode[] = [];
+  const orderedSymbols = [...symbols].sort((left, right) => (
+    left.lineNumber - right.lineNumber || right.endLineNumber - left.endLineNumber
+  ));
+
+  orderedSymbols.forEach((symbol) => {
+    while (stack.length && !containsSymbol(stack[stack.length - 1].symbol, symbol)) stack.pop();
+    const node: DocumentSymbolTreeNode = { symbol, children: [] };
+    if (stack.length) stack[stack.length - 1].children.push(node);
+    else roots.push(node);
+    stack.push(node);
+  });
+
+  return roots;
+}
+
+function documentSymbolFromTree(node: DocumentSymbolTreeNode, model: monaco.editor.ITextModel): monaco.languages.DocumentSymbol {
+  const { symbol } = node;
+  const children = node.children.map((child) => documentSymbolFromTree(child, model));
+  return {
+    name: symbol.name,
+    detail: symbol.kind === monaco.languages.SymbolKind.Class || symbol.kind === monaco.languages.SymbolKind.Interface ? '当前文件类型' : '当前文件作用域',
+    kind: symbol.kind,
+    tags: [],
+    range: {
+      startLineNumber: symbol.lineNumber,
+      startColumn: 1,
+      endLineNumber: symbol.endLineNumber,
+      endColumn: model.getLineMaxColumn(symbol.endLineNumber),
+    },
+    selectionRange: {
+      startLineNumber: symbol.lineNumber,
+      startColumn: symbol.nameStartColumn,
+      endLineNumber: symbol.lineNumber,
+      endColumn: symbol.nameStartColumn + symbol.name.length,
+    },
+    ...(children.length ? { children } : {}),
+  };
+}
+
 function parseDocumentSymbols(model: monaco.editor.ITextModel): monaco.languages.DocumentSymbol[] {
   const language = completionLanguage(model.getLanguageId());
   const lines = model.getLinesContent();
@@ -305,24 +356,7 @@ function parseDocumentSymbols(model: monaco.editor.ITextModel): monaco.languages
     if (symbol.endLineNumber < symbol.lineNumber) symbol.endLineNumber = symbol.lineNumber;
   });
 
-  return parsed.map((symbol) => ({
-    name: symbol.name,
-    detail: symbol.kind === monaco.languages.SymbolKind.Class || symbol.kind === monaco.languages.SymbolKind.Interface ? '当前文件类型' : '当前文件作用域',
-    kind: symbol.kind,
-    tags: [],
-    range: {
-      startLineNumber: symbol.lineNumber,
-      startColumn: 1,
-      endLineNumber: symbol.endLineNumber,
-      endColumn: model.getLineMaxColumn(symbol.endLineNumber),
-    },
-    selectionRange: {
-      startLineNumber: symbol.lineNumber,
-      startColumn: symbol.nameStartColumn,
-      endLineNumber: symbol.lineNumber,
-      endColumn: symbol.nameStartColumn + symbol.name.length,
-    },
-  }));
+  return buildDocumentSymbolTree(parsed).map((node) => documentSymbolFromTree(node, model));
 }
 
 const documentSymbolProvider: monaco.languages.DocumentSymbolProvider = {

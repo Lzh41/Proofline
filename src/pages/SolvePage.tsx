@@ -352,7 +352,7 @@ export function visibleStickyScopes(lines: string[], language: string, firstVisi
   return stickyScopeRanges(lines, language)
     .filter((scope) => scope.lineNumber < firstVisibleLine && scope.endLineNumber >= firstVisibleLine)
     .sort((left, right) => left.lineNumber - right.lineNumber)
-    .slice(-3);
+    .slice(-5);
 }
 
 const PLATFORM_SOURCES = new Set<Problem['source']>(['leetcode-cn', 'leetcode', 'nowcoder']);
@@ -460,7 +460,8 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     renderValidationDecorations: 'off',
     stickyScroll: {
       enabled: true,
-      maxLineCount: 3,
+      // 与 VS Code 等 IDE 的默认行为一致，保留当前作用域链最多 5 行。
+      maxLineCount: 5,
       // 使用统一文档符号范围，让原生 sticky widget 保留真实代码行的高亮、缩进和行高。
       defaultModel: 'outlineModel',
       scrollWithEditor: true,

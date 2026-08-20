@@ -25,7 +25,7 @@ vi.mock('../lib/localMonaco', () => ({
     onChange?: (value: string) => void;
     options?: {
       fontSize?: number;
-      stickyScroll?: { enabled?: boolean };
+      stickyScroll?: { enabled?: boolean; maxLineCount?: number; defaultModel?: string };
       tabCompletion?: string;
       quickSuggestions?: unknown;
     };
@@ -40,6 +40,8 @@ vi.mock('../lib/localMonaco', () => ({
         aria-label="代码编辑器 Mock"
         data-font-size={String(options?.fontSize ?? '')}
         data-sticky-scroll={String(options?.stickyScroll?.enabled ?? false)}
+        data-sticky-max-lines={String(options?.stickyScroll?.maxLineCount ?? '')}
+        data-sticky-model={String(options?.stickyScroll?.defaultModel ?? '')}
         data-tab-completion={String(options?.tabCompletion ?? '')}
         data-quick-suggestions={String(options?.quickSuggestions !== undefined)}
         style={{ fontSize: options?.fontSize ? `${options.fontSize}px` : undefined }}
@@ -134,6 +136,17 @@ def helper(value):
 }
 const helper = (value) => value * 2;`.split('\n');
     expect(visibleStickyScopes(scriptLines, 'javascript', 3).map((scope) => scope.label)).toEqual(['class Solver', 'add()']);
+
+    const deeplyNestedLines = `class Outer {
+  method() {
+    if (ready) {
+      nested() {
+        return true;
+      }
+    }
+  }
+}`.split('\n');
+    expect(visibleStickyScopes(deeplyNestedLines, 'javascript', 6).map((scope) => scope.label)).toEqual(['class Outer', 'method()', 'nested()']);
 
     const typeLines = `interface Solver {
   value: number;
@@ -521,6 +534,8 @@ const helper = (value: number): number => value * 2;`.split('\n');
 
     const editor = await screen.findByLabelText('代码编辑器 Mock');
     expect(editor).toHaveAttribute('data-sticky-scroll', 'true');
+    expect(editor).toHaveAttribute('data-sticky-max-lines', '5');
+    expect(editor).toHaveAttribute('data-sticky-model', 'outlineModel');
     expect(editor).toHaveAttribute('data-tab-completion', 'on');
     expect(editor).toHaveAttribute('data-quick-suggestions', 'true');
   });

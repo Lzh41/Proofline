@@ -433,6 +433,15 @@ function ensureCompletionProvider(): void {
   if (!documentSymbolProviderDisposable) documentSymbolProviderDisposable = monaco.languages.registerDocumentSymbolProvider('*', documentSymbolProvider);
 }
 
+/**
+ * 补全浮层是否已经打开。
+ * Monaco 的 suggest widget 在显示/隐藏时切换 `visible` 类，且始终挂载在编辑器 DOM 内；
+ * 用它判断可以避免在浮层已打开时再次 triggerSuggest，防止浮层被反复弹回。
+ */
+function isSuggestWidgetVisible(editor: monaco.editor.IStandaloneCodeEditor): boolean {
+  return Boolean(editor.getDomNode()?.querySelector('.suggest-widget.visible'));
+}
+
 function shouldTriggerSuggestions(editor: monaco.editor.IStandaloneCodeEditor): boolean {
   const model = editor.getModel();
   const position = editor.getPosition();
@@ -507,6 +516,8 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
     const scheduleSuggestion = () => {
       window.clearTimeout(suggestTimerRef.current);
       suggestTimerRef.current = window.setTimeout(() => {
+        // 浮层已打开时不重复触发，避免刷新/闪烁。
+        if (isSuggestWidgetVisible(editor)) return;
         if (shouldTriggerSuggestions(editor)) editor.trigger('proofline', 'editor.action.triggerSuggest', {});
       }, SUGGEST_TRIGGER_DELAY);
     };
@@ -515,7 +526,8 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
         pendingEventRef.current = event;
         window.clearTimeout(syncTimerRef.current);
         syncTimerRef.current = window.setTimeout(flushPendingChange, CHANGE_SYNC_DELAY);
-        scheduleSuggestion();
+        // 注意：不能在内容变化时自动触发补全 —— Tab/回车接受补全后插入的文本
+        // 会让 shouldTriggerSuggestions 再次命中，导致补全浮层被立刻弹回、看起来“卡住”不消失。
       }),
       editor.onKeyDown((event) => {
         const key = event.browserEvent.key;
@@ -538,6 +550,9 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
         wordBasedSuggestions: 'currentDocument',
         suggestSelection: 'first',
         tabCompletion: 'on',
+        // 回车始终用于换行、不再被补全吞掉；接受补全统一用 Tab。
+        // （补全浮层开着时按回车会先被 acceptSuggestionOnEnter 拦截，这正是“回车切行被卡住”的另一半原因）
+        acceptSuggestionOnEnter: 'off',
         acceptSuggestionOnCommitCharacter: true,
         autoClosingBrackets: 'always',
         autoClosingQuotes: 'always',

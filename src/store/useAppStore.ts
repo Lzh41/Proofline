@@ -61,7 +61,7 @@ let browserAiController: AbortController | null = null;
 let persistenceQueue: Promise<void> = Promise.resolve();
 let initializationPromise: Promise<void> | null = null;
 
-const AI_REQUEST_TIMEOUT_MS = 45_000;
+const AI_REQUEST_TIMEOUT_MS = 120_000;
 const AI_PROMPT_MAX_BYTES = 96 * 1024;
 const AI_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -71,6 +71,8 @@ function aiCompletionsUrl(baseUrl: string): string {
 }
 
 function completionTokenBudget(prompt: string): number {
+  // 最近练习复盘要覆盖多道题并输出 5 个章节，预算不足会被截断成半篇笔记。
+  if (prompt.includes('最近练习复盘')) return 4_096;
   if (prompt.includes('本轮请求：生成主题面试题')) return 3_000;
   if (prompt.includes('本轮请求：给完整代码')) return 4_096;
   return 1_536;
@@ -391,7 +393,7 @@ async function browserAiRequest(settings: AppSettings, prompt: string, onChunk?:
   browserAiController?.abort();
   const controller = new AbortController();
   browserAiController = controller;
-  const timer = globalThis.setTimeout(() => controller.abort(new Error('AI 请求超时（45 秒），请检查接口地址、模型 ID 或网络连接。')), AI_REQUEST_TIMEOUT_MS);
+  const timer = globalThis.setTimeout(() => controller.abort(new Error(`AI 请求超时（${AI_REQUEST_TIMEOUT_MS / 1000} 秒），请检查接口地址、模型 ID 或网络连接。`)), AI_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(aiCompletionsUrl(settings.aiBaseUrl), {
       method: 'POST',

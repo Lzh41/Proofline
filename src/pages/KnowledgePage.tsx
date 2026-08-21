@@ -35,6 +35,16 @@ export function KnowledgePage() {
       setMessage('请先在设置中保存 AI 密钥并填写模型 ID。');
       return;
     }
+    // 与做题页/面试页保持一致：AI 请求前必须确认隐私提示，否则 requestAiHint
+    // 会直接抛错，导致这里只能显示“分析失败”却没有可操作的确认入口。
+    if (!store.settings.privacyConfirmed) {
+      const confirmed = window.confirm('本次会把最近完成的练习代码、运行结果和题面发送到你配置的 AI 服务。是否继续？');
+      if (!confirmed) {
+        setMessage('已取消分析。');
+        return;
+      }
+      await store.updateSettings?.({ privacyConfirmed: true });
+    }
     setAnalyzing(true);
     setMessage('正在整理上次分析之后新增的练习题…');
     try {

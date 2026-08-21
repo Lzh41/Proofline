@@ -181,6 +181,27 @@ function collectDocumentSymbols(source: string, keywords: Set<string>): { variab
   return { variables, functions, classes };
 }
 
+/**
+ * 文档符号扫描结果按 model 版本缓存。
+ * quickSuggestions 与自定义定时器会在同一停顿内先后触发补全，两次扫描完全相同；
+ * 缓存让第二次直接命中，避免删除/输入停顿后重复做整篇文档的正则扫描。
+ */
+const documentSymbolsCache = new WeakMap<monaco.editor.ITextModel, {
+  version: number;
+  language: string;
+  result: { variables: Set<string>; functions: Set<string>; classes: Set<string> };
+}>();
+
+function cachedDocumentSymbols(model: monaco.editor.ITextModel, language: string): { variables: Set<string>; functions: Set<string>; classes: Set<string> } {
+  const cached = documentSymbolsCache.get(model);
+  const version = model.getVersionId();
+  if (cached && cached.version === version && cached.language === language) return cached.result;
+  const keywords = new Set(LANGUAGE_KEYWORDS[language] ?? []);
+  const result = collectDocumentSymbols(model.getValue(), keywords);
+  documentSymbolsCache.set(model, { version, language, result });
+  return result;
+}
+
 type ParsedDocumentSymbol = {
   name: string;
   kind: monaco.languages.SymbolKind;
@@ -375,7 +396,7 @@ const codeCompletionProvider: monaco.languages.CompletionItemProvider = {
     const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
     // 语言片段优先于通用片段，避免 Python/JS 的 `for` 被 C 风格模板抢先匹配。
     const snippets = [...(LANGUAGE_SNIPPETS[language] ?? []), ...COMMON_SNIPPETS];
-    const symbols = collectDocumentSymbols(model.getValue(), keywords);
+    const symbols = cachedDocumentSymbols(model, language);
     const suggestions: monaco.languages.CompletionItem[] = [];
     const seen = new Set<string>();
 
@@ -547,7 +568,9 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
         quickSuggestions: true,
         quickSuggestionsDelay: 80,
         suggestOnTriggerCharacters: true,
-        wordBasedSuggestions: 'currentDocument',
+        // 关闭 Monaco 原生的词库补全：它每次建议会话都会整篇扫描文档建词频表，
+        // 与下方自定义补全（已包含文档内全部标识符）重复；关闭可减半每次停顿的扫描开销。
+        wordBasedSuggestions: 'off',
         suggestSelection: 'first',
         tabCompletion: 'on',
         // 回车始终用于换行、不再被补全吞掉；接受补全统一用 Tab。

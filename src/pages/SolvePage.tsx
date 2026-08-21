@@ -1,4 +1,4 @@
-import { lazy, memo, startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import type { EditorProps } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import {
@@ -28,6 +28,8 @@ import {
   Terminal,
   TestTube2,
   Trash2,
+  Undo2,
+  Redo2,
   X,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -46,9 +48,8 @@ import styles from './Pages.module.css';
 
 const MonacoEditor = lazy(() => import('../lib/localMonaco'));
 
-// 编辑器文本本身由 Monaco 非受控维护；页面状态只需在短暂停顿后合并一次。
-// 草稿保存与页面状态同步错开，避免每个删除操作都触发完整页面重渲染和 SQLite 快照写入。
-const EDITOR_STATE_SYNC_DELAY = 320;
+// 编辑器文本本身由 Monaco 非受控维护；用户输入只更新 ref 与草稿保存定时器，
+// 不再同步 React 状态 —— 避免每个输入/删除停顿都触发整页重渲染造成卡顿。
 const DRAFT_SAVE_DELAY = 500;
 
 type AiStatus = 'idle' | 'streaming' | 'cancelling' | 'done' | 'cancelled' | 'error';
@@ -419,20 +420,29 @@ function problemPickerLabel(problem: Problem, practicedProblemIds: ReadonlySet<s
 }
 
 const CodeEditorSurface = memo(function CodeEditorSurface({
-  code,
+  defaultCode,
   language,
   theme,
   fontSize,
   onChange,
+  onEditorMount,
+  onHistoryChange,
 }: {
-  code: string;
+  defaultCode: string;
   language: string;
   theme: string;
   fontSize: number;
   onChange: (value: string) => void;
+  onEditorMount?: (editor: Monaco.editor.IStandaloneCodeEditor) => void;
+  onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
 }) {
-  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const renderedCodeRef = useRef(code);
+  // 撤销/还原可用状态订阅随组件卸载释放，避免题目/语言切换重挂载后泄漏。
+  const editorSubscriptionsRef = useRef<Monaco.IDisposable[]>([]);
+  useEffect(() => () => {
+    editorSubscriptionsRef.current.forEach((subscription) => subscription.dispose());
+    editorSubscriptionsRef.current = [];
+  }, []);
+
   const editorOptions = useMemo<EditorProps['options']>(() => ({
     minimap: { enabled: false },
     fontSize,
@@ -468,28 +478,34 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     },
   }), [fontSize]);
 
-  useEffect(() => {
-    if (renderedCodeRef.current === code) return;
-    renderedCodeRef.current = code;
-    if (editorRef.current && editorRef.current.getValue() !== code) editorRef.current.setValue(code);
-  }, [code]);
-
   return (
     <div className={styles.editorSurface}>
       <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
         <MonacoEditor
           height="100%"
           language={language === 'cpp' ? 'cpp' : language}
-          defaultValue={code}
+          defaultValue={defaultCode}
           onMount={(editor) => {
-            editorRef.current = editor;
+            onEditorMount?.(editor);
+            // 只在可用状态真正变化时通知父级，避免每次键入都触发页面重渲染。
+            let last = { canUndo: false, canRedo: false };
+            const syncHistory = () => {
+              const model = editor.getModel();
+              const next = { canUndo: Boolean(model?.canUndo()), canRedo: Boolean(model?.canRedo()) };
+              if (next.canUndo === last.canUndo && next.canRedo === last.canRedo) return;
+              last = next;
+              onHistoryChange?.(next.canUndo, next.canRedo);
+            };
+            editorSubscriptionsRef.current.forEach((subscription) => subscription.dispose());
+            editorSubscriptionsRef.current = [
+              editor.onDidChangeModelContent(syncHistory),
+              editor.onDidChangeModel(syncHistory),
+              editor.onDidFocusEditorText(syncHistory),
+              editor.onDidBlurEditorText(syncHistory),
+            ];
+            syncHistory();
           }}
-          onChange={(nextValue) => {
-            const nextCode = nextValue ?? '';
-            // 记录编辑器自身的最新文本，避免延迟同步 React 状态时再次读取完整 Monaco 模型。
-            renderedCodeRef.current = nextCode;
-            onChange(nextCode);
-          }}
+          onChange={(nextValue) => onChange(nextValue ?? '')}
           theme={theme}
           options={editorOptions}
         />
@@ -523,7 +539,11 @@ export function SolvePage() {
   const previousProblem = currentProblemIndex > 0 ? algorithmProblems[currentProblemIndex - 1] : undefined;
   const nextProblem = currentProblemIndex >= 0 && currentProblemIndex < algorithmProblems.length - 1 ? algorithmProblems[currentProblemIndex + 1] : undefined;
   const attempt = useMemo(() => store.attempts.filter((item) => item.problemId === problem?.id).sort((a, b) => b.startedAt - a.startedAt)[0], [problem?.id, store.attempts]);
-  const [code, setCode] = useState(() => initialEditorCode(problem, attempt, attempt?.language ?? store.settings.defaultLanguage ?? 'cpp', algorithmProblems));
+  // 编辑器文本由 Monaco 非受控维护，这里只保留“最近一次已知代码”的 ref，
+  // 用户输入不再同步 React 状态，避免每次输入/删除停顿后整页重渲染造成卡顿。
+  const codeRef = useRef(initialEditorCode(problem, attempt, attempt?.language ?? store.settings.defaultLanguage ?? 'cpp', algorithmProblems));
+  const [editorHistory, setEditorHistory] = useState({ canUndo: false, canRedo: false });
+  const codeEditorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const [language, setLanguage] = useState(attempt?.language ?? store.settings.defaultLanguage ?? 'cpp');
   const [seconds, setSeconds] = useState(attempt?.durationSeconds ?? 0);
   const [running, setRunning] = useState(false);
@@ -555,10 +575,8 @@ export function SolvePage() {
   const debugSessionRef = useRef<DebugSession | null>(null);
   const debugSessionIdRef = useRef('');
   const saveTimer = useRef<number | undefined>(undefined);
-  const codeStateTimerRef = useRef<number | undefined>(undefined);
   const layoutSaveTimerRef = useRef<number | undefined>(undefined);
   const pendingLayoutPatchRef = useRef<LayoutSettingPatch>({});
-  const codeRef = useRef(code);
   const loadedProblemIdRef = useRef<string | undefined>(undefined);
   const runningCodeRef = useRef(false);
   const draftAttemptIdRef = useRef<string | undefined>(attempt?.id);
@@ -619,23 +637,39 @@ export function SolvePage() {
 
   const updateEditorCode = useCallback((nextCode: string, immediate = false) => {
     codeRef.current = nextCode;
-    window.clearTimeout(codeStateTimerRef.current);
     if (immediate) {
-      codeStateTimerRef.current = undefined;
-      setCode(nextCode);
+      // 外部替换（切换题目/语言/恢复草稿）：直接推入编辑器，编辑器内容与 ref 保持一致。
+      const editor = codeEditorRef.current;
+      if (editor && editor.getValue() !== nextCode) editor.setValue(nextCode);
       return;
     }
-    // Monaco 直接写入 ref，稍后合并一次 React 状态，避免每个字符重排整个做题页。
-    codeStateTimerRef.current = window.setTimeout(() => {
-      codeStateTimerRef.current = undefined;
-      // 编辑器本身是非受控的；将页面状态同步放入 transition，避免每个字符阻塞 Monaco 的输入帧。
-      startTransition(() => setCode(codeRef.current));
-    }, EDITOR_STATE_SYNC_DELAY);
+    // 用户输入路径：编辑器本身已是最新文本，只重置草稿保存定时器，
+    // 不再同步 React 状态 —— 避免每个输入/删除停顿都触发整页重渲染造成卡顿。
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => void draftPersistRef.current(), DRAFT_SAVE_DELAY);
   }, []);
   const handleEditorChange = useCallback((nextCode: string) => {
     codeProblemIdRef.current = problem?.id;
     updateEditorCode(nextCode);
   }, [problem?.id, updateEditorCode]);
+  const handleCodeEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
+    codeEditorRef.current = editor;
+  }, []);
+  const handleEditorHistoryChange = useCallback((canUndo: boolean, canRedo: boolean) => {
+    setEditorHistory({ canUndo, canRedo });
+  }, []);
+  const undoCode = useCallback(() => {
+    const editor = codeEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    editor.trigger('toolbar', 'undo', null);
+  }, []);
+  const redoCode = useCallback(() => {
+    const editor = codeEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    editor.trigger('toolbar', 'redo', null);
+  }, []);
   const visibleCoachTurns = useMemo(() => {
     // 五个教练功能各自只展示最新回答；AI 解惑模块单独保留完整多轮记录。
     const latestByIntent = new Map<AiCoachIntent, AiCoachTurn>();
@@ -658,6 +692,9 @@ export function SolvePage() {
   languageRef.current = language;
   secondsRef.current = seconds;
   draftAttemptIdRef.current = attempt?.problemId === problem?.id ? attempt?.id : undefined;
+  // 渲染期同步“当前代码归属题目”：题目切换后草稿保存 effect 捕获到新题的 id，
+  // 守卫不再因旧题 id 误拦截恢复保存（旧逻辑依赖 code 状态变化让 effect 重跑才能捕获新值）。
+  codeProblemIdRef.current = problem?.id;
 
   const isCurrentProblemRequest = (generation: number, problemId: string) => (
     requestGenerationRef.current === generation && currentProblemIdRef.current === problemId
@@ -665,7 +702,6 @@ export function SolvePage() {
 
   useEffect(() => {
     return () => {
-      window.clearTimeout(codeStateTimerRef.current);
       flushLayoutSave();
     };
   }, [flushLayoutSave]);
@@ -736,10 +772,10 @@ export function SolvePage() {
     saveTimer.current = window.setTimeout(() => {
       void persistDraft();
     }, DRAFT_SAVE_DELAY);
-    // 代码状态变化时只取消旧定时器，不要在 effect 清理阶段立即写库。
-    // 否则每次输入触发的 React 重渲染都会变成一次同步 SQLite 写入，造成明显卡顿。
+    // 用户输入路径（updateEditorCode）会直接重置该定时器；这里只负责
+    // 题目/语言/练习记录变化时的重新排期，避免每次输入都写库造成卡顿。
     return () => window.clearTimeout(saveTimer.current);
-  }, [attempt?.id, code, language, problem, store.startAttempt, store.updateAttempt]);
+  }, [attempt?.id, language, problem, store.startAttempt, store.updateAttempt]);
 
   useEffect(() => () => {
     window.clearTimeout(saveTimer.current);
@@ -1539,12 +1575,21 @@ export function SolvePage() {
                   ? <button className="iconButton" title="开始计时" aria-label="开始计时" type="button" onClick={begin}><Play size={14} /></button>
                    : <button className="iconButton" title="暂停计时" aria-label="暂停计时" type="button" onClick={() => { setRunning(false); if (attempt?.id) void store.updateAttempt?.(attempt.id, { durationSeconds: secondsRef.current }); }}><Pause size={14} /></button>}
                 <button className="button buttonAccent" type="button" disabled={runningCode} onClick={runSample}><TestTube2 size={14} />{runningCode ? '运行中' : '运行全部样例'}</button>
-                <button className="iconButton" type="button" title="保存草稿" aria-label="保存草稿" disabled={!attempt?.id} onClick={() => attempt?.id && store.updateAttempt?.(attempt.id, { code: codeRef.current, language, durationSeconds: seconds })}><Save size={15} /></button>
+                <button className="iconButton" type="button" title="撤销 (Ctrl+Z)" aria-label="撤销" disabled={!editorHistory.canUndo} onClick={undoCode}><Undo2 size={15} /></button>
+                <button className="iconButton" type="button" title="还原 (Ctrl+Y)" aria-label="还原" disabled={!editorHistory.canRedo} onClick={redoCode}><Redo2 size={15} /></button>
               </div>
             </div>
 
             <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
-              <CodeEditorSurface code={code} language={language} theme={editorTheme} fontSize={editorFontSize} onChange={handleEditorChange} />
+              <CodeEditorSurface
+                defaultCode={codeRef.current}
+                language={language}
+                theme={editorTheme}
+                fontSize={editorFontSize}
+                onChange={handleEditorChange}
+                onEditorMount={handleCodeEditorMount}
+                onHistoryChange={handleEditorHistoryChange}
+              />
             </div>
 
             <section className={`${styles.inlineTerminal} ${terminalOpen ? styles.inlineTerminalOpen : ''}`} style={terminalStyle} data-testid="sample-terminal" aria-label="样例运行终端" role="log" aria-live="polite">

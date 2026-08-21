@@ -10,7 +10,9 @@ use uuid::Uuid;
 
 const KEYRING_SERVICE: &str = "com.xiti.desktop";
 const KEYRING_USER: &str = "ai-api-key";
-const AI_TIMEOUT_SECS: u64 = 45;
+// 最近练习复盘的提示词是全应用最大的（多题题面 + 代码 + 复盘记录），
+// 推理模型思考时间也长；45 秒过紧会频繁误报超时，120 秒兼顾稳定性。
+const AI_TIMEOUT_SECS: u64 = 120;
 const MAX_PROMPT_BYTES: usize = 96 * 1024;
 const MAX_STREAM_BUFFER_BYTES: usize = 2 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
@@ -63,6 +65,10 @@ impl SseDecoder {
         let mut events = Vec::new();
         self.parse_line(&line, &mut events)?;
         Ok(events)
+    }
+
+    fn is_done(&self) -> bool {
+        self.done
     }
 
     fn parse_line(&mut self, line: &[u8], events: &mut Vec<AiStreamEvent>) -> Result<(), String> {
@@ -235,6 +241,21 @@ fn coach_system(intent: &str) -> Result<String, String> {
     Ok(coach_system_prompt(intent, intent_label, instruction))
 }
 
+fn system_prompt_for(intent: &str, prompt: &str) -> Result<String, String> {
+    if prompt.contains("最近练习复盘") {
+        // 知识库“AI 分析最近练习”走的是 explain 意图，但系统提示必须换成
+        // 复盘格式，否则模型会收到“对话式回答、不要展开完整答案”的矛盾指令。
+        Ok(practice_review_system_prompt())
+    } else {
+        coach_system(intent)
+    }
+}
+
+fn practice_review_system_prompt() -> String {
+    "你是 Proofline 的知识库复盘助手。必须使用简体中文。用户会提供最近完成的练习记录，你需要把它们整理成一篇可直接保存为知识笔记的复习材料：先提炼共同考点，再逐题给出关键思路，然后归纳错误模式与可迁移模板，最后给出下一轮复习清单。必须严格按用户提示中给出的章节顺序输出，覆盖记录中的每一道题，引用其中真实的题目、结果和代码现象；不要输出泛泛鼓励，不要反问用户，也不要输出完整可提交的答案代码。"
+        .to_string()
+}
+
 #[tauri::command]
 pub async fn test_ai_connection(base_url: String, model: String) -> Result<bool, String> {
     if model.trim().is_empty() {
@@ -291,7 +312,7 @@ pub async fn request_ai_hint(
             "next-code".to_string()
         }
     });
-    let system = coach_system(&intent)?;
+    let system = system_prompt_for(&intent, &prompt)?;
     let key = credential_entry()?
         .get_password()
         .map_err(|_| "尚未保存 AI API 密钥".to_string())?;
@@ -392,6 +413,12 @@ pub async fn request_ai_hint(
                     .send(event)
                     .map_err(|_| "AI 流式通道已断开".to_string())?;
             }
+            if decoder.is_done() {
+                // 收到 [DONE] 后立即停止读取：部分网关在 [DONE] 后仍保持连接
+                // 或持续发送心跳注释行，继续读取会一直等到超时才误报失败，
+                // 而内容其实已经完整。
+                break;
+            }
         }
         for event in decoder.finish()? {
             if let AiStreamEvent::Delta { content: delta } = &event {
@@ -480,6 +507,9 @@ fn completion_token_budget(intent: &str, prompt: &str) -> u32 {
     if intent == "interview-examiner" || prompt.contains("本轮请求：生成主题面试题") {
         3_000
     } else if intent == "complete" || prompt.contains("本轮请求：给完整代码") {
+        4_096
+    } else if prompt.contains("最近练习复盘") {
+        // 复盘笔记要覆盖多道题并输出 5 个章节，预算不足会被截断成半篇笔记。
         4_096
     } else {
         1_536
@@ -594,6 +624,20 @@ mod tests {
         assert_eq!(completion_token_budget("explain", ""), 1_536);
         assert_eq!(completion_token_budget("complete", ""), 4_096);
         assert_eq!(completion_token_budget("interview-examiner", ""), 3_000);
+        assert_eq!(completion_token_budget("explain", "这是一次\"最近练习复盘\"任务"), 4_096);
+    }
+
+    #[test]
+    fn practice_review_uses_dedicated_system_prompt() {
+        let review = system_prompt_for("explain", "这是一次\"最近练习复盘\"任务，请整理成知识笔记").unwrap();
+        assert!(review.contains("知识库复盘助手"));
+        assert!(review.contains("共同考点"));
+        assert!(review.contains("逐题给出关键思路"));
+        assert!(review.contains("下一轮复习清单"));
+
+        let regular = system_prompt_for("explain", "为什么 left 要移动，不能直接跳过 right 吗").unwrap();
+        assert!(regular.contains("AI 解惑"));
+        assert!(!regular.contains("知识库复盘助手"));
     }
 
     #[test]

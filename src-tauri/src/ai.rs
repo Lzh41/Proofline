@@ -624,18 +624,23 @@ mod tests {
         assert_eq!(completion_token_budget("explain", ""), 1_536);
         assert_eq!(completion_token_budget("complete", ""), 4_096);
         assert_eq!(completion_token_budget("interview-examiner", ""), 3_000);
-        assert_eq!(completion_token_budget("explain", "这是一次\"最近练习复盘\"任务"), 4_096);
+        assert_eq!(
+            completion_token_budget("explain", "这是一次\"最近练习复盘\"任务"),
+            4_096
+        );
     }
 
     #[test]
     fn practice_review_uses_dedicated_system_prompt() {
-        let review = system_prompt_for("explain", "这是一次\"最近练习复盘\"任务，请整理成知识笔记").unwrap();
+        let review =
+            system_prompt_for("explain", "这是一次\"最近练习复盘\"任务，请整理成知识笔记").unwrap();
         assert!(review.contains("知识库复盘助手"));
         assert!(review.contains("共同考点"));
         assert!(review.contains("逐题给出关键思路"));
         assert!(review.contains("下一轮复习清单"));
 
-        let regular = system_prompt_for("explain", "为什么 left 要移动，不能直接跳过 right 吗").unwrap();
+        let regular =
+            system_prompt_for("explain", "为什么 left 要移动，不能直接跳过 right 吗").unwrap();
         assert!(regular.contains("AI 解惑"));
         assert!(!regular.contains("知识库复盘助手"));
     }

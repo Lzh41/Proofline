@@ -15,6 +15,7 @@ import type {
   Problem,
   ProblemSampleRunRequest,
   ProblemSampleRunResult,
+  ReviewHistory,
   RunCodeResult,
   ThoughtEvent,
   FinishInterviewInput,
@@ -41,8 +42,10 @@ export interface AppSettingsView {
   solveProblemTextWidth?: number;
   solveWorkbenchCodeWidth?: number;
   solveTerminalHeight?: number;
+  solveReviewSplit?: number;
   privacyConfirmed?: boolean;
   theme?: AppTheme;
+  reviewHistory?: ReviewHistory;
 }
 
 export interface AiHintRequestView {
@@ -93,6 +96,7 @@ export interface AppStoreView {
   addKnowledgeNote?: (note: Partial<KnowledgeNote>) => Promise<void> | void;
   createKnowledgeNote?: (note: Partial<KnowledgeNote>) => Promise<void> | void;
   updateKnowledgeNote?: (id: string, patch: Partial<KnowledgeNote>) => Promise<void> | void;
+  deleteKnowledgeNote?: (id: string) => Promise<void> | void;
   savePlan?: (plan: Partial<DailyPlan>) => Promise<void> | void;
   generateDailyPlan?: (options?: Record<string, unknown>) => Promise<void> | void;
   updateSettings?: (patch: Partial<AppSettingsView>) => Promise<void> | void;
@@ -119,6 +123,8 @@ export interface AppStoreView {
   runCode?: (request: { language: string; code: string; input?: string; timeoutMs?: number }) => Promise<RunCodeResult>;
   runLocalCode?: (request: { language: string; code: string; input?: string; timeoutMs?: number }) => Promise<RunCodeResult>;
   runProblemSample?: (request: ProblemSampleRunRequest) => Promise<ProblemSampleRunResult>;
+  pickRandomReviewProblem?: (kind: 'algorithm' | 'interview') => Problem | null;
+  recordReview?: (problemId: string, kind: 'algorithm' | 'interview') => Promise<void>;
 }
 
 const EMPTY_ARRAY: never[] = [];

@@ -108,6 +108,64 @@ public:
     expect(harness.source).toContain('__proofline_list_node_to_array');
   });
 
+  it('样例参数名与函数参数名不一致时按样例顺序对应而不是误报缺少参数', () => {
+    // 力扣 21 题：题面样例用 l1/l2，而函数签名参数已改名为 list1/list2。
+    const code = [
+      'class Solution:',
+      '    def mergeTwoLists(self, list1: Optional[ListNode], list2: Optional[ListNode]) -> Optional[ListNode]:',
+      '        dummy = ListNode()',
+      '        tail = dummy',
+      '        while list1 and list2:',
+      '            if list1.val <= list2.val:',
+      '                tail.next = list1',
+      '                list1 = list1.next',
+      '            else:',
+      '                tail.next = list2',
+      '                list2 = list2.next',
+      '            tail = tail.next',
+      '        tail.next = list1 or list2',
+      '        return dummy.next',
+      '',
+    ].join('\n');
+
+    const harness = buildPythonFunctionHarness(code, 'l1 = [1,2,4], l2 = [1,3,4]');
+    expect(harness.signature.name).toBe('mergeTwoLists');
+    expect(harness.signature.parameters).toEqual(['list1', 'list2']);
+    expect(harness.source).toContain('Solution().mergeTwoLists(*__proofline_args)');
+    expect(harness.source).toContain('__proofline_raw_args = __proofline_json.loads("[[1,2,4],[1,3,4]]")');
+
+    const emptyHarness = buildPythonFunctionHarness(code, 'l1 = [], l2 = [0]');
+    expect(emptyHarness.source).toContain('__proofline_json.loads("[[],[0]]")');
+  });
+
+  it('C++ 样例参数名与函数参数名不一致时同样按样例顺序对应', () => {
+    const code = `class Solution {
+public:
+  ListNode* mergeTwoLists(ListNode* list1, ListNode* list2) {
+    if (!list1) return list2;
+    if (!list2) return list1;
+    if (list1->val < list2->val) { list1->next = mergeTwoLists(list1->next, list2); return list1; }
+    list2->next = mergeTwoLists(list1, list2->next); return list2;
+  }
+};`;
+    const harness = buildCppFunctionHarness(code, 'l1 = [1,2,4], l2 = [1,3,4]');
+    expect(harness.signature.parameters.map((item) => item.name)).toEqual(['list1', 'list2']);
+    expect(harness.source).toContain('proofline_make_list(vector<long long>{1, 2, 4})');
+    expect(harness.source).toContain('proofline_make_list(vector<long long>{1, 3, 4})');
+  });
+
+  it('样例只覆盖部分参数名时仍然明确提示缺少参数而不是猜测对应关系', () => {
+    const code = 'class Solution {\npublic:\n  int solve(int a, int b, int c) { return a + b + c; }\n};';
+    expect(() => buildCppFunctionHarness(code, 'a = 1, c = 3'))
+      .toThrow('样例输入缺少参数');
+  });
+
+  it('样例名与参数名不一致但数量不符时仍然拒绝生成入口', () => {
+    const code = 'class Solution {\npublic:\n  int solve(int a, int b) { return a + b; }\n};';
+    expect(() => buildCppFunctionHarness(code, 'x = 1, y = 2, z = 3'))
+      .toThrow('样例输入缺少参数');
+  });
+
   it('Python 二叉树题会把层序数组样例转换成 TreeNode 并把返回树转回数组', () => {
     const harness = buildPythonFunctionHarness(
       [

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Bot,
@@ -31,6 +31,72 @@ const COACH_ACTIONS: Array<{ id: CoachAction; intent: InterviewCoachIntent; labe
   { id: 'improve', intent: 'interview-improve', label: '优化表达', icon: WandSparkles },
 ];
 
+export interface InterviewAnswerEditorHandle {
+  getValue: () => string;
+  setValue: (value: string) => void;
+}
+
+interface InterviewAnswerEditorProps {
+  initialValue: string;
+  onChange: (value: string) => void;
+  onCompositionChange: (composing: boolean, value: string) => void;
+  children: ReactNode;
+}
+
+const InterviewAnswerEditor = memo(forwardRef<InterviewAnswerEditorHandle, InterviewAnswerEditorProps>(function InterviewAnswerEditor({
+  initialValue,
+  onChange,
+  onCompositionChange,
+  children,
+}, ref) {
+  const [value, setValue] = useState(initialValue);
+  const valueRef = useRef(initialValue);
+  const dirtyRef = useRef(false);
+
+  useEffect(() => {
+    if (dirtyRef.current || valueRef.current === initialValue) return;
+    valueRef.current = initialValue;
+    setValue(initialValue);
+  }, [initialValue]);
+
+  useImperativeHandle(ref, () => ({
+    getValue: () => valueRef.current,
+    setValue: (nextValue) => {
+      dirtyRef.current = false;
+      valueRef.current = nextValue;
+      setValue(nextValue);
+    },
+  }), []);
+
+  return (
+    <>
+      <textarea
+        className={styles.interviewAnswerEditor}
+        aria-label="我的回答"
+        value={value}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          valueRef.current = nextValue;
+          dirtyRef.current = true;
+          setValue(nextValue);
+          onChange(nextValue);
+        }}
+        onCompositionStart={() => {
+          onCompositionChange(true, valueRef.current);
+        }}
+        onCompositionEnd={(event) => {
+          onCompositionChange(false, event.currentTarget.value);
+        }}
+        placeholder="从结论开始，再说明原理、方案权衡、落地细节和风险。可以先写提纲，再补成口述答案……"
+      />
+      <div className={styles.interviewAnswerActions}>
+        <span>{value.trim().length} 字</span>
+        {children}
+      </div>
+    </>
+  );
+}));
+
 function elapsedLabel(startedAt?: number): string {
   if (!startedAt) return '尚未开始';
   const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
@@ -40,6 +106,8 @@ function elapsedLabel(startedAt?: number): string {
 
 export function InterviewPracticePage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const isReviewMode = searchParams.get('review') === '1';
   const navigate = useNavigate();
   const location = useLocation();
   const store = useStoreView();
@@ -54,7 +122,10 @@ export function InterviewPracticePage() {
     ? existingAttempt.interview.answerText
     : latestAnsweredAttempt?.interview?.answerText ?? '';
   const [attempt, setAttempt] = useState<Attempt | undefined>(existingAttempt);
-  const [answer, setAnswer] = useState(restoredAnswer);
+  const answerEditorRef = useRef<InterviewAnswerEditorHandle | null>(null);
+  const answerRef = useRef(restoredAnswer);
+  const answerComposingRef = useRef(false);
+  const draftSaveTimerRef = useRef<number | undefined>(undefined);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(true);
@@ -69,9 +140,26 @@ export function InterviewPracticePage() {
   const startedRef = useRef(false);
   const streamRef = useRef('');
 
+  const getAnswer = () => answerEditorRef.current?.getValue() ?? answerRef.current;
+
+  const queueDraftSave = (nextAnswer: string) => {
+    answerRef.current = nextAnswer;
+    window.clearTimeout(draftSaveTimerRef.current);
+    if (answerComposingRef.current || !attempt?.id || !store.saveInterviewDraft) return;
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      draftSaveTimerRef.current = undefined;
+      void Promise.resolve(store.saveInterviewDraft?.(attempt.id, answerRef.current)).catch((error: unknown) => {
+        setMessage(error instanceof Error ? `草稿保存失败：${error.message}` : '草稿保存失败。');
+      });
+    }, 500);
+  };
+
   useEffect(() => {
     setAttempt(existingAttempt);
-    if (existingAttempt) setAnswer(restoredAnswer);
+    if (existingAttempt && answerRef.current !== restoredAnswer) {
+      answerRef.current = restoredAnswer;
+      answerEditorRef.current?.setValue(restoredAnswer);
+    }
   }, [existingAttempt, restoredAnswer]);
 
   useEffect(() => {
@@ -80,20 +168,26 @@ export function InterviewPracticePage() {
     void Promise.resolve(store.startInterviewAttempt(problem.id)).then((created) => {
       if (created) {
         setAttempt(created);
-        setAnswer(created.interview?.answerText ?? '');
+        const nextAnswer = created.interview?.answerText ?? '';
+        answerRef.current = nextAnswer;
+        answerEditorRef.current?.setValue(nextAnswer);
       }
     }).catch((error) => setMessage(error instanceof Error ? error.message : '无法开始面试练习。'));
   }, [attempt, existingAttempt, problem, store.startInterviewAttempt]);
 
   useEffect(() => {
-    if (!attempt?.id || !store.saveInterviewDraft) return;
-    const timer = window.setTimeout(() => {
-      void Promise.resolve(store.saveInterviewDraft?.(attempt.id, answer)).catch((error: unknown) => {
+    if (!attempt?.id || !store.saveInterviewDraft || answerComposingRef.current) return;
+    window.clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      draftSaveTimerRef.current = undefined;
+      void Promise.resolve(store.saveInterviewDraft?.(attempt.id, answerRef.current)).catch((error: unknown) => {
         setMessage(error instanceof Error ? `草稿保存失败：${error.message}` : '草稿保存失败。');
       });
     }, 500);
-    return () => window.clearTimeout(timer);
-  }, [answer, attempt?.id, store.saveInterviewDraft]);
+    return () => window.clearTimeout(draftSaveTimerRef.current);
+  }, [attempt?.id, store.saveInterviewDraft]);
+
+  useEffect(() => () => window.clearTimeout(draftSaveTimerRef.current), []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setElapsed(elapsedLabel(attempt?.startedAt)), 1000);
@@ -104,6 +198,7 @@ export function InterviewPracticePage() {
 
   const requestCoach = async (action: CoachAction) => {
     if (!problem || !hasAi || coachBusy) return;
+    const answer = getAnswer();
     if (!answer.trim()) {
       setCoachError('先写下你的回答，教练才能给出有依据的反馈。');
       return;
@@ -157,10 +252,15 @@ export function InterviewPracticePage() {
     }
     setSubmitting(true);
     try {
+      const answer = getAnswer();
       await store.saveInterviewDraft(attempt.id, answer);
       setSubmitted(true);
       setReferenceOpen(true);
       setMessage(answer.trim() ? '回答已保存并提交。请对照参考内容，再选择本次掌握度。' : '空白回答已保存，可以先查看参考内容再补写。');
+      // 复习模式下自动触发 AI 点评
+      if (isReviewMode && answer.trim() && hasAi) {
+        window.setTimeout(() => void requestCoach('feedback'), 300);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? `回答保存失败：${error.message}` : '回答保存失败。');
     } finally {
@@ -182,12 +282,13 @@ export function InterviewPracticePage() {
     try {
       await store.finishInterviewAttempt(currentAttempt.id, {
         masteryResult,
-        answerText: answer,
+        answerText: getAnswer(),
           aiFeedback: coachOutputs.feedback,
           omissions: coachOutputs.omissions,
           improvedAnswer: coachOutputs.improve,
       });
       setFinished(masteryResult);
+      if (isReviewMode) void store.recordReview?.(problem.id, 'interview');
       setMessage(masteryResult === 'mastered' ? '已记录为掌握。' : masteryResult === 'uncertain' ? '已加入巩固队列。' : '已加入重点复习队列。');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '掌握度保存失败。');
@@ -195,7 +296,7 @@ export function InterviewPracticePage() {
   };
 
   if (!problem?.interview) {
-    return <EmptyState title="找不到这道面试题" message="题目可能已被移除或尚未导入。" action={<button className="button buttonPrimary" type="button" onClick={() => navigate(`/interviews${location.search}`)}>返回面试题库</button>} />;
+    return <EmptyState title="找不到这道面试题" message="题目可能已被移除或尚未导入。" action={<button className="button buttonPrimary" type="button" onClick={() => navigate(isReviewMode ? '/review' : `/interviews${location.search}`)}>返回</button>} />;
   }
 
   const interview = problem.interview;
@@ -204,44 +305,66 @@ export function InterviewPracticePage() {
   return (
     <div className={styles.interviewPracticePage}>
       <header className={styles.interviewPracticeHeader}>
-        <button className="iconButton" type="button" aria-label="返回面试题库" title="返回面试题库" onClick={() => navigate(`/interviews${location.search}`)}><ArrowLeft size={16} /></button>
+        <button className="iconButton" type="button" aria-label={isReviewMode ? '返回复习' : '返回面试题库'} title={isReviewMode ? '返回复习' : '返回面试题库'} onClick={() => navigate(isReviewMode ? '/review' : `/interviews${location.search}`)}><ArrowLeft size={16} /></button>
         <div className={styles.interviewPracticeTitle}>
-          <div><span>{interview.category}</span><span>{difficultyLabel(problem.difficulty)}</span><span>{problem.tags.slice(0, 3).join(' · ')}</span></div>
+          <div><span>{interview.category}</span><span>{difficultyLabel(problem.difficulty)}</span><span>{problem.tags.slice(0, 3).join(' · ')}</span>{isReviewMode && <span className={styles.badge} style={{ background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent)' }}>复习模式</span>}</div>
           <h1>{problem.title}</h1>
           {problem.content !== problem.title && <p>{problem.content}</p>}
         </div>
         <div className={styles.interviewPracticeTimer}><Clock3 size={14} /><span>{elapsed}</span></div>
       </header>
 
-      <div className={styles.interviewPracticeGrid}>
+      {isReviewMode && (
+        <div className={styles.reviewModeBanner} style={{
+          padding: '8px 16px',
+          background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
+          borderBottom: '1px solid var(--line)',
+          color: 'var(--fg)',
+          fontSize: '14px'
+        }}>
+          <Sparkles size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+          复习模式 - 提交回答后 AI 将自动点评
+        </div>
+      )}
+
+      <div className={`${styles.interviewPracticeGrid} ${isReviewMode ? styles.reviewMode : ''}`}>
         <section className={styles.interviewAnswerPane}>
           <div className={styles.interviewPaneHeader}>
             <div><span className={styles.interviewPaneIcon}><Send size={15} /></span><strong>我的回答</strong><small>先按真实面试节奏组织语言</small></div>
             <span className={styles.interviewAutosave}>{attempt ? <><Check size={12} />自动保存</> : '正在建立记录'}</span>
           </div>
-          <textarea className={styles.interviewAnswerEditor} aria-label="我的回答" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="从结论开始，再说明原理、方案权衡、落地细节和风险。可以先写提纲，再补成口述答案……" />
-          <div className={styles.interviewAnswerActions}>
-            <span>{answer.trim().length} 字</span>
+          <InterviewAnswerEditor
+            key={`${problem.id}:${attempt?.id ?? 'draft'}`}
+            ref={answerEditorRef}
+            initialValue={restoredAnswer}
+            onChange={queueDraftSave}
+            onCompositionChange={(composing, nextValue) => {
+              answerComposingRef.current = composing;
+              if (!composing) queueDraftSave(nextValue);
+            }}
+          >
             <button className="button buttonPrimary" type="button" disabled={!attempt || submitting} onClick={() => void submitAnswer()}><CheckCircle2 size={15} />{submitting ? '保存中' : '提交回答'}</button>
-          </div>
+          </InterviewAnswerEditor>
         </section>
 
-        <aside className={styles.interviewCoachPane}>
-          <div className={styles.interviewPaneHeader}>
-            <div><span className={styles.interviewPaneIcon}><Bot size={15} /></span><strong>面试教练</strong><small>{hasAi ? '结合你的答案实时反馈' : '配置 AI 后解锁个性化点评'}</small></div>
-            {coachBusy && <button className="button buttonDanger" type="button" onClick={() => void cancelCoach()}><Square size={12} />停止</button>}
-          </div>
-          <div className={styles.interviewCoachActions} aria-label="AI 面试教练快捷操作">
-            {COACH_ACTIONS.map((action) => {
-              const Icon = action.icon;
-              return <button className={`${styles.interviewCoachAction} ${coachAction === action.id && coachOutput ? styles.interviewCoachActionActive : ''}`} type="button" key={action.id} disabled={!hasAi || coachBusy} onClick={() => void requestCoach(action.id)}><Icon size={14} /><span>{action.label}</span></button>;
-            })}
-          </div>
-          <div className={styles.interviewCoachOutput} aria-live="polite" aria-busy={coachBusy}>
-            {coachOutput ? <article><span><Sparkles size={13} />{activeAction.label}</span><p>{coachOutput}</p></article> : coachBusy ? <div className={styles.interviewCoachEmpty}><span className={styles.interviewThinking} /><strong>正在分析你的回答</strong><p>教练会关注技术准确性、结构和现场表达。</p></div> : <div className={styles.interviewCoachEmpty}><Bot size={24} /><strong>{hasAi ? '选择一种教练动作' : '本地练习仍然完整可用'}</strong><p>{hasAi ? '写下回答后，让教练点评、追问或帮你查漏补缺。' : '提交回答即可查看参考要点、完整答案和追问，不依赖 AI。'}</p></div>}
-            {coachError && <div className={styles.interviewCoachError}>{coachError}</div>}
-          </div>
-        </aside>
+        {!isReviewMode && (
+          <aside className={styles.interviewCoachPane}>
+            <div className={styles.interviewPaneHeader}>
+              <div><span className={styles.interviewPaneIcon}><Bot size={15} /></span><strong>面试教练</strong><small>{hasAi ? '结合你的答案实时反馈' : '配置 AI 后解锁个性化点评'}</small></div>
+              {coachBusy && <button className="button buttonDanger" type="button" onClick={() => void cancelCoach()}><Square size={12} />停止</button>}
+            </div>
+            <div className={styles.interviewCoachActions} aria-label="AI 面试教练快捷操作">
+              {COACH_ACTIONS.map((action) => {
+                const Icon = action.icon;
+                return <button className={`${styles.interviewCoachAction} ${coachAction === action.id && coachOutput ? styles.interviewCoachActionActive : ''}`} type="button" key={action.id} disabled={!hasAi || coachBusy} onClick={() => void requestCoach(action.id)}><Icon size={14} /><span>{action.label}</span></button>;
+              })}
+            </div>
+            <div className={styles.interviewCoachOutput} aria-live="polite" aria-busy={coachBusy}>
+              {coachOutput ? <article><span><Sparkles size={13} />{activeAction.label}</span><p>{coachOutput}</p></article> : coachBusy ? <div className={styles.interviewCoachEmpty}><span className={styles.interviewThinking} /><strong>正在分析你的回答</strong><p>教练会关注技术准确性、结构和现场表达。</p></div> : <div className={styles.interviewCoachEmpty}><Bot size={24} /><strong>{hasAi ? '选择一种教练动作' : '本地练习仍然完整可用'}</strong><p>{hasAi ? '写下回答后，让教练点评、追问或帮你查漏补缺。' : '提交回答即可查看参考要点、完整答案和追问，不依赖 AI。'}</p></div>}
+              {coachError && <div className={styles.interviewCoachError}>{coachError}</div>}
+            </div>
+          </aside>
+        )}
       </div>
 
       {submitted && (

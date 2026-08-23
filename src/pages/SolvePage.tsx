@@ -77,7 +77,7 @@ interface SampleRunItem {
 
 type ResizeKind = 'problemArea' | 'problemText' | 'workbench' | 'terminal';
 
-type LayoutSettingKey = 'solveProblemAreaHeight' | 'solveProblemTextWidth' | 'solveWorkbenchCodeWidth' | 'solveTerminalHeight';
+type LayoutSettingKey = 'solveProblemAreaHeight' | 'solveProblemTextWidth' | 'solveWorkbenchCodeWidth' | 'solveTerminalHeight' | 'solveReviewSplit';
 type LayoutSettingPatch = Partial<Record<LayoutSettingKey, number | undefined>>;
 
 interface ResizeSession {
@@ -453,29 +453,37 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     // 保留分栏拖动所需的自动布局，关闭会随每次编辑重新计算的高频装饰与软换行。
     wordWrap: 'off',
     codeLens: false,
-    folding: true,
+    // folding 和 stickyScroll 都会在每次按键时触发全篇模型解析，是输入卡顿的主因。
+    folding: false,
     occurrencesHighlight: 'off',
     selectionHighlight: false,
     parameterHints: { enabled: true },
-    quickSuggestions: { other: true, comments: false, strings: false },
     suggestOnTriggerCharacters: true,
-    wordBasedSuggestions: 'currentDocument',
+    // 关闭 Monaco 原生词库补全：自定义补全已包含文档内全部标识符，双重扫描是多余开销。
+    wordBasedSuggestions: 'off',
     suggestSelection: 'first',
     tabCompletion: 'on',
     acceptSuggestionOnCommitCharacter: true,
-    autoClosingBrackets: 'always',
-    autoClosingQuotes: 'always',
-    autoIndent: 'full',
+    autoClosingBrackets: 'languageDefined',
+    autoClosingQuotes: 'languageDefined',
+    autoIndent: 'advanced',
     suggest: { filterGraceful: true, showMethods: true, showFunctions: true, showVariables: true, showKeywords: true, showSnippets: true },
     renderValidationDecorations: 'off',
-    stickyScroll: {
-      enabled: true,
-      // 与 VS Code 等 IDE 的默认行为一致，保留当前作用域链最多 5 行。
-      maxLineCount: 5,
-      // 使用统一文档符号范围，让原生 sticky widget 保留真实代码行的高亮、缩进和行高。
-      defaultModel: 'outlineModel',
-      scrollWithEditor: true,
-    },
+    // 平滑滚动和光标动画让输入/删除体验更丝滑，对性能影响极小。
+    smoothScrolling: true,
+    cursorSmoothCaretAnimation: 'on',
+    cursorBlinking: 'smooth',
+    // 行高亮只画行号 gutter 区域，比 'all' 少一次整行渲染。
+    renderLineHighlight: 'gutter',
+    // 缩小滚动条滑块减少绘制面积。
+    scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8 },
+    // stickyScroll 关闭：它依赖 outlineModel，每次按键都要全篇符号解析，代价太高。
+    stickyScroll: { enabled: false },
+    // 括号对着色和引导线每次编辑都要全文括号匹配，是删除卡顿的主因。
+    bracketPairColorization: { enabled: false },
+    guides: { bracketPairs: false, indentation: true },
+    // 关闭 quickSuggestions 自动评估，只保留 triggerCharacters 手动触发。
+    quickSuggestions: false,
   }), [fontSize]);
 
   return (
@@ -541,6 +549,7 @@ export function SolvePage() {
   const attempt = useMemo(() => store.attempts.filter((item) => item.problemId === problem?.id).sort((a, b) => b.startedAt - a.startedAt)[0], [problem?.id, store.attempts]);
   // 编辑器文本由 Monaco 非受控维护，这里只保留“最近一次已知代码”的 ref，
   // 用户输入不再同步 React 状态，避免每次输入/删除停顿后整页重渲染造成卡顿。
+  // 复习模式下使用空字符串，不保留之前的代码
   const codeRef = useRef(initialEditorCode(problem, attempt, attempt?.language ?? store.settings.defaultLanguage ?? 'cpp', algorithmProblems));
   const [editorHistory, setEditorHistory] = useState({ canUndo: false, canRedo: false });
   const codeEditorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -792,6 +801,7 @@ export function SolvePage() {
     const nextLanguage = attempt?.language ?? store.settings.defaultLanguage ?? 'cpp';
     setLanguage(nextLanguage);
     codeProblemIdRef.current = problem?.id;
+    // 复习模式下使用空字符串，不保留之前的代码
     updateEditorCode(initialEditorCode(problem, attempt, nextLanguage, algorithmProblems), true);
     setSeconds(attempt?.durationSeconds ?? 0);
     const restoredTurns = store.aiGenerations
@@ -916,9 +926,9 @@ export function SolvePage() {
     const rect = container?.getBoundingClientRect();
     if (!rect) return;
     const panelRect = panel?.getBoundingClientRect();
-    const previousRect = kind === 'workbench'
-      ? event.currentTarget.previousElementSibling?.getBoundingClientRect()
-      : panel?.previousElementSibling?.getBoundingClientRect();
+    // 始终使用拖拽手柄的前一个兄弟元素来获取初始尺寸，
+    // 而非 panel?.previousElementSibling（对于 problemText 会错误地取到 solveProblemHeader）
+    const previousRect = event.currentTarget.previousElementSibling?.getBoundingClientRect();
     const initialSize = kind === 'problemArea'
       ? (problemAreaHeight ?? Math.max(150, previousRect?.height ?? rect.height * 0.28))
       : kind === 'problemText'

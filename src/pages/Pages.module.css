@@ -1289,6 +1289,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -1326,7 +1327,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--problem-text-column, minmax(0, 1.38fr)) 8px minmax(180px, .62fr);
+  grid-template-columns: var(--problem-text-column, minmax(0, 1.38fr)) 8px auto;
   gap: 0;
   padding: 10px 16px 12px;
   overflow: hidden;
@@ -1465,6 +1466,11 @@
   overflow: hidden;
 }
 
+/* 复习模式下代码编辑器占满整个宽度 */
+.solveWorkbench.reviewMode {
+  grid-template-columns: 1fr;
+}
+
 .codeWorkbench,
 .aiCoachPane {
   min-width: 0;
@@ -1557,7 +1563,7 @@
 
 .inlineTerminal {
   min-width: 0;
-  min-height: 42px;
+  min-height: 0;
   height: var(--terminal-height, auto);
   max-height: min(420px, 52%);
   position: relative;
@@ -2214,6 +2220,318 @@
 .aiCoachComposer textarea:focus {
   border-color: color-mix(in srgb, var(--info) 55%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 8%, transparent);
+}
+
+/* ==================== 复习模块 ==================== */
+.reviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.reviewCard {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.reviewCard:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.reviewCardHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 20px 22px 0;
+}
+
+.reviewCardIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.reviewCardHeader h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.reviewCardHeader p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.reviewCardBody {
+  padding: 18px 22px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reviewStats {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.reviewStats strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.reviewHint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--info) 6%, transparent);
+  border-radius: 6px;
+  padding: 7px 10px;
+  margin: 0;
+}
+
+.reviewHint svg {
+  flex-shrink: 0;
+  color: var(--info);
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.sectionDesc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ==================== 复习练习界面 ==================== */
+.reviewPractice {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+}
+
+.reviewPracticeHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.reviewPracticeTitle {
+  min-width: 0;
+  flex: 1;
+}
+.reviewPracticeTitle h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reviewTimer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.reviewPracticeGrid {
+  min-height: 0;
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* 面试复习 — 题目/回答面板 */
+.reviewProblemPane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.reviewPaneHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-elevated) 90%, transparent);
+  flex-shrink: 0;
+}
+.reviewProblemContent {
+  padding: 14px;
+  font-size: 14px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  flex: 1;
+}
+.reviewReference {
+  padding: 14px;
+  border-top: 1px solid var(--line);
+}
+.reviewReference h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent);
+}
+.reviewReference h3:first-child { margin-top: 0; }
+.reviewReference ul, .reviewReference ol { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.7; }
+.reviewReference p { margin: 0; font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
+.reviewEditorPane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.reviewEditorToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-elevated) 90%, transparent);
+  flex-shrink: 0;
+}
+.reviewToolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+}
+.reviewAnswerEditor {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  border: 0;
+  padding: 14px;
+  font-size: 14px;
+  line-height: 1.75;
+  background: transparent;
+  color: var(--fg);
+  outline: none;
+  font-family: var(--font-reading);
+}
+
+/* 底部完成栏 */
+.reviewFinishBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--success, #22c55e) 30%, var(--line));
+  background: color-mix(in srgb, var(--success, #22c55e) 6%, transparent);
+  color: var(--success, #22c55e);
+  font-size: 13px;
+  font-weight: 500;
+}
+.reviewFinishBar span { display: flex; align-items: center; gap: 8px; }
+
+/* 面试教练输出 */
+.reviewCoachOutput {
+  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+  overflow-y: auto;
+  flex-shrink: 0;
+  max-height: 45%;
+}
+.reviewCoachOutput > div > p {
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  margin: 8px 0 0;
+}
+.reviewCoachLoading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 13px;
+}
+.reviewCoachError { color: var(--danger, #ef4444); font-size: 13px; }
+.reviewCoachHint { color: var(--muted); font-size: 12px; }
+
+.reviewMasteryBar {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.reviewMasteryBar > div { display: flex; gap: 8px; }
+.reviewMasteryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 140ms, background 140ms;
+}
+.reviewMasteryBtn:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.reviewMasteryBtn:disabled { opacity: .45; cursor: default; }
+.reviewMasterySelected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.reviewMasteryDanger:hover:not(:disabled) { border-color: var(--danger, #ef4444); }
+
+.spin { animation: spin 1s linear infinite; }
+
+/* 复习页面终端不限制最大高度，拖拽时填满剩余空间 */
+.reviewPracticeGrid .inlineTerminal { max-height: none; }
+.reviewPracticeGrid .inlineTerminal:not(.inlineTerminalOpen) { max-height: none; }
+
+@media (max-width: 760px) {
+  .reviewGrid { grid-template-columns: 1fr; }
+  .reviewPracticeGrid { grid-template-columns: 1fr !important; grid-template-rows: 1fr; }
+  .reviewPracticeGrid > .workbenchResizeHandle { display: none; }
 }
 
 @media (max-width: 920px) {
@@ -3480,6 +3798,11 @@
   gap: 12px;
 }
 
+/* 复习模式下隐藏面试教练面板，让回答区域占满整个宽度 */
+.interviewPracticeGrid.reviewMode {
+  grid-template-columns: 1fr;
+}
+
 .interviewAnswerPane,
 .interviewCoachPane {
   min-width: 0;
@@ -3776,6 +4099,7 @@
   .interviewPracticePage { height: calc(100dvh - 192px); }
   .interviewFilters { grid-template-columns: minmax(210px, 1.2fr) repeat(4, minmax(98px, .5fr)) 36px; }
   .interviewPracticeGrid { grid-template-columns: minmax(0, 1fr) minmax(330px, .88fr); }
+  .interviewPracticeGrid.reviewMode { grid-template-columns: 1fr; }
   .interviewCoachAction { font-size: 8px; }
 }
 
@@ -3808,6 +4132,7 @@
   .interviewPracticeButton { width: 36px; padding: 0; justify-content: center; }
   .interviewPracticeButton span { display: none; }
   .interviewPracticeGrid { grid-template-columns: 1fr; grid-template-rows: minmax(340px, 48vh) minmax(330px, 44vh); }
+  .interviewPracticeGrid.reviewMode { grid-template-rows: 1fr; }
   .interviewReference { max-height: none; }
   .interviewReferenceBody { grid-template-columns: 1fr; max-height: 480px; }
   .interviewReferenceBody > div + div { border-left: 0; border-top: 1px solid var(--line); }

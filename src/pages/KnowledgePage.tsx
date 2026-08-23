@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpenText, BrainCircuit, Plus, Search, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BrainCircuit, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { KnowledgeNote } from '../types';
 import { useStoreView } from '../app/storeAdapter';
@@ -77,6 +77,36 @@ export function KnowledgePage() {
     setMessage('笔记已保存并进入全文检索。');
   };
 
+  const deleteNote = async (id: string, title: string) => {
+    if (!store.deleteKnowledgeNote) {
+      setMessage('知识库服务尚未初始化，请重新启动应用。');
+      return;
+    }
+    const confirmed = window.confirm(`确定删除笔记「${title}」？此操作不可撤销。`);
+    if (!confirmed) return;
+    await store.deleteKnowledgeNote(id);
+    if (noteId === id) navigate('/knowledge');
+    setMessage('笔记已删除。');
+  };
+
+  const deleteAiNotes = async () => {
+    if (!store.deleteKnowledgeNote) return;
+    const aiNotes = store.knowledgeNotes.filter((note) => note.tags.includes('AI练习分析'));
+    if (!aiNotes.length) {
+      setMessage('没有 AI 生成的分析笔记。');
+      return;
+    }
+    const confirmed = window.confirm(`确定删除全部 ${aiNotes.length} 篇 AI 分析笔记？此操作不可撤销。`);
+    if (!confirmed) return;
+    for (const note of aiNotes) {
+      await store.deleteKnowledgeNote(note.id);
+    }
+    if (noteId && aiNotes.some((n) => n.id === noteId)) navigate('/knowledge');
+    setMessage(`已删除 ${aiNotes.length} 篇 AI 分析笔记。`);
+  };
+
+  const aiNoteCount = store.knowledgeNotes.filter((note) => note.tags.includes('AI练习分析')).length;
+
   return (
     <>
       {openedNote ? (
@@ -85,7 +115,7 @@ export function KnowledgePage() {
             eyebrow="知识库 · 阅读"
             title={openedNote.title}
             description={`更新于 ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(openedNote.updatedAt))}`}
-            actions={<button className="button" type="button" onClick={() => navigate('/knowledge')}><ArrowLeft size={15} />返回知识库</button>}
+            actions={<div className="buttonRow"><button className="button" type="button" onClick={() => navigate('/knowledge')}><ArrowLeft size={15} />返回知识库</button><button className="button buttonDanger" type="button" onClick={() => void deleteNote(openedNote.id, openedNote.title)}><Trash2 size={15} />删除笔记</button></div>}
           />
           <div className={styles.noteReaderMeta}>
             <div className={styles.tags}>{openedNote.tags.map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div>
@@ -94,7 +124,7 @@ export function KnowledgePage() {
           <div className={styles.noteReaderBody} dangerouslySetInnerHTML={{ __html: renderMarkdown(openedNote.content) }} />
         </article>
       ) : <>
-      <PageHeader eyebrow="知识库" title="把解题经验写成自己的工具箱。" description="笔记、代码模板、易错清单和关联题目统一检索；内容始终保存在本地。" actions={<div className="buttonRow"><button className="button buttonAccent" type="button" disabled={analyzing || !store.analyzeRecentPractice} onClick={() => void analyzeRecentPractice()}><BrainCircuit size={16} />{analyzing ? '分析中…' : 'AI 分析最近练习'}</button><button className="button buttonPrimary" type="button" onClick={() => dialogRef.current?.showModal()}><Plus size={16} />新建笔记</button></div>} />
+      <PageHeader eyebrow="知识库" title="把解题经验写成自己的工具箱。" description="笔记、代码模板、易错清单和关联题目统一检索；内容始终保存在本地。" actions={<div className="buttonRow"><button className="button buttonAccent" type="button" disabled={analyzing || !store.analyzeRecentPractice} onClick={() => void analyzeRecentPractice()}><BrainCircuit size={16} />{analyzing ? '分析中…' : 'AI 分析最近练习'}</button>{aiNoteCount > 0 && <button className="button buttonDanger" type="button" onClick={() => void deleteAiNotes()}><Trash2 size={15} />删除全部 AI 笔记 ({aiNoteCount})</button>}<button className="button buttonPrimary" type="button" onClick={() => dialogRef.current?.showModal()}><Plus size={16} />新建笔记</button></div>} />
       {message && <div className={styles.notice}>{message}</div>}
       <section className={styles.accentPanel} style={{ marginBottom: 30 }}>
         <Sparkles size={20} color="var(--accent)" />
@@ -106,10 +136,13 @@ export function KnowledgePage() {
           <div className={styles.filters} style={{ gridTemplateColumns: '1fr' }}><label className="field"><span className="srOnly">搜索知识库</span><div style={{ position: 'relative' }}><Search size={15} style={{ position: 'absolute', left: 11, top: 12, color: 'var(--muted)' }} /><input className="input" style={{ paddingLeft: 34 }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="全文搜索标题、正文或标签" /></div></label></div>
           <SectionHeader title="全部笔记" meta={`${notes.length} 篇`} />
           {notes.map((note) => (
-            <button className={styles.row} style={{ width: '100%', borderTop: 0, borderLeft: 0, borderRight: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer' }} type="button" key={note.id} onClick={() => navigate(`/knowledge/${note.id}`)} aria-label={`打开笔记：${note.title}`}>
-              <div className={styles.rowMain}><strong>{note.title}</strong><p>{note.content.slice(0, 88) || '空白笔记'}</p><div className={styles.tags}>{note.tags.map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div></div>
+            <div className={styles.row} key={note.id} style={{ gridTemplateColumns: 'minmax(0, 1fr) auto auto' }}>
+              <button style={{ width: '100%', borderTop: 0, borderLeft: 0, borderRight: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer', padding: 0 }} type="button" onClick={() => navigate(`/knowledge/${note.id}`)} aria-label={`打开笔记：${note.title}`}>
+                <div className={styles.rowMain}><strong>{note.title}</strong><p>{note.content.slice(0, 88) || '空白笔记'}</p><div className={styles.tags}>{note.tags.map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div></div>
+              </button>
               <span className={styles.badge}>{new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(note.updatedAt))}</span>
-            </button>
+              <button className="iconButton" type="button" title="删除笔记" aria-label={`删除笔记：${note.title}`} onClick={(e) => { e.stopPropagation(); void deleteNote(note.id, note.title); }}><Trash2 size={14} /></button>
+            </div>
           ))}
           {!notes.length && <EmptyState title={store.knowledgeNotes.length ? '没有检索结果' : '还没有笔记'} message={store.knowledgeNotes.length ? '换一个关键词，或点击标签快速检索。' : '把一道题中可迁移的观察、模板和边界检查沉淀下来。'} action={<button className="button buttonAccent" type="button" onClick={() => dialogRef.current?.showModal()}><BookOpenText size={15} />写第一篇</button>} />}
         </section>

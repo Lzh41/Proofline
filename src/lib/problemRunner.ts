@@ -60,16 +60,18 @@ export async function runProblemSample(request: ProblemSampleRunRequest): Promis
     let source = request.code;
     let generatedEntryPoint = false;
     let mode: ProblemSampleRunResult['mode'] = 'stdin';
+    let harnessProblem: unknown = null;
     const canBuildFunction = (() => {
       try { return buildJavaScriptFunctionHarness(source, input).source; }
-      catch { return null; }
+      catch (error) { harnessProblem = error; return null; }
     })();
     if (canBuildFunction && (!usesJavaScriptStandardInput(source) || hasJavaScriptFunctionSignature(source))) {
       source = canBuildFunction;
       generatedEntryPoint = true;
       mode = 'function';
     } else if (!canBuildFunction && !usesJavaScriptStandardInput(source)) {
-      return failure('没有识别到可测试的 JavaScript/TypeScript 解题函数，也没有明确的标准输入入口。', sampleIndex, expectedOutput, true, 'function');
+      const detail = errorMessage(harnessProblem);
+      return failure(`没有识别到可测试的 JavaScript/TypeScript 解题函数，也没有明确的标准输入入口。${detail ? `（${detail}）` : ''}`, sampleIndex, expectedOutput, true, 'function');
     }
     const result = await runCode({ language, code: source, input, timeoutMs: request.timeoutMs });
     return finishResult(result, sampleIndex, expectedOutput, generatedEntryPoint, mode);
@@ -79,16 +81,18 @@ export async function runProblemSample(request: ProblemSampleRunRequest): Promis
     let source = request.code;
     let generatedEntryPoint = false;
     let mode: ProblemSampleRunResult['mode'] = 'stdin';
+    let harnessProblem: unknown = null;
     const canBuildFunction = (() => {
       try { return buildPythonFunctionHarness(source, input).source; }
-      catch { return null; }
+      catch (error) { harnessProblem = error; return null; }
     })();
     if (canBuildFunction && (!usesPythonStandardInput(source) || hasPythonFunctionSignature(source))) {
       source = canBuildFunction;
       generatedEntryPoint = true;
       mode = 'function';
     } else if (!canBuildFunction && !usesPythonStandardInput(source)) {
-      return failure('没有识别到可测试的 Python 解题函数，也没有明确的标准输入入口。', sampleIndex, expectedOutput, true, 'function');
+      const detail = errorMessage(harnessProblem);
+      return failure(`没有识别到可测试的 Python 解题函数，也没有明确的标准输入入口。${detail ? `（${detail}）` : ''}`, sampleIndex, expectedOutput, true, 'function');
     }
     const result = await runCode({ language, code: source, input, timeoutMs: request.timeoutMs });
     return finishResult(result, sampleIndex, expectedOutput, generatedEntryPoint, mode);
@@ -587,10 +591,18 @@ function resolveSampleValues(input: string, parameters: CppParameter[]): string[
   const named = parseNamedSampleValues(input);
   if (named.size > 0) {
     const missing = parameters.filter((parameter) => !named.has(parameter.name));
-    if (missing.length > 0) {
-      throw new Error(`样例输入缺少参数：${missing.map((parameter) => parameter.name).join('、')}。请检查样例是否完整。`);
+    if (missing.length === 0) {
+      return parameters.map((parameter) => named.get(parameter.name) ?? '');
     }
-    return parameters.map((parameter) => named.get(parameter.name) ?? '');
+    // 力扣等平台会把样例写成 l1 = [1,2,4]、l2 = [1,3,4]，但函数的参数名
+    // 可能已经改成 list1/list2，样例名与参数名完全对不上。此时没有任何一个
+    // 参数名被样例使用，就按样例标记出现的顺序与参数一一对应，而不是误报
+    // “参数缺失”。仅当数量一致时才使用该回退，避免把不完整的样例硬塞给函数。
+    const anyParameterNamed = parameters.some((parameter) => named.has(parameter.name));
+    if (!anyParameterNamed && named.size === parameters.length) {
+      return [...named.values()];
+    }
+    throw new Error(`样例输入缺少参数：${missing.map((parameter) => parameter.name).join('、')}。请检查样例是否完整。`);
   }
   if (parameters.length === 1) return [stripInputPrefix(input).trim()];
   const values = splitTopLevelValues(stripInputPrefix(input));

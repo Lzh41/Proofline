@@ -90,8 +90,7 @@ monaco.editor.defineTheme(MONACO_THEME_NAMES.dark, {
   },
 });
 
-const CHANGE_SYNC_DELAY = 700;
-const SUGGEST_TRIGGER_DELAY = 90;
+const CHANGE_SYNC_DELAY = 350;
 
 type CompletionSnippet = {
   label: string;
@@ -454,29 +453,6 @@ function ensureCompletionProvider(): void {
   if (!documentSymbolProviderDisposable) documentSymbolProviderDisposable = monaco.languages.registerDocumentSymbolProvider('*', documentSymbolProvider);
 }
 
-/**
- * 补全浮层是否已经打开。
- * Monaco 的 suggest widget 在显示/隐藏时切换 `visible` 类，且始终挂载在编辑器 DOM 内；
- * 用它判断可以避免在浮层已打开时再次 triggerSuggest，防止浮层被反复弹回。
- */
-function isSuggestWidgetVisible(editor: monaco.editor.IStandaloneCodeEditor): boolean {
-  return Boolean(editor.getDomNode()?.querySelector('.suggest-widget.visible'));
-}
-
-function shouldTriggerSuggestions(editor: monaco.editor.IStandaloneCodeEditor): boolean {
-  const model = editor.getModel();
-  const position = editor.getPosition();
-  if (!model || !position) return false;
-  const line = model.getLineContent(position.lineNumber);
-  const beforeCursor = line.slice(0, Math.max(0, position.column - 1));
-  const trimmed = beforeCursor.trimStart();
-  if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#')) return false;
-  const lastDoubleQuote = beforeCursor.lastIndexOf('"');
-  const lastSingleQuote = beforeCursor.lastIndexOf("'");
-  if (lastDoubleQuote > beforeCursor.lastIndexOf('\\') || lastSingleQuote > beforeCursor.lastIndexOf('\\')) return false;
-  return /(?:^|[\s.(,:;<>])[$A-Za-z_][$\w]*$/.test(beforeCursor);
-}
-
 // 在编辑器实例创建前注册语言服务，确保 outlineModel 初始化时即可发现作用域符号。
 ensureCompletionProvider();
 
@@ -490,7 +466,6 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const pendingEventRef = useRef<monaco.editor.IModelContentChangedEvent | null>(null);
   const syncTimerRef = useRef<number | undefined>(undefined);
-  const suggestTimerRef = useRef<number | undefined>(undefined);
   const editorSubscriptionsRef = useRef<monaco.IDisposable[]>([]);
 
   useEffect(() => {
@@ -500,7 +475,6 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
 
   const flushPendingChange = useCallback(() => {
     window.clearTimeout(syncTimerRef.current);
-    window.clearTimeout(suggestTimerRef.current);
     syncTimerRef.current = undefined;
 
     const editor = editorRef.current;
@@ -534,25 +508,13 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
     ensureCompletionProvider();
     onMountRef.current?.(editor, api);
     disposeEditorSubscriptions();
-    const scheduleSuggestion = () => {
-      window.clearTimeout(suggestTimerRef.current);
-      suggestTimerRef.current = window.setTimeout(() => {
-        // 浮层已打开时不重复触发，避免刷新/闪烁。
-        if (isSuggestWidgetVisible(editor)) return;
-        if (shouldTriggerSuggestions(editor)) editor.trigger('proofline', 'editor.action.triggerSuggest', {});
-      }, SUGGEST_TRIGGER_DELAY);
-    };
     editorSubscriptionsRef.current = [
       editor.onDidChangeModelContent((event) => {
         pendingEventRef.current = event;
         window.clearTimeout(syncTimerRef.current);
         syncTimerRef.current = window.setTimeout(flushPendingChange, CHANGE_SYNC_DELAY);
         // 注意：不能在内容变化时自动触发补全 —— Tab/回车接受补全后插入的文本
-        // 会让 shouldTriggerSuggestions 再次命中，导致补全浮层被立刻弹回、看起来“卡住”不消失。
-      }),
-      editor.onKeyDown((event) => {
-        const key = event.browserEvent.key;
-        if (key.length === 1 || key === 'Backspace') scheduleSuggestion();
+        // 不再在这里主动触发补全；用户可用 `.`、`:` 或 Ctrl+Space 请求建议。
       }),
       // 失焦早于工具栏按钮的 click，运行和调试无需等待空闲定时器也能读取最新代码。
       editor.onDidBlurEditorText(flushPendingChange),
@@ -564,9 +526,9 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
       {...props}
       options={{
         ...props.options,
-        // Monaco 默认的建议能力在做题页曾被关闭；这里统一恢复 IDE 常用交互。
-        quickSuggestions: true,
-        quickSuggestionsDelay: 80,
+        // 自动建议会在每个字符后扫描全文符号，长文档中会阻塞键盘事件。
+        // 保留 `.`、`:` 的 triggerCharacters 和 Ctrl+Space 显式补全，输入/删除路径不再启动建议计算。
+        quickSuggestions: false,
         suggestOnTriggerCharacters: true,
         // 关闭 Monaco 原生的词库补全：它每次建议会话都会整篇扫描文档建词频表，
         // 与下方自定义补全（已包含文档内全部标识符）重复；关闭可减半每次停顿的扫描开销。
@@ -577,9 +539,23 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
         // （补全浮层开着时按回车会先被 acceptSuggestionOnEnter 拦截，这正是“回车切行被卡住”的另一半原因）
         acceptSuggestionOnEnter: 'off',
         acceptSuggestionOnCommitCharacter: true,
-        autoClosingBrackets: 'always',
-        autoClosingQuotes: 'always',
-        autoIndent: 'full',
+        // 'languageDefined' 比 'always' 少一次全局拦截：只在语言 Provider 定义了
+        // auto-close 规则时才介入，空格和删除不再触发多余的括号匹配检查。
+        autoClosingBrackets: 'languageDefined',
+        autoClosingQuotes: 'languageDefined',
+        // 'advanced' 只在回车时按括号上下文缩进，'full' 还会在每次编辑后
+        // 重新计算整行缩进——对删除/空格输入来说是纯浪费。
+        autoIndent: 'advanced',
+        // 平滑滚动和光标动画让输入/删除体验更丝滑，对性能影响极小。
+        smoothScrolling: true,
+        cursorSmoothCaretAnimation: 'on',
+        cursorBlinking: 'smooth',
+        // 行高亮只画 gutter 区域，比 'all' 少一次整行渲染。
+        renderLineHighlight: 'gutter',
+        scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8 },
+        // 括号对着色和引导线每次编辑都要全文括号匹配，是删除卡顿的主因。
+        bracketPairColorization: { enabled: false },
+        guides: { bracketPairs: false, indentation: true },
       }}
       onMount={handleMount}
     />

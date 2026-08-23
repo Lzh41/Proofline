@@ -61,7 +61,7 @@ let browserAiController: AbortController | null = null;
 let persistenceQueue: Promise<void> = Promise.resolve();
 let initializationPromise: Promise<void> | null = null;
 
-const AI_REQUEST_TIMEOUT_MS = 120_000;
+const AI_REQUEST_TIMEOUT_MS = 300_000;
 const AI_PROMPT_MAX_BYTES = 96 * 1024;
 const AI_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -72,10 +72,10 @@ function aiCompletionsUrl(baseUrl: string): string {
 
 function completionTokenBudget(prompt: string): number {
   // 最近练习复盘要覆盖多道题并输出 5 个章节，预算不足会被截断成半篇笔记。
-  if (prompt.includes('最近练习复盘')) return 4_096;
-  if (prompt.includes('本轮请求：生成主题面试题')) return 3_000;
-  if (prompt.includes('本轮请求：给完整代码')) return 4_096;
-  return 1_536;
+  if (prompt.includes('最近练习复盘')) return 8_192;
+  if (prompt.includes('本轮请求：生成主题面试题')) return 6_144;
+  if (prompt.includes('本轮请求：给完整代码')) return 8_192;
+  return 4_096;
 }
 
 function usesReasoningModel(model: string): boolean {
@@ -123,6 +123,7 @@ interface AppStore extends AppDataSnapshot {
   addKnowledgeNote: (input: Partial<KnowledgeNote>) => Promise<KnowledgeNote>;
   createKnowledgeNote: (input: Partial<KnowledgeNote>) => Promise<KnowledgeNote>;
   updateKnowledgeNote: (id: string, patch: Partial<KnowledgeNote>) => Promise<void>;
+  deleteKnowledgeNote: (id: string) => Promise<void>;
   savePlan: (input: Partial<DailyPlan>) => Promise<DailyPlan>;
   generateDailyPlan: (options?: Record<string, unknown>) => Promise<DailyPlan>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
@@ -151,6 +152,8 @@ interface AppStore extends AppDataSnapshot {
   getStatistics: () => LearningStatistics;
   searchKnowledge: (query: string) => ReturnType<typeof searchKnowledge>;
   searchKnowledgeFts: (query: string) => Promise<KnowledgeNote[]>;
+  pickRandomReviewProblem: (kind: 'algorithm' | 'interview') => Problem | null;
+  recordReview: (problemId: string, kind: 'algorithm' | 'interview') => Promise<void>;
 }
 
 function isTauriRuntime(): boolean {
@@ -753,6 +756,11 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({ knowledgeNotes: get().knowledgeNotes.map((item) => item.id === id ? { ...item, ...patch, id, updatedAt: Date.now() } : item) });
       await saveState(get, set);
     },
+    deleteKnowledgeNote: async (id) => {
+      await waitForInitialization();
+      set({ knowledgeNotes: get().knowledgeNotes.filter((item) => item.id !== id) });
+      await saveState(get, set);
+    },
     savePlan: async (input) => {
       await waitForInitialization();
       const now = Date.now();
@@ -1137,6 +1145,53 @@ export const useAppStore = create<AppStore>((set, get) => {
         catch { /* 旧数据库或 FTS 不可用时回退到本地索引 */ }
       }
       return searchKnowledge(get().knowledgeNotes, query).map((item) => item.note);
+    },
+    pickRandomReviewProblem: (kind) => {
+      const state = get();
+      const practicedProblems = state.problems.filter((problem) => {
+        if (kind === 'algorithm' && problem.kind !== 'algorithm') return false;
+        if (kind === 'interview' && problem.kind !== 'interview') return false;
+        return state.attempts.some((attempt) => attempt.problemId === problem.id && attempt.endedAt);
+      });
+      if (!practicedProblems.length) return null;
+
+      const history = state.settings.reviewHistory;
+      const reviewedIds = kind === 'algorithm'
+        ? history?.algorithmReviewedIds ?? []
+        : history?.interviewReviewedIds ?? [];
+
+      // 过滤出未复习的题目
+      const unreviewed = practicedProblems.filter((p) => !reviewedIds.includes(p.id));
+
+      let candidates: Problem[];
+      if (unreviewed.length > 0) {
+        candidates = unreviewed;
+      } else {
+        // 全部复习过了，重置队列，从所有做过的题中随机
+        candidates = practicedProblems;
+      }
+
+      // 随机选一道
+      const randomIndex = Math.floor(Math.random() * candidates.length);
+      return candidates[randomIndex];
+    },
+    recordReview: async (problemId, kind) => {
+      await waitForInitialization();
+      const state = get();
+      const history = state.settings.reviewHistory ?? { algorithmReviewedIds: [], interviewReviewedIds: [] };
+      const now = Date.now();
+
+      if (kind === 'algorithm') {
+        const ids = [...new Set([...history.algorithmReviewedIds, problemId])];
+        await get().updateSettings({
+          reviewHistory: { ...history, algorithmReviewedIds: ids, lastAlgorithmReviewAt: now },
+        });
+      } else {
+        const ids = [...new Set([...history.interviewReviewedIds, problemId])];
+        await get().updateSettings({
+          reviewHistory: { ...history, interviewReviewedIds: ids, lastInterviewReviewAt: now },
+        });
+      }
     },
   };
 });

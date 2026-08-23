@@ -251,6 +251,15 @@ export interface AiGeneration {
   createdAt: number;
 }
 
+export interface ReviewHistory {
+  /** 已复习过的算法题 ID 列表 */
+  algorithmReviewedIds: string[];
+  /** 已复习过的面试题 ID 列表 */
+  interviewReviewedIds: string[];
+  lastAlgorithmReviewAt?: number;
+  lastInterviewReviewAt?: number;
+}
+
 export interface AppSettings {
   aiBaseUrl: string;
   aiModel: string;
@@ -270,6 +279,7 @@ export interface AppSettings {
   solveTerminalHeight?: number;
   privacyConfirmed: boolean;
   theme: AppTheme;
+  reviewHistory?: ReviewHistory;
 }
 
 export interface BackupManifest {

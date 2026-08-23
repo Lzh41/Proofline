@@ -261,6 +261,46 @@ describe('企业面试工作台', () => {
     ));
   });
 
+  it('中文输入法组合期间不保存草稿，提交组合后再排期保存', async () => {
+    const interviewAttempt: Attempt = {
+      id: 'attempt-ime',
+      problemId: ragProblem.id,
+      mode: 'interview',
+      language: 'text',
+      code: '',
+      startedAt: 100,
+      durationSeconds: 0,
+      result: 'unfinished',
+      hintLevel: 0,
+      independent: true,
+      mastery: 1,
+      interview: { answerText: '' },
+      createdAt: 100,
+      updatedAt: 100,
+    };
+    const startInterviewAttempt = vi.fn(async () => interviewAttempt);
+    const saveInterviewDraft = vi.fn(async () => undefined);
+    useAppStore.setState({ startInterviewAttempt, saveInterviewDraft } as never);
+
+    render(
+      <MemoryRouter initialEntries={[`/interviews/${ragProblem.id}`]}>
+        <Routes><Route path="/interviews/:id" element={<InterviewPracticePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('自动保存');
+    const editor = screen.getByRole('textbox', { name: '我的回答' });
+    saveInterviewDraft.mockClear();
+    fireEvent.compositionStart(editor);
+    fireEvent.change(editor, { target: { value: '拼' } });
+    await new Promise((resolve) => window.setTimeout(resolve, 650));
+    expect(saveInterviewDraft).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(editor, { data: '拼' });
+    await new Promise((resolve) => window.setTimeout(resolve, 650));
+    expect(saveInterviewDraft).toHaveBeenCalledWith(interviewAttempt.id, '拼');
+  });
+
   it('可以建立完整的个人面试题', async () => {
     const addProblem = vi.fn(async () => ragProblem);
     useAppStore.setState({ addProblem } as never);

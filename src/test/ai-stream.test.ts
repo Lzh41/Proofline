@@ -166,7 +166,7 @@ describe('AI 流式响应', () => {
     });
     const request = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
     expect(request.messages[0].content).toContain('最近教练对话：\n第一级已经完成入口骨架');
-    expect(request.max_tokens).toBe(1_536);
+    expect(request.max_tokens).toBe(4_096);
     expect(request.temperature).toBe(0.2);
   });
 
@@ -181,7 +181,7 @@ describe('AI 流式响应', () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:3456/v1/chat/completions');
     const request = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
-    expect(request.max_tokens).toBe(1_536);
+    expect(request.max_tokens).toBe(4_096);
   });
 
   it('推理模型使用兼容的完成长度参数，避免因 temperature 或 max_tokens 被接口拒绝', async () => {
@@ -194,7 +194,7 @@ describe('AI 流式响应', () => {
     await useAppStore.getState().requestAiHint({ problemId: 'problem-1', intent: 'explain' });
 
     const request = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
-    expect(request.max_completion_tokens).toBe(1_536);
+    expect(request.max_completion_tokens).toBe(4_096);
     expect(request).not.toHaveProperty('temperature');
     expect(request).not.toHaveProperty('max_tokens');
   });

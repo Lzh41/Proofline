@@ -11,8 +11,8 @@ use uuid::Uuid;
 const KEYRING_SERVICE: &str = "com.xiti.desktop";
 const KEYRING_USER: &str = "ai-api-key";
 // 最近练习复盘的提示词是全应用最大的（多题题面 + 代码 + 复盘记录），
-// 推理模型思考时间也长；45 秒过紧会频繁误报超时，120 秒兼顾稳定性。
-const AI_TIMEOUT_SECS: u64 = 120;
+// 推理模型思考时间也长；120 秒过紧会频繁误报超时，300 秒兼顾稳定性。
+const AI_TIMEOUT_SECS: u64 = 300;
 const MAX_PROMPT_BYTES: usize = 96 * 1024;
 const MAX_STREAM_BUFFER_BYTES: usize = 2 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
@@ -505,14 +505,14 @@ fn request_error(context: &str, error: reqwest::Error) -> String {
 
 fn completion_token_budget(intent: &str, prompt: &str) -> u32 {
     if intent == "interview-examiner" || prompt.contains("本轮请求：生成主题面试题") {
-        3_000
+        6_144
     } else if intent == "complete" || prompt.contains("本轮请求：给完整代码") {
-        4_096
+        8_192
     } else if prompt.contains("最近练习复盘") {
         // 复盘笔记要覆盖多道题并输出 5 个章节，预算不足会被截断成半篇笔记。
-        4_096
+        8_192
     } else {
-        1_536
+        4_096
     }
 }
 
@@ -621,12 +621,12 @@ mod tests {
         assert!(uses_reasoning_model("gpt-5-mini"));
         assert!(uses_reasoning_model("openai/o3-mini"));
         assert!(!uses_reasoning_model("gpt-4o-mini"));
-        assert_eq!(completion_token_budget("explain", ""), 1_536);
-        assert_eq!(completion_token_budget("complete", ""), 4_096);
-        assert_eq!(completion_token_budget("interview-examiner", ""), 3_000);
+        assert_eq!(completion_token_budget("explain", ""), 4_096);
+        assert_eq!(completion_token_budget("complete", ""), 8_192);
+        assert_eq!(completion_token_budget("interview-examiner", ""), 6_144);
         assert_eq!(
             completion_token_budget("explain", "这是一次\"最近练习复盘\"任务"),
-            4_096
+            8_192
         );
     }
 

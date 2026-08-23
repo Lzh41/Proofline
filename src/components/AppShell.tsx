@@ -32,7 +32,7 @@ const NAVIGATION = [
   { to: '/problems', label: '题库', icon: LibraryBig },
   { to: '/interviews', label: '面试题', icon: MessagesSquare },
   { to: '/solve', label: '做题', icon: Code2 },
-  { to: '/mistakes', label: '错题', icon: Target },
+  { to: '/review', label: '复习', icon: Target },
   { to: '/knowledge', label: '知识库', icon: BookOpenText },
   { to: '/plan', label: '计划', icon: CalendarCheck2 },
   { to: '/analytics', label: '统计', icon: BarChart3 },

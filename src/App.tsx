@@ -38,7 +38,7 @@ function ApplicationRoutes() {
         <Route path="/interviews/:id" element={<InterviewPracticePage />} />
         <Route path="/solve" element={<SolvePage />} />
         <Route path="/solve/:id" element={<SolvePage />} />
-        <Route path="/mistakes" element={<MistakesPage />} />
+        <Route path="/review" element={<MistakesPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/knowledge/:id" element={<KnowledgePage />} />
         <Route path="/plan" element={<PlanPage />} />

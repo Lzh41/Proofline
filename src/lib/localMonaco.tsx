@@ -453,7 +453,7 @@ function ensureCompletionProvider(): void {
   if (!documentSymbolProviderDisposable) documentSymbolProviderDisposable = monaco.languages.registerDocumentSymbolProvider('*', documentSymbolProvider);
 }
 
-// 在编辑器实例创建前注册语言服务，确保 outlineModel 初始化时即可发现作用域符号。
+// 在编辑器实例创建前注册补全语言服务。
 ensureCompletionProvider();
 
 /**
@@ -527,13 +527,14 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
       options={{
         ...props.options,
         // 自动建议会在每个字符后扫描全文符号，长文档中会阻塞键盘事件。
-        // 保留 `.`、`:` 的 triggerCharacters 和 Ctrl+Space 显式补全，输入/删除路径不再启动建议计算。
+        // 只保留 Ctrl+Space 显式补全，输入/删除路径不再启动建议计算。
         quickSuggestions: false,
-        suggestOnTriggerCharacters: true,
+        suggestOnTriggerCharacters: false,
         // 关闭 Monaco 原生的词库补全：它每次建议会话都会整篇扫描文档建词频表，
         // 与下方自定义补全（已包含文档内全部标识符）重复；关闭可减半每次停顿的扫描开销。
         wordBasedSuggestions: 'off',
         suggestSelection: 'first',
+        suggest: { ...(props.options?.suggest ?? {}), filterGraceful: false },
         tabCompletion: 'on',
         // 回车始终用于换行、不再被补全吞掉；接受补全统一用 Tab。
         // （补全浮层开着时按回车会先被 acceptSuggestionOnEnter 拦截，这正是“回车切行被卡住”的另一半原因）
@@ -546,16 +547,26 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
         // 'advanced' 只在回车时按括号上下文缩进，'full' 还会在每次编辑后
         // 重新计算整行缩进——对删除/空格输入来说是纯浪费。
         autoIndent: 'advanced',
-        // 平滑滚动和光标动画让输入/删除体验更丝滑，对性能影响极小。
-        smoothScrolling: true,
-        cursorSmoothCaretAnimation: 'on',
-        cursorBlinking: 'smooth',
+        // 编辑器核心输入路径不叠加动画和滚动过渡，避免按键后的视觉追赶感。
+        smoothScrolling: false,
+        cursorSmoothCaretAnimation: 'off',
+        cursorBlinking: 'blink',
         // 行高亮只画 gutter 区域，比 'all' 少一次整行渲染。
         renderLineHighlight: 'gutter',
         scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8 },
-        // 括号对着色和引导线每次编辑都要全文括号匹配，是删除卡顿的主因。
+        // 括号着色和括号匹配都会在每次编辑后扫描模型，代码练习页不需要这类装饰。
         bracketPairColorization: { enabled: false },
+        matchBrackets: 'never',
         guides: { bracketPairs: false, indentation: true },
+        links: false,
+        parameterHints: { enabled: false },
+        unicodeHighlight: {
+          nonBasicASCII: false,
+          invisibleCharacters: false,
+          ambiguousCharacters: false,
+          includeComments: false,
+          includeStrings: false,
+        },
       }}
       onMount={handleMount}
     />

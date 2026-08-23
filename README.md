@@ -16,7 +16,7 @@
   <a href="https://github.com/Lzh41/Proofline"><img src="https://img.shields.io/github/stars/Lzh41/Proofline?style=flat-square&color=E8B86D" alt="GitHub stars" /></a>
 </p>
 
-> 当前版本：`0.1.6` · Windows x64 · Tauri 2 · React 19 · SQLite
+> 当前版本：`0.1.7` · Windows x64 · Tauri 2 · React 19 · SQLite
 
 ## 先看它在做什么
 
@@ -78,8 +78,8 @@ Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从�
 
 前往 [Releases](https://github.com/Lzh41/Proofline/releases) 下载：
 
-- `Proofline_0.1.6_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
-- `Proofline_0.1.6_x64-portable.exe`：Windows x64 便携版，免安装运行。
+- `Proofline_0.1.7_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
+- `Proofline_0.1.7_x64-portable.exe`：Windows x64 便携版，免安装运行。
 
 当前版本未配置商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。下载后请先核对 Release 页面中的 SHA-256。若系统没有 WebView2 Runtime，安装阶段需要联网下载安装运行时。
 

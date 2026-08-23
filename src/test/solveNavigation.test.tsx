@@ -28,6 +28,11 @@ vi.mock('../lib/localMonaco', () => ({
       stickyScroll?: { enabled?: boolean; maxLineCount?: number; defaultModel?: string };
       tabCompletion?: string;
       quickSuggestions?: unknown;
+      suggestOnTriggerCharacters?: boolean;
+      matchBrackets?: string;
+      links?: boolean;
+      parameterHints?: { enabled?: boolean };
+      unicodeHighlight?: { nonBasicASCII?: boolean; invisibleCharacters?: boolean; ambiguousCharacters?: boolean };
     };
   }) => {
     const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -44,6 +49,10 @@ vi.mock('../lib/localMonaco', () => ({
         data-sticky-model={String(options?.stickyScroll?.defaultModel ?? '')}
         data-tab-completion={String(options?.tabCompletion ?? '')}
         data-quick-suggestions={String(options?.quickSuggestions === true)}
+        data-suggest-on-trigger={String(options?.suggestOnTriggerCharacters === true)}
+        data-match-brackets={String(options?.matchBrackets ?? '')}
+        data-links={String(options?.links ?? true)}
+        data-parameter-hints={String(options?.parameterHints?.enabled ?? true)}
         style={{ fontSize: options?.fontSize ? `${options.fontSize}px` : undefined }}
         defaultValue={defaultValue}
         onChange={(event) => onChange?.(event.target.value)}
@@ -538,6 +547,10 @@ const helper = (value: number): number => value * 2;`.split('\n');
     expect(editor).toHaveAttribute('data-sticky-model', '');
     expect(editor).toHaveAttribute('data-tab-completion', 'on');
     expect(editor).toHaveAttribute('data-quick-suggestions', 'false');
+    expect(editor).toHaveAttribute('data-suggest-on-trigger', 'false');
+    expect(editor).toHaveAttribute('data-match-brackets', 'never');
+    expect(editor).toHaveAttribute('data-links', 'false');
+    expect(editor).toHaveAttribute('data-parameter-hints', 'false');
   });
 
   it('长题面通过独立阅读层完整显示并保留换行', async () => {

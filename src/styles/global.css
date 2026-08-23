@@ -340,6 +340,11 @@ body::-webkit-scrollbar {
   border: 0;
 }
 
+/* 没有候选项时不保留 Monaco 的空建议浮层，避免遮挡编辑器并造成误解。 */
+.monaco-editor .suggest-widget.message {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -457,8 +457,8 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     folding: false,
     occurrencesHighlight: 'off',
     selectionHighlight: false,
-    parameterHints: { enabled: true },
-    suggestOnTriggerCharacters: true,
+    parameterHints: { enabled: false },
+    suggestOnTriggerCharacters: false,
     // 关闭 Monaco 原生词库补全：自定义补全已包含文档内全部标识符，双重扫描是多余开销。
     wordBasedSuggestions: 'off',
     suggestSelection: 'first',
@@ -467,22 +467,25 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     autoClosingBrackets: 'languageDefined',
     autoClosingQuotes: 'languageDefined',
     autoIndent: 'advanced',
-    suggest: { filterGraceful: true, showMethods: true, showFunctions: true, showVariables: true, showKeywords: true, showSnippets: true },
+    suggest: { filterGraceful: false, showMethods: true, showFunctions: true, showVariables: true, showKeywords: true, showSnippets: true },
     renderValidationDecorations: 'off',
-    // 平滑滚动和光标动画让输入/删除体验更丝滑，对性能影响极小。
-    smoothScrolling: true,
-    cursorSmoothCaretAnimation: 'on',
-    cursorBlinking: 'smooth',
+    // 编辑器核心输入路径不叠加动画和滚动过渡，避免按键后的视觉追赶感。
+    smoothScrolling: false,
+    cursorSmoothCaretAnimation: 'off',
+    cursorBlinking: 'blink',
     // 行高亮只画行号 gutter 区域，比 'all' 少一次整行渲染。
     renderLineHighlight: 'gutter',
     // 缩小滚动条滑块减少绘制面积。
     scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8 },
     // stickyScroll 关闭：它依赖 outlineModel，每次按键都要全篇符号解析，代价太高。
     stickyScroll: { enabled: false },
-    // 括号对着色和引导线每次编辑都要全文括号匹配，是删除卡顿的主因。
+    // 括号着色和括号匹配都会在每次编辑后扫描模型，代码练习页不需要这类装饰。
     bracketPairColorization: { enabled: false },
+    matchBrackets: 'never',
     guides: { bracketPairs: false, indentation: true },
-    // 关闭 quickSuggestions 自动评估，只保留 triggerCharacters 手动触发。
+    links: false,
+    unicodeHighlight: { nonBasicASCII: false, invisibleCharacters: false, ambiguousCharacters: false, includeComments: false, includeStrings: false },
+    // 关闭 quickSuggestions 自动评估，只保留 Ctrl+Space 显式触发。
     quickSuggestions: false,
   }), [fontSize]);
 

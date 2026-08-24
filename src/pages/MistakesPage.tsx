@@ -270,7 +270,7 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
                 // ── 补全/建议 ──
                 quickSuggestions: false, suggestOnTriggerCharacters: false, wordBasedSuggestions: 'off', suggestSelection: 'first', tabCompletion: 'on',
                 // ── 输入/编辑 ──
-                autoClosingBrackets: 'languageDefined' as const, autoClosingQuotes: 'languageDefined' as const, autoIndent: 'keep' as const, formatOnPaste: false, formatOnType: false,
+                autoClosingBrackets: 'languageDefined' as const, autoClosingQuotes: 'languageDefined' as const, autoIndent: 'advanced', formatOnPaste: false, formatOnType: false,
                 // ── Tokenization 限制 ──
                 maxTokenizationLineLength: 4096, largeFileOptimizations: true,
                 // ── 光标/滚动 ──

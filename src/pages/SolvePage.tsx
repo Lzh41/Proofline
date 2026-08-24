@@ -467,7 +467,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     // 'off' 彻底消除每次按键时的括号匹配检查，节省 0.5-2ms/按键。
     autoClosingBrackets: 'languageDefined' as const,
     autoClosingQuotes: 'languageDefined' as const,
-    autoIndent: 'keep' as const,
+    autoIndent: 'advanced',
     formatOnPaste: false,
     formatOnType: false,
     // ── Tokenization 限制：防止长行/大文件阻塞主线程（VSCode 同款优化）──

@@ -544,22 +544,42 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
         // auto-close 规则时才介入，空格和删除不再触发多余的括号匹配检查。
         autoClosingBrackets: 'languageDefined',
         autoClosingQuotes: 'languageDefined',
-        // 'advanced' 只在回车时按括号上下文缩进，'full' 还会在每次编辑后
-        // 重新计算整行缩进——对删除/空格输入来说是纯浪费。
         autoIndent: 'advanced',
-        // 编辑器核心输入路径不叠加动画和滚动过渡，避免按键后的视觉追赶感。
+        formatOnPaste: false,
+        formatOnType: false,
+        // ── Tokenization 限制：防止长行/大文件阻塞主线程（VSCode 同款优化）──
+        maxTokenizationLineLength: 4096,
+        largeFileOptimizations: true,
+        // ── 光标/滚动：消除动画和定时器重绘 ──
         smoothScrolling: false,
         cursorSmoothCaretAnimation: 'off',
-        cursorBlinking: 'blink',
-        // 行高亮只画 gutter 区域，比 'all' 少一次整行渲染。
-        renderLineHighlight: 'gutter',
-        scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8 },
-        // 括号着色和括号匹配都会在每次编辑后扫描模型，代码练习页不需要这类装饰。
+        cursorBlinking: 'solid',
+        // ── 装饰/高亮：关闭所有不直接影响编辑的 per-line/per-char 装饰 ──
+        renderLineHighlight: 'none',
+        occurrencesHighlight: 'off',
+        selectionHighlight: false,
+        colorDecorators: false,
+        renderValidationDecorations: 'off',
+        renderWhitespace: 'none',
         bracketPairColorization: { enabled: false },
         matchBrackets: 'never',
-        guides: { bracketPairs: false, indentation: true },
+        guides: {
+          bracketPairs: false,
+          bracketPairsHorizontal: false,
+          highlightActiveBracketPair: false,
+          indentation: false,
+          highlightActiveIndentation: false,
+        },
+        hover: { enabled: false },
         links: false,
         parameterHints: { enabled: false },
+        // ── 布局/Chrome：减少 DOM 计算 ──
+        minimap: { enabled: false },
+        scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8, useShadows: false },
+        padding: { top: 0, bottom: 0 },
+        overviewRulerLanes: 0,
+        hideCursorInOverviewRuler: true,
+        fixedOverflowWidgets: true,
         unicodeHighlight: {
           nonBasicASCII: false,
           invisibleCharacters: false,

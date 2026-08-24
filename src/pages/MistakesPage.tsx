@@ -252,7 +252,27 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
 
           <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
             <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
-              <MonacoEditor height="100%" language={language === 'cpp' ? 'cpp' : language} defaultValue={codeRef.current} theme={editorTheme} options={{ fontSize: editorFontSize, fontFamily: 'JetBrains Mono, Consolas, monospace', minimap: { enabled: false }, scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 16 }, wordWrap: 'off', codeLens: false, folding: false, occurrencesHighlight: 'off', selectionHighlight: false, wordBasedSuggestions: 'off', tabCompletion: 'on', suggestOnTriggerCharacters: false, autoClosingBrackets: 'languageDefined', autoClosingQuotes: 'languageDefined', autoIndent: 'advanced', parameterHints: { enabled: false }, links: false, unicodeHighlight: { nonBasicASCII: false, invisibleCharacters: false, ambiguousCharacters: false, includeComments: false, includeStrings: false }, renderValidationDecorations: 'off', smoothScrolling: false, cursorSmoothCaretAnimation: 'off', cursorBlinking: 'blink', renderLineHighlight: 'gutter', scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8 }, stickyScroll: { enabled: false }, bracketPairColorization: { enabled: false }, matchBrackets: 'never', guides: { bracketPairs: false, indentation: true }, quickSuggestions: false }} onChange={handleCodeChange} onMount={handleEditorMount} />
+              <MonacoEditor height="100%" language={language === 'cpp' ? 'cpp' : language} defaultValue={codeRef.current} theme={editorTheme} options={{
+                fontSize: editorFontSize, fontFamily: 'JetBrains Mono, Consolas, monospace', scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 0, bottom: 0 },
+                wordWrap: 'off', codeLens: false, folding: false, stickyScroll: { enabled: false },
+                // ── 补全/建议 ──
+                quickSuggestions: false, suggestOnTriggerCharacters: false, wordBasedSuggestions: 'off', suggestSelection: 'first', tabCompletion: 'on',
+                // ── 输入/编辑 ──
+                autoClosingBrackets: 'languageDefined', autoClosingQuotes: 'languageDefined', autoIndent: 'advanced', formatOnPaste: false, formatOnType: false,
+                // ── Tokenization 限制 ──
+                maxTokenizationLineLength: 4096, largeFileOptimizations: true,
+                // ── 光标/滚动 ──
+                smoothScrolling: false, cursorSmoothCaretAnimation: 'off', cursorBlinking: 'solid',
+                // ── 装饰/高亮 ──
+                renderLineHighlight: 'none', occurrencesHighlight: 'off', selectionHighlight: false, colorDecorators: false, renderValidationDecorations: 'off', renderWhitespace: 'none',
+                bracketPairColorization: { enabled: false }, matchBrackets: 'never',
+                guides: { bracketPairs: false, bracketPairsHorizontal: false, highlightActiveBracketPair: false, indentation: false, highlightActiveIndentation: false },
+                // ── Hover/Inlay ──
+                hover: { enabled: false }, links: false, parameterHints: { enabled: false },
+                // ── 布局/Chrome ──
+                minimap: { enabled: false }, scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8, useShadows: false }, overviewRulerLanes: 0, hideCursorInOverviewRuler: true, fixedOverflowWidgets: true,
+                unicodeHighlight: { nonBasicASCII: false, invisibleCharacters: false, ambiguousCharacters: false, includeComments: false, includeStrings: false },
+              }} onChange={handleCodeChange} onMount={handleEditorMount} />
             </Suspense>
           </div>
 

@@ -611,6 +611,8 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
     acceptSuggestionOnCommitCharacter: false,
     autoClosingBrackets: 'languageDefined' as const,
     autoClosingQuotes: 'languageDefined' as const,
+    autoClosingDelete: 'never' as const,
+    autoClosingOvertype: 'never' as const,
     autoIndent: 'advanced',
     formatOnPaste: false,
     formatOnType: false,

@@ -467,6 +467,8 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     // 'off' 彻底消除每次按键时的括号匹配检查，节省 0.5-2ms/按键。
     autoClosingBrackets: 'languageDefined' as const,
     autoClosingQuotes: 'languageDefined' as const,
+    autoClosingDelete: 'never' as const,
+    autoClosingOvertype: 'never' as const,
     autoIndent: 'advanced',
     formatOnPaste: false,
     formatOnType: false,

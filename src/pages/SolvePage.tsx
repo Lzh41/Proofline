@@ -465,9 +465,9 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     suggest: { filterGraceful: false, showMethods: false, showFunctions: false, showVariables: false, showKeywords: false, showSnippets: false },
     // ── 输入/编辑：最小化每次按键的副作用 ──
     // 'off' 彻底消除每次按键时的括号匹配检查，节省 0.5-2ms/按键。
-    autoClosingBrackets: 'never',
-    autoClosingQuotes: 'never',
-    autoIndent: 'advanced',
+    autoClosingBrackets: 'languageDefined' as const,
+    autoClosingQuotes: 'languageDefined' as const,
+    autoIndent: 'keep' as const,
     formatOnPaste: false,
     formatOnType: false,
     // ── Tokenization 限制：防止长行/大文件阻塞主线程（VSCode 同款优化）──

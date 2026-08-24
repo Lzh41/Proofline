@@ -516,10 +516,10 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
           onMount={(editor) => {
             onEditorMount?.(editor);
             // ── 撤销/重做状态同步 ──
-            // 旧版在每次 onDidChangeModelContent 时都执行 canUndo/canRedo 检查，
-            // 结果状态变化时调用 setState → 触发整个 SolvePage 重渲染（2000+ 行组件）。
-            // 优化：用 debounce 聚合，只在编辑停顿 200ms 后检查一次，
-            // 且只在状态真正变化时才调用 setState。
+            // 优化：只订阅 onDidChangeModelContent（内容变化时）和 onDidBlurEditorText
+            // （失焦时，用于工具栏按钮点击前刷新状态）。
+            // 移除 onDidChangeModel 和 onDidFocusEditorText —— 模型切换和聚焦
+            // 不影响 undo/redo 可用性，减少每次按键的同步回调数量。
             let last = { canUndo: false, canRedo: false };
             let debounceTimer: ReturnType<typeof setTimeout> | undefined;
             const syncHistory = () => {
@@ -537,8 +537,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
             editorSubscriptionsRef.current.forEach((subscription) => subscription.dispose());
             editorSubscriptionsRef.current = [
               editor.onDidChangeModelContent(syncHistory),
-              editor.onDidChangeModel(syncHistory),
-              editor.onDidFocusEditorText(syncHistory),
+              // 失焦时立即刷新（不 debounce），确保工具栏按钮拿到最新 undo/redo 状态
               editor.onDidBlurEditorText(syncHistory),
             ];
             syncHistory();

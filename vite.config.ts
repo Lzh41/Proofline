@@ -32,5 +32,8 @@ export default defineConfig({
       'monaco-editor/esm/vs/basic-languages/python/python.contribution.js',
       'monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js',
     ],
+    // 排除 @monaco-editor/react 和 @monaco-editor/loader 避免
+    // 它们的依赖在预构建时与 Monaco 的 ESM 模块产生冲突
+    exclude: ['@monaco-editor/react', '@monaco-editor/loader'],
   },
 });

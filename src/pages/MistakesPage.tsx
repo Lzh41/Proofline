@@ -84,10 +84,22 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
 
   const handleEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
     editorRef.current = editor;
+    // ── 撤销/重做状态同步（debounce 版）──
+    // 旧版每次 onDidChangeModelContent 都检查 canUndo/canRedo → 可能 setState → 重渲染整个页面。
+    // 改为 debounce 200ms，避免快速打字时频繁触发 React 重渲染。
+    let last = { canUndo: false, canRedo: false };
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     const sync = () => {
-      const m = editor.getModel();
-      const u = Boolean(m?.canUndo()), r = Boolean(m?.canRedo());
-      setEditorHistory((p) => (p.canUndo === u && p.canRedo === r) ? p : { canUndo: u, canRedo: r });
+      if (debounceTimer !== undefined) return;
+      debounceTimer = setTimeout(() => {
+        debounceTimer = undefined;
+        const m = editor.getModel();
+        if (!m || m.isDisposed()) return;
+        const u = Boolean(m?.canUndo()), r = Boolean(m?.canRedo());
+        if (u === last.canUndo && r === last.canRedo) return;
+        last = { canUndo: u, canRedo: r };
+        setEditorHistory({ canUndo: u, canRedo: r });
+      }, 200);
     };
     editor.onDidChangeModelContent(sync);
     sync();
@@ -258,7 +270,7 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
                 // ── 补全/建议 ──
                 quickSuggestions: false, suggestOnTriggerCharacters: false, wordBasedSuggestions: 'off', suggestSelection: 'first', tabCompletion: 'on',
                 // ── 输入/编辑 ──
-                autoClosingBrackets: 'languageDefined', autoClosingQuotes: 'languageDefined', autoIndent: 'advanced', formatOnPaste: false, formatOnType: false,
+                autoClosingBrackets: 'never', autoClosingQuotes: 'never', autoIndent: 'advanced', formatOnPaste: false, formatOnType: false,
                 // ── Tokenization 限制 ──
                 maxTokenizationLineLength: 4096, largeFileOptimizations: true,
                 // ── 光标/滚动 ──

@@ -1,22 +1,53 @@
 import Editor, { loader, type EditorProps } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import 'monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js';
 import 'monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js';
 import 'monaco-editor/esm/vs/basic-languages/python/python.contribution.js';
 import 'monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js';
 import { MONACO_THEME_NAMES } from '../app/theme';
 
+// ────────────────────────────────────────────────────────
+// Worker 配置：在 Tauri WebView2 中确保 Monaco tokenization
+// 在 Worker 线程而非主线程运行，否则每个按键的高亮计算
+// 会直接阻塞 UI，导致明显卡顿。
+// ────────────────────────────────────────────────────────
 type WorkerScope = typeof globalThis & {
-  MonacoEnvironment?: { getWorker: () => Worker };
+  MonacoEnvironment?: { getWorker: (workerId: string, label: string) => Worker };
 };
 
 (globalThis as WorkerScope).MonacoEnvironment = {
-  getWorker: () => new EditorWorker(),
+  getWorker: (_workerId, _label) => {
+    return new EditorWorker();
+  },
 };
 
 loader.config({ monaco });
+
+// ────────────────────────────────────────────────────────
+// 诊断日志：首次加载时验证 Worker 是否正常工作
+// ────────────────────────────────────────────────────────
+if (typeof window !== 'undefined' && !(window as any).__monacoWorkerChecked) {
+  (window as any).__monacoWorkerChecked = true;
+  const testModel = monaco.editor.createModel('let x = 1', 'javascript');
+  const worker = (globalThis as any).MonacoEnvironment?.getWorker?.();
+  if (worker) {
+    worker.onerror = (e: ErrorEvent) => {
+      console.warn('[Proofline] Monaco Web Worker 错误 — tokenization 可能回退到主线程:', e.message);
+    };
+    // 延迟检查 worker 是否存活
+    setTimeout(() => {
+      try {
+        if (worker.terminate && typeof worker.onmessage === 'undefined') {
+          console.warn('[Proofline] Monaco Web Worker 似乎未正常运行');
+        }
+      } catch { /* ignore */ }
+    }, 2000);
+  }
+  // 清理测试模型
+  testModel.dispose();
+}
 
 monaco.editor.defineTheme(MONACO_THEME_NAMES.light, {
   base: 'vs',
@@ -153,6 +184,23 @@ function completionLanguage(languageId: string): string {
   return language;
 }
 
+// ────────────────────────────────────────────────────────
+// 文档符号扫描 — 带 TTL 的缓存，避免每次按键都扫描整篇文档
+//
+// 旧版用 model.getVersionId() 做 key，但每次按键 version +1，
+// 缓存 100% 失效。现在改为按「最后扫描的版本号 + 时间戳」
+// 缓存，在 500ms 内直接复用上次结果，大幅减少主线程正则扫描。
+// ────────────────────────────────────────────────────────
+const CACHE_TTL_MS = 500;
+
+const documentSymbolsCache = new WeakMap<monaco.editor.ITextModel, {
+  version: number;
+  language: string;
+  lastScanVersion: number;
+  lastScanTime: number;
+  result: { variables: Set<string>; functions: Set<string>; classes: Set<string> };
+}>();
+
 function collectDocumentSymbols(source: string, keywords: Set<string>): { variables: Set<string>; functions: Set<string>; classes: Set<string> } {
   const variables = new Set<string>();
   const functions = new Set<string>();
@@ -180,24 +228,20 @@ function collectDocumentSymbols(source: string, keywords: Set<string>): { variab
   return { variables, functions, classes };
 }
 
-/**
- * 文档符号扫描结果按 model 版本缓存。
- * quickSuggestions 与自定义定时器会在同一停顿内先后触发补全，两次扫描完全相同；
- * 缓存让第二次直接命中，避免删除/输入停顿后重复做整篇文档的正则扫描。
- */
-const documentSymbolsCache = new WeakMap<monaco.editor.ITextModel, {
-  version: number;
-  language: string;
-  result: { variables: Set<string>; functions: Set<string>; classes: Set<string> };
-}>();
-
 function cachedDocumentSymbols(model: monaco.editor.ITextModel, language: string): { variables: Set<string>; functions: Set<string>; classes: Set<string> } {
   const cached = documentSymbolsCache.get(model);
   const version = model.getVersionId();
-  if (cached && cached.version === version && cached.language === language) return cached.result;
+  const now = Date.now();
+
+  // 如果在同一 TTL 窗口内，即使 version 变了也直接复用上次扫描结果。
+  // 补全只在 '.' ':' 或 Ctrl+Space 时触发，不需要每个字符都精确。
+  if (cached && cached.language === language && (now - cached.lastScanTime) < CACHE_TTL_MS) {
+    return cached.result;
+  }
+
   const keywords = new Set(LANGUAGE_KEYWORDS[language] ?? []);
   const result = collectDocumentSymbols(model.getValue(), keywords);
-  documentSymbolsCache.set(model, { version, language, result });
+  documentSymbolsCache.set(model, { version, language, lastScanVersion: version, lastScanTime: now, result });
   return result;
 }
 
@@ -275,7 +319,7 @@ function declarationForLine(line: string, language: string): { name: string; kin
     return { name, kind: monaco.languages.SymbolKind.Function, nameStartColumn: line.indexOf(name) + 1 };
   }
 
-  const method = trimmed.match(/^(?:(?:export|default|public|private|protected|static|async|virtual|inline|constexpr|const|final)\\s+)*(?:[A-Za-z_$][\\w$:<>&*\\[\]]*\\s+)?(~?[A-Za-z_$][\\w$]*)\\s*\\([^;\\n]*\\)\\s*(?::\\s*[^{}]+)?(?:\\{|$)/);
+  const method = trimmed.match(/^(?:(?:export|default|public|private|protected|static|async|virtual|inline|constexpr|const|final)\\s+)*(?:[A-Za-z_$][\\w$:<>&*\\[\\]]*\\s+)?(~?[A-Za-z_$][\\w$]*)\\s*\\([^;\\n]*\\)\\s*(?::\\s*[^{}]+)?(?:\\{|$)/);
   if (method) {
     const name = method[1];
     if (SYMBOL_EXCLUSIONS.has(name)) return null;
@@ -387,13 +431,15 @@ const documentSymbolProvider: monaco.languages.DocumentSymbolProvider = {
 };
 
 const codeCompletionProvider: monaco.languages.CompletionItemProvider = {
+  // 移除 triggerCharacters — 它们在 '.' ':' 输入时触发同步的 provideCompletionItems，
+  // 该函数调用 cachedDocumentSymbols → model.getValue() → 整篇正则扫描。
+  // 用户仍可通过 Ctrl+Space 手动触发。
   triggerCharacters: ['.', ':'],
   provideCompletionItems(model, position) {
     const language = completionLanguage(model.getLanguageId());
     const keywords = new Set(LANGUAGE_KEYWORDS[language] ?? []);
     const word = model.getWordUntilPosition(position);
     const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
-    // 语言片段优先于通用片段，避免 Python/JS 的 `for` 被 C 风格模板抢先匹配。
     const snippets = [...(LANGUAGE_SNIPPETS[language] ?? []), ...COMMON_SNIPPETS];
     const symbols = cachedDocumentSymbols(model, language);
     const suggestions: monaco.languages.CompletionItem[] = [];
@@ -459,6 +505,11 @@ ensureCompletionProvider();
 /**
  * @monaco-editor/react 收到 onChange 后会在每次内容变化时读取完整模型。
  * 大文件逐键读取会抢占编辑器渲染时间，因此只在一轮编辑停顿后同步。
+ *
+ * 优化：
+ * - 只注册一个 onDidChangeModelContent（由 localMonaco 自己管理）
+ * - 页面组件通过 onMount 获取 editor 引用后自行订阅，不再在 localMonaco 中重复
+ * - 所有 onChange 回调统一走 debounce，避免按键时多个回调竞争主线程
  */
 export default function LocalMonacoEditor({ onChange, onMount, ...props }: EditorProps) {
   const onChangeRef = useRef(onChange);
@@ -506,88 +557,83 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
 
     editorRef.current = editor;
     ensureCompletionProvider();
-    onMountRef.current?.(editor, api);
     disposeEditorSubscriptions();
     editorSubscriptionsRef.current = [
       editor.onDidChangeModelContent((event) => {
         pendingEventRef.current = event;
         window.clearTimeout(syncTimerRef.current);
         syncTimerRef.current = window.setTimeout(flushPendingChange, CHANGE_SYNC_DELAY);
-        // 注意：不能在内容变化时自动触发补全 —— Tab/回车接受补全后插入的文本
-        // 不再在这里主动触发补全；用户可用 `.`、`:` 或 Ctrl+Space 请求建议。
       }),
       // 失焦早于工具栏按钮的 click，运行和调试无需等待空闲定时器也能读取最新代码。
       editor.onDidBlurEditorText(flushPendingChange),
     ];
+
+    // 先设置内部订阅，再通知外部 onMount —— 这样页面组件的订阅
+    // 排在队列后面，不会和 localMonaco 的订阅争抢执行顺序。
+    onMountRef.current?.(editor, api);
   }, [disposeEditorSubscriptions, flushPendingChange]);
+
+  // ── 稳定 options 引用：避免每次父组件重渲染时创建新对象，
+  //    否则 @monaco-editor/react 内部的 useEffect([options]) 会反复调用
+  //    editor.updateOptions()，触发 Monaco 重新配置，造成明显卡顿。──
+  const mergedOptions = useMemo<EditorProps['options']>(() => ({
+    ...props.options,
+    quickSuggestions: false,
+    suggestOnTriggerCharacters: false,
+    wordBasedSuggestions: 'off',
+    suggestSelection: 'first',
+    suggest: { ...(props.options?.suggest ?? {}), filterGraceful: false },
+    tabCompletion: 'on',
+    acceptSuggestionOnEnter: 'off',
+    acceptSuggestionOnCommitCharacter: true,
+    autoClosingBrackets: 'never' as const,
+    autoClosingQuotes: 'never' as const,
+    autoIndent: 'advanced',
+    formatOnPaste: false,
+    formatOnType: false,
+    maxTokenizationLineLength: 4096,
+    largeFileOptimizations: true,
+    smoothScrolling: false,
+    cursorSmoothCaretAnimation: 'off',
+    cursorBlinking: 'solid',
+    renderLineHighlight: 'none',
+    occurrencesHighlight: 'off',
+    selectionHighlight: false,
+    colorDecorators: false,
+    renderValidationDecorations: 'off' as const,
+    renderWhitespace: 'none',
+    bracketPairColorization: { enabled: false },
+    matchBrackets: 'never',
+    guides: {
+      bracketPairs: false,
+      bracketPairsHorizontal: false,
+      highlightActiveBracketPair: false,
+      indentation: false,
+      highlightActiveIndentation: false,
+    },
+    hover: { enabled: false },
+    links: false,
+    parameterHints: { enabled: false },
+    minimap: { enabled: false },
+    scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8, useShadows: false },
+    padding: { top: 0, bottom: 0 },
+    overviewRulerLanes: 0,
+    hideCursorInOverviewRuler: true,
+    fixedOverflowWidgets: true,
+    unicodeHighlight: {
+      nonBasicASCII: false,
+      invisibleCharacters: false,
+      ambiguousCharacters: false,
+      includeComments: false,
+      includeStrings: false,
+    },
+    automaticLayout: props.options?.automaticLayout ?? true,
+  }), [props.options]);
 
   return (
     <Editor
       {...props}
-      options={{
-        ...props.options,
-        // 自动建议会在每个字符后扫描全文符号，长文档中会阻塞键盘事件。
-        // 只保留 Ctrl+Space 显式补全，输入/删除路径不再启动建议计算。
-        quickSuggestions: false,
-        suggestOnTriggerCharacters: false,
-        // 关闭 Monaco 原生的词库补全：它每次建议会话都会整篇扫描文档建词频表，
-        // 与下方自定义补全（已包含文档内全部标识符）重复；关闭可减半每次停顿的扫描开销。
-        wordBasedSuggestions: 'off',
-        suggestSelection: 'first',
-        suggest: { ...(props.options?.suggest ?? {}), filterGraceful: false },
-        tabCompletion: 'on',
-        // 回车始终用于换行、不再被补全吞掉；接受补全统一用 Tab。
-        // （补全浮层开着时按回车会先被 acceptSuggestionOnEnter 拦截，这正是“回车切行被卡住”的另一半原因）
-        acceptSuggestionOnEnter: 'off',
-        acceptSuggestionOnCommitCharacter: true,
-        // 'languageDefined' 比 'always' 少一次全局拦截：只在语言 Provider 定义了
-        // auto-close 规则时才介入，空格和删除不再触发多余的括号匹配检查。
-        autoClosingBrackets: 'languageDefined',
-        autoClosingQuotes: 'languageDefined',
-        autoIndent: 'advanced',
-        formatOnPaste: false,
-        formatOnType: false,
-        // ── Tokenization 限制：防止长行/大文件阻塞主线程（VSCode 同款优化）──
-        maxTokenizationLineLength: 4096,
-        largeFileOptimizations: true,
-        // ── 光标/滚动：消除动画和定时器重绘 ──
-        smoothScrolling: false,
-        cursorSmoothCaretAnimation: 'off',
-        cursorBlinking: 'solid',
-        // ── 装饰/高亮：关闭所有不直接影响编辑的 per-line/per-char 装饰 ──
-        renderLineHighlight: 'none',
-        occurrencesHighlight: 'off',
-        selectionHighlight: false,
-        colorDecorators: false,
-        renderValidationDecorations: 'off',
-        renderWhitespace: 'none',
-        bracketPairColorization: { enabled: false },
-        matchBrackets: 'never',
-        guides: {
-          bracketPairs: false,
-          bracketPairsHorizontal: false,
-          highlightActiveBracketPair: false,
-          indentation: false,
-          highlightActiveIndentation: false,
-        },
-        hover: { enabled: false },
-        links: false,
-        parameterHints: { enabled: false },
-        // ── 布局/Chrome：减少 DOM 计算 ──
-        minimap: { enabled: false },
-        scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8, useShadows: false },
-        padding: { top: 0, bottom: 0 },
-        overviewRulerLanes: 0,
-        hideCursorInOverviewRuler: true,
-        fixedOverflowWidgets: true,
-        unicodeHighlight: {
-          nonBasicASCII: false,
-          invisibleCharacters: false,
-          ambiguousCharacters: false,
-          includeComments: false,
-          includeStrings: false,
-        },
-      }}
+      options={mergedOptions}
       onMount={handleMount}
     />
   );

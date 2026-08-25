@@ -480,7 +480,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     // ── 光标/滚动：消除动画和定时器重绘 ──
     smoothScrolling: false,
     cursorSmoothCaretAnimation: 'off',
-    cursorBlinking: 'solid',
+    cursorBlinking: 'blink',
     // ── 装饰/高亮：关闭所有不直接影响编辑的 per-line/per-char 装饰 ──
     renderLineHighlight: 'none',
     occurrencesHighlight: 'off',

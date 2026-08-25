@@ -621,7 +621,7 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
     largeFileOptimizations: true,
     smoothScrolling: false,
     cursorSmoothCaretAnimation: 'off',
-    cursorBlinking: 'solid',
+    cursorBlinking: 'blink',
     renderLineHighlight: 'none',
     occurrencesHighlight: 'off',
     selectionHighlight: false,

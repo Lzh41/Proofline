@@ -274,7 +274,7 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
                 // ── Tokenization 限制 ──
                 maxTokenizationLineLength: 4096, largeFileOptimizations: true,
                 // ── 光标/滚动 ──
-                smoothScrolling: false, cursorSmoothCaretAnimation: 'off', cursorBlinking: 'solid',
+                smoothScrolling: false, cursorSmoothCaretAnimation: 'off', cursorBlinking: 'blink',
                 // ── 装饰/高亮 ──
                 renderLineHighlight: 'none', occurrencesHighlight: 'off', selectionHighlight: false, colorDecorators: false, renderValidationDecorations: 'off', renderWhitespace: 'none',
                 bracketPairColorization: { enabled: false }, matchBrackets: 'never',

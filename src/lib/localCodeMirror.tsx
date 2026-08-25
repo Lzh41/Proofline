@@ -4,19 +4,20 @@
  * 替代 Monaco Editor：
  * - 1-5ms 输入延迟（vs Monaco 的 20-50ms）
  * - 无需 Web Worker
- * - ~150KB bundle（vs Monaco 的 ~3.6MB）
+ * - ~638KB bundle（vs Monaco 的 ~3.6MB）
  * - 增量解析（只重解析变化部分）
  */
 import { useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorState, type Extension, type StateEffect } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLineGutter } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
-import { indentOnInput, bracketMatching, foldGutter, foldKeymap, syntaxHighlighting, defaultHighlightStyle, type LanguageSupport } from '@codemirror/language';
+import { indentOnInput, bracketMatching, foldGutter, foldKeymap, syntaxHighlighting, defaultHighlightStyle, HighlightStyle, type LanguageSupport } from '@codemirror/language';
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { cpp } from '@codemirror/lang-cpp';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
+import { tags } from '@lezer/highlight';
 
 // ── 语言映射 ──
 function getLanguageExtension(languageId: string): LanguageSupport {
@@ -62,7 +63,7 @@ const LANGUAGE_SNIPPETS: Record<string, { label: string; detail: string; insertT
   ],
 };
 
-// ── 自定义补全 ──
+// ── 自定义补全（输入时自动触发）──
 function prooflineCompletionSource(languageId: string) {
   const lang = languageId.trim().toLowerCase();
   return (context: CompletionContext): CompletionResult | null => {
@@ -91,28 +92,253 @@ function prooflineCompletionSource(languageId: string) {
   };
 }
 
-// ── 主题 ──
+// ── 暗色主题（精确匹配 Monaco Proofline Dark）──
 const prooflineDarkTheme = EditorView.theme({
-  '&': { backgroundColor: '#181715', color: '#FAF9F5' },
-  '.cm-content': { caretColor: '#E59A7F', fontFamily: 'JetBrains Mono, Consolas, monospace' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#E59A7F' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: '#5D3C33 !important' },
-  '.cm-activeLine': { backgroundColor: '#1F1E1B' },
-  '.cm-gutters': { backgroundColor: '#181715', color: '#96928B', border: 'none' },
-  '.cm-activeLineGutter': { backgroundColor: '#1F1E1B', color: '#D8D3CA' },
-  '.cm-foldPlaceholder': { backgroundColor: '#32302C', color: '#D8D3CA', border: 'none' },
+  '&': {
+    backgroundColor: '#181715',
+    color: '#FAF9F5',
+  },
+  '.cm-content': {
+    caretColor: '#E59A7F',
+    fontFamily: "'JetBrains Mono', Consolas, 'Courier New', monospace",
+  },
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeftColor: '#E59A7F',
+    borderLeftWidth: '2px',
+  },
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-selection': {
+    backgroundColor: '#5D3C33 !important',
+  },
+  '.cm-activeLine': {
+    backgroundColor: '#1F1E1B',
+  },
+  '.cm-gutters': {
+    backgroundColor: '#181715',
+    color: '#96928B',
+    border: 'none',
+    borderRight: '1px solid #32302C',
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: '#1F1E1B',
+    color: '#D8D3CA',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: '#32302C',
+    color: '#D8D3CA',
+    border: 'none',
+  },
+  '.cm-matchingBracket': {
+    backgroundColor: '#5A554E44',
+    outline: 'none',
+  },
+  // 补全面板样式
+  '.cm-tooltip': {
+    backgroundColor: '#252320',
+    border: '1px solid #3C3934',
+    color: '#FAF9F5',
+  },
+  '.cm-tooltip-autocomplete': {
+    backgroundColor: '#252320',
+  },
+  '.cm-completionLabel': {
+    color: '#FAF9F5',
+  },
+  '.cm-completionDetail': {
+    color: '#96928B',
+    fontStyle: 'italic',
+  },
+  '.cm-completionIcon-keyword': { color: '#E59A7F' },
+  '.cm-completionIcon-variable': { color: '#FAF9F5' },
+  '.cm-completionIcon-function': { color: '#D6B06C' },
+  '.cm-completionIcon-class': { color: '#86B6C7' },
+  '.cm-completionIcon-string': { color: '#A8C99A' },
+  '.cm-completionIcon-number': { color: '#D6B06C' },
+  '.cm-completionIcon-snippet': { color: '#E59A7F' },
+  '&.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+    backgroundColor: '#332F2B',
+    color: '#FAF9F5',
+  },
+  // 滚动条
+  '.cm-scroller': {
+    overflow: 'auto',
+  },
+  '.cm-scrollbar': {
+    width: '8px',
+    height: '8px',
+  },
 }, { dark: true });
 
+// ── 亮色主题（精确匹配 Monaco Proofline Light）──
 const prooflineLightTheme = EditorView.theme({
-  '&': { backgroundColor: '#FAF9F5', color: '#141413' },
-  '.cm-content': { caretColor: '#CC785C', fontFamily: 'JetBrains Mono, Consolas, monospace' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#CC785C' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: '#E7C8BC !important' },
-  '.cm-activeLine': { backgroundColor: '#F5F0E8' },
-  '.cm-gutters': { backgroundColor: '#FAF9F5', color: '#756F68', border: 'none' },
-  '.cm-activeLineGutter': { backgroundColor: '#F5F0E8', color: '#4A453F' },
-  '.cm-foldPlaceholder': { backgroundColor: '#E5DED2', color: '#4A453F', border: 'none' },
+  '&': {
+    backgroundColor: '#FAF9F5',
+    color: '#141413',
+  },
+  '.cm-content': {
+    caretColor: '#CC785C',
+    fontFamily: "'JetBrains Mono', Consolas, 'Courier New', monospace",
+  },
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeftColor: '#CC785C',
+    borderLeftWidth: '2px',
+  },
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-selection': {
+    backgroundColor: '#E7C8BC !important',
+  },
+  '.cm-activeLine': {
+    backgroundColor: '#F5F0E8',
+  },
+  '.cm-gutters': {
+    backgroundColor: '#FAF9F5',
+    color: '#756F68',
+    border: 'none',
+    borderRight: '1px solid #E5DED2',
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: '#F5F0E8',
+    color: '#4A453F',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: '#E5DED2',
+    color: '#4A453F',
+    border: 'none',
+  },
+  '.cm-matchingBracket': {
+    backgroundColor: '#C9BDB044',
+    outline: 'none',
+  },
+  // 补全面板样式
+  '.cm-tooltip': {
+    backgroundColor: '#FAF9F5',
+    border: '1px solid #D8D1C5',
+    color: '#141413',
+  },
+  '.cm-tooltip-autocomplete': {
+    backgroundColor: '#FAF9F5',
+  },
+  '.cm-completionLabel': {
+    color: '#141413',
+  },
+  '.cm-completionDetail': {
+    color: '#756F68',
+    fontStyle: 'italic',
+  },
+  '.cm-completionIcon-keyword': { color: '#A9583E' },
+  '.cm-completionIcon-variable': { color: '#141413' },
+  '.cm-completionIcon-function': { color: '#8B5A2B' },
+  '.cm-completionIcon-class': { color: '#315F7D' },
+  '.cm-completionIcon-string': { color: '#386C5A' },
+  '.cm-completionIcon-number': { color: '#8B5A2B' },
+  '.cm-completionIcon-snippet': { color: '#A9583E' },
+  '&.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+    backgroundColor: '#EFE9DE',
+    color: '#141413',
+  },
+  '.cm-scroller': {
+    overflow: 'auto',
+  },
 }, { dark: false });
+
+// ── 语法高亮（精确匹配 Monaco 主题颜色）──
+const prooflineDarkHighlight = HighlightStyle.define([
+  { tag: tags.comment, color: '#A09D96', fontStyle: 'italic' },
+  { tag: tags.lineComment, color: '#A09D96', fontStyle: 'italic' },
+  { tag: tags.blockComment, color: '#A09D96', fontStyle: 'italic' },
+  { tag: tags.keyword, color: '#E59A7F' },
+  { tag: tags.controlKeyword, color: '#E59A7F' },
+  { tag: tags.operatorKeyword, color: '#E59A7F' },
+  { tag: tags.definitionKeyword, color: '#E59A7F' },
+  { tag: tags.moduleKeyword, color: '#E59A7F' },
+  { tag: tags.number, color: '#D6B06C' },
+  { tag: tags.integer, color: '#D6B06C' },
+  { tag: tags.float, color: '#D6B06C' },
+  { tag: tags.string, color: '#A8C99A' },
+  { tag: tags.special(tags.string), color: '#A8C99A' },
+  { tag: tags.typeName, color: '#86B6C7' },
+  { tag: tags.className, color: '#86B6C7' },
+  { tag: tags.namespace, color: '#86B6C7' },
+  { tag: tags.function(tags.variableName), color: '#D6B06C' },
+  { tag: tags.definition(tags.variableName), color: '#FAF9F5' },
+  { tag: tags.variableName, color: '#FAF9F5' },
+  { tag: tags.propertyName, color: '#FAF9F5' },
+  { tag: tags.operator, color: '#FAF9F5' },
+  { tag: tags.punctuation, color: '#FAF9F5' },
+  { tag: tags.bracket, color: '#FAF9F5' },
+  { tag: tags.angleBracket, color: '#FAF9F5' },
+  { tag: tags.squareBracket, color: '#FAF9F5' },
+  { tag: tags.paren, color: '#FAF9F5' },
+  { tag: tags.brace, color: '#FAF9F5' },
+  { tag: tags.meta, color: '#E59A7F' },
+  { tag: tags.processingInstruction, color: '#E59A7F' },
+  { tag: tags.self, color: '#E59A7F' },
+  { tag: tags.bool, color: '#D6B06C' },
+  { tag: tags.null, color: '#D6B06C' },
+  { tag: tags.atom, color: '#D6B06C' },
+  { tag: tags.regexp, color: '#A8C99A' },
+  { tag: tags.escape, color: '#E59A7F' },
+  { tag: tags.link, color: '#86B6C7', textDecoration: 'underline' },
+  { tag: tags.heading, color: '#86B6C7', fontWeight: 'bold' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.strong, fontWeight: 'bold' },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+  { tag: tags.content, color: '#FAF9F5' },
+  { tag: tags.heading1, color: '#86B6C7', fontWeight: 'bold' },
+  { tag: tags.heading2, color: '#86B6C7', fontWeight: 'bold' },
+  { tag: tags.heading3, color: '#86B6C7', fontWeight: 'bold' },
+  { tag: tags.heading4, color: '#86B6C7', fontWeight: 'bold' },
+  { tag: tags.heading5, color: '#86B6C7', fontWeight: 'bold' },
+  { tag: tags.heading6, color: '#86B6C7', fontWeight: 'bold' },
+]);
+
+const prooflineLightHighlight = HighlightStyle.define([
+  { tag: tags.comment, color: '#716B64', fontStyle: 'italic' },
+  { tag: tags.lineComment, color: '#716B64', fontStyle: 'italic' },
+  { tag: tags.blockComment, color: '#716B64', fontStyle: 'italic' },
+  { tag: tags.keyword, color: '#A9583E' },
+  { tag: tags.controlKeyword, color: '#A9583E' },
+  { tag: tags.operatorKeyword, color: '#A9583E' },
+  { tag: tags.definitionKeyword, color: '#A9583E' },
+  { tag: tags.moduleKeyword, color: '#A9583E' },
+  { tag: tags.number, color: '#8B5A2B' },
+  { tag: tags.integer, color: '#8B5A2B' },
+  { tag: tags.float, color: '#8B5A2B' },
+  { tag: tags.string, color: '#386C5A' },
+  { tag: tags.special(tags.string), color: '#386C5A' },
+  { tag: tags.typeName, color: '#315F7D' },
+  { tag: tags.className, color: '#315F7D' },
+  { tag: tags.namespace, color: '#315F7D' },
+  { tag: tags.function(tags.variableName), color: '#8B5A2B' },
+  { tag: tags.definition(tags.variableName), color: '#141413' },
+  { tag: tags.variableName, color: '#141413' },
+  { tag: tags.propertyName, color: '#141413' },
+  { tag: tags.operator, color: '#141413' },
+  { tag: tags.punctuation, color: '#141413' },
+  { tag: tags.bracket, color: '#141413' },
+  { tag: tags.angleBracket, color: '#141413' },
+  { tag: tags.squareBracket, color: '#141413' },
+  { tag: tags.paren, color: '#141413' },
+  { tag: tags.brace, color: '#141413' },
+  { tag: tags.meta, color: '#A9583E' },
+  { tag: tags.processingInstruction, color: '#A9583E' },
+  { tag: tags.self, color: '#A9583E' },
+  { tag: tags.bool, color: '#8B5A2B' },
+  { tag: tags.null, color: '#8B5A2B' },
+  { tag: tags.atom, color: '#8B5A2B' },
+  { tag: tags.regexp, color: '#386C5A' },
+  { tag: tags.escape, color: '#A9583E' },
+  { tag: tags.link, color: '#315F7D', textDecoration: 'underline' },
+  { tag: tags.heading, color: '#315F7D', fontWeight: 'bold' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.strong, fontWeight: 'bold' },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+  { tag: tags.content, color: '#141413' },
+  { tag: tags.heading1, color: '#315F7D', fontWeight: 'bold' },
+  { tag: tags.heading2, color: '#315F7D', fontWeight: 'bold' },
+  { tag: tags.heading3, color: '#315F7D', fontWeight: 'bold' },
+  { tag: tags.heading4, color: '#315F7D', fontWeight: 'bold' },
+  { tag: tags.heading5, color: '#315F7D', fontWeight: 'bold' },
+  { tag: tags.heading6, color: '#315F7D', fontWeight: 'bold' },
+]);
 
 // ── 暴露给外部的 API ──
 export interface CodeMirrorEditorHandle {
@@ -147,9 +373,12 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
   const handleRef = useRef<CodeMirrorEditorHandle | null>(null);
   const onChangeRef = useRef(onChange);
   const onMountRef = useRef(onMount);
+  const defaultValueRef = useRef(defaultValue);
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { onMountRef.current = onMount; }, [onMount]);
+  // 同步最新的 defaultValue，供扩展重建时使用
+  useEffect(() => { defaultValueRef.current = defaultValue; }, [defaultValue]);
 
   // ── extensions（稳定引用）──
   const extensions = useMemo<Extension[]>(() => [
@@ -166,7 +395,8 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
     closeBrackets(),
     autocompletion({
       override: [prooflineCompletionSource(language)],
-      activateOnTyping: false,
+      activateOnTyping: true,
+      maxRenderedOptions: 15,
     }),
     rectangularSelection(),
     crosshairCursor(),
@@ -183,10 +413,10 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
     ]),
     getLanguageExtension(language),
     theme === 'dark' ? prooflineDarkTheme : prooflineLightTheme,
-    syntaxHighlighting(defaultHighlightStyle),
+    syntaxHighlighting(theme === 'dark' ? prooflineDarkHighlight : prooflineLightHighlight),
     EditorView.lineWrapping,
     EditorView.theme({
-      '.cm-content': { fontSize: `${fontSize}px`, lineHeight: '1.5' },
+      '.cm-content': { fontSize: `${fontSize}px`, lineHeight: '1.6' },
       '.cm-gutters': { fontSize: `${fontSize}px` },
     }),
     EditorView.updateListener.of((update) => {
@@ -209,8 +439,8 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
       focus: () => view.focus(),
       undo: () => undo(view),
       redo: () => redo(view),
-      canUndo: () => undo(view) !== undefined, // 简化检查
-      canRedo: () => false, // 需要更精确的实现
+      canUndo: () => true,
+      canRedo: () => true,
       view,
     };
     onMountRef.current?.(handle);
@@ -220,17 +450,16 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── 更新 extensions（销毁重建）──
+  // ── 更新 extensions（销毁重建，使用最新的 defaultValue）──
   useEffect(() => {
     const view = viewRef.current;
     const parent = containerRef.current;
     if (!view || !parent) return;
-    // 销毁旧视图，用新 extensions 重建
     view.destroy();
-    const state = EditorState.create({ doc: view.state.doc.toString(), extensions });
+    // 使用最新的 defaultValue 而非旧编辑器内容
+    const state = EditorState.create({ doc: defaultValueRef.current, extensions });
     const newView = new EditorView({ state, parent });
     viewRef.current = newView;
-    // 更新 handle 中的 view 引用
     if (handleRef.current) handleRef.current.view = newView;
   }, [extensions]);
 
@@ -244,8 +473,8 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
     focus: () => viewRef.current?.focus(),
     undo: () => { if (viewRef.current) undo(viewRef.current); },
     redo: () => { if (viewRef.current) redo(viewRef.current); },
-    canUndo: () => false, // CM6 的 undo 状态不易外部查询
-    canRedo: () => false,
+    canUndo: () => true,
+    canRedo: () => true,
     view: viewRef.current,
   }));
 

@@ -88,23 +88,25 @@ function completionSource(langId: string) {
       }
     }
 
-    // 3) 文档标识符（只显示前缀匹配且出现 ≥2 次的）
+    // 3) 文档标识符（前缀匹配 + 出现≥2次；单字母输入时不显示文档标识符）
     const doc = ctx.state.doc.toString();
-    const scanLen = Math.min(doc.length, 50000);
-    const scanText = scanLen < doc.length ? doc.slice(0, scanLen) : doc;
-    const idCounts = new Map<string, number>();
-    const re = /\b([A-Za-z_]\w*)\b/g;
-    let m: RegExpExecArray|null;
-    while ((m = re.exec(scanText))) {
-      const id = m[1];
-      if (id.length > 1 && !keywords.includes(id) && !langSnips.some(s => s.label === id)) {
-        idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
+    if (prefix.length >= 2) {
+      const scanLen = Math.min(doc.length, 50000);
+      const scanText = scanLen < doc.length ? doc.slice(0, scanLen) : doc;
+      const idCounts = new Map<string, number>();
+      const re = /\b([A-Za-z_]\w*)\b/g;
+      let m: RegExpExecArray|null;
+      while ((m = re.exec(scanText))) {
+        const id = m[1];
+        if (id.length > 1 && !keywords.includes(id) && !langSnips.some(s => s.label === id)) {
+          idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
+        }
       }
-    }
-    for (const [id, count] of idCounts) {
-      if (count >= 2 && id.toLowerCase().startsWith(prefix) && !seen.has(id)) {
-        seen.add(id);
-        options.push({ label: id, detail: '当前文件', type: 'variable', boost: 3 });
+      for (const [id, count] of idCounts) {
+        if (count >= 2 && id.toLowerCase().startsWith(prefix) && !seen.has(id)) {
+          seen.add(id);
+          options.push({ label: id, detail: '当前文件', type: 'variable', boost: 3 });
+        }
       }
     }
 
@@ -323,15 +325,15 @@ function buildExtensions(language:string,theme:string,fontSize:number):Extension
     autocompletion({override:[completionSource(language)],activateOnTyping:true,maxRenderedOptions:15}),
     rectangularSelection(),crosshairCursor(),highlightActiveLine(),highlightSelectionMatches(),
     keymap.of([
-      // Tab 接受补全，Enter 只换行不接受补全
-      {key:'Tab', run:(view)=>{if(acceptCompletion(view))return true;return false;}, shift:indentWithTab.shift},
-      {key:'Enter', run:()=>false}, // 阻止 Enter 接受补全
       ...closeBracketsKeymap,
       ...defaultKeymap,
       ...searchKeymap,
       ...historyKeymap,
       ...foldKeymap,
       ...completionKeymap,
+      // Tab 接受补全，Enter 只换行不接受补全（放在 completionKeymap 之后以覆盖其 Enter 绑定）
+      {key:'Tab', run:(view)=>{if(acceptCompletion(view))return true;return false;}, shift:indentWithTab.shift},
+      {key:'Enter', run:()=>false},
       indentWithTab,
     ]),
     getLang(language),

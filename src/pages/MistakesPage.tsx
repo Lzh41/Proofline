@@ -19,7 +19,7 @@ import {
   Undo2,
   BookOpenCheck,
 } from 'lucide-react';
-import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
+import type { CodeMirrorEditorHandle } from '../lib/localCodeMirror';
 import { useStoreView } from '../app/storeAdapter';
 import { EmptyState, Metric, PageHeader } from '../components/PagePrimitives';
 import { findProblemCodeSnippet } from './SolvePage';
@@ -29,7 +29,7 @@ import type { Problem, ProblemExample, ProblemSampleRunResult, EditorFontSize } 
 import type { InterviewCoachIntent } from '../lib/ai';
 import styles from './Pages.module.css';
 
-const MonacoEditor = lazy(() => import('../lib/localMonaco'));
+const LocalCodeMirror = lazy(() => import('../lib/localCodeMirror'));
 
 const LANGUAGES = [
   { value: 'cpp', label: 'C++17' },
@@ -52,7 +52,7 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
   const defaultLang = store.settings.defaultLanguage ?? 'cpp';
   const [language, setLanguage] = useState(defaultLang);
   const codeRef = useRef(findProblemCodeSnippet(problem, defaultLang) ?? '');
-  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
   const [editorHistory, setEditorHistory] = useState({ canUndo: false, canRedo: false });
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(false);
@@ -80,33 +80,14 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
     editorRef.current?.setValue(snippet);
   }, [problem]);
 
-  const handleCodeChange = useCallback((value: string | undefined) => { codeRef.current = value ?? ''; }, []);
+  const handleCodeChange = useCallback((value: string) => { codeRef.current = value; }, []);
 
-  const handleEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
-    editorRef.current = editor;
-    // ── 撤销/重做状态同步（debounce 版）──
-    // 旧版每次 onDidChangeModelContent 都检查 canUndo/canRedo → 可能 setState → 重渲染整个页面。
-    // 改为 debounce 200ms，避免快速打字时频繁触发 React 重渲染。
-    let last = { canUndo: false, canRedo: false };
-    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-    const sync = () => {
-      if (debounceTimer !== undefined) return;
-      debounceTimer = setTimeout(() => {
-        debounceTimer = undefined;
-        const m = editor.getModel();
-        if (!m || m.isDisposed()) return;
-        const u = Boolean(m?.canUndo()), r = Boolean(m?.canRedo());
-        if (u === last.canUndo && r === last.canRedo) return;
-        last = { canUndo: u, canRedo: r };
-        setEditorHistory({ canUndo: u, canRedo: r });
-      }, 200);
-    };
-    editor.onDidChangeModelContent(sync);
-    sync();
+  const handleEditorMount = useCallback((handle: CodeMirrorEditorHandle) => {
+    editorRef.current = handle;
   }, []);
 
-  const undoCode = () => editorRef.current?.trigger('keyboard', 'undo', null);
-  const redoCode = () => editorRef.current?.trigger('keyboard', 'redo', null);
+  const undoCode = () => editorRef.current?.undo();
+  const redoCode = () => editorRef.current?.redo();
 
   // 拖拽：记录容器宽度，用像素差计算百分比
   const beginSplitDrag = useCallback((e: ReactPointerEvent) => {
@@ -264,27 +245,15 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
 
           <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
             <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
-              <MonacoEditor height="100%" language={language === 'cpp' ? 'cpp' : language} defaultValue={codeRef.current} theme={editorTheme} options={{
-                fontSize: editorFontSize, fontFamily: 'JetBrains Mono, Consolas, monospace', scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 0, bottom: 0 },
-                wordWrap: 'off', codeLens: false, folding: false, stickyScroll: { enabled: false },
-                // ── 补全/建议 ──
-                quickSuggestions: false, suggestOnTriggerCharacters: false, wordBasedSuggestions: 'off', suggestSelection: 'first', tabCompletion: 'on',
-                // ── 输入/编辑 ──
-                autoClosingBrackets: 'languageDefined' as const, autoClosingQuotes: 'languageDefined' as const, autoClosingDelete: 'never' as const, autoClosingOvertype: 'never' as const, autoIndent: 'advanced', formatOnPaste: false, formatOnType: false,
-                // ── Tokenization 限制 ──
-                maxTokenizationLineLength: 4096, largeFileOptimizations: true,
-                // ── 光标/滚动 ──
-                smoothScrolling: false, cursorSmoothCaretAnimation: 'off', cursorBlinking: 'solid',
-                // ── 装饰/高亮 ──
-                renderLineHighlight: 'none', occurrencesHighlight: 'off', selectionHighlight: false, colorDecorators: false, renderValidationDecorations: 'off', renderWhitespace: 'none',
-                bracketPairColorization: { enabled: false }, matchBrackets: 'never',
-                guides: { bracketPairs: false, bracketPairsHorizontal: false, highlightActiveBracketPair: false, indentation: false, highlightActiveIndentation: false },
-                // ── Hover/Inlay ──
-                hover: { enabled: false }, links: false, parameterHints: { enabled: false },
-                // ── 布局/Chrome ──
-                minimap: { enabled: false }, scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8, useShadows: false }, overviewRulerLanes: 0, hideCursorInOverviewRuler: true, fixedOverflowWidgets: true,
-                unicodeHighlight: { nonBasicASCII: false, invisibleCharacters: false, ambiguousCharacters: false, includeComments: false, includeStrings: false },
-              }} onChange={handleCodeChange} onMount={handleEditorMount} />
+              <LocalCodeMirror
+                height="100%"
+                language={language === 'cpp' ? 'cpp' : language}
+                defaultValue={codeRef.current}
+                theme={editorTheme === 'vs-dark' ? 'dark' : 'light'}
+                fontSize={editorFontSize}
+                onChange={handleCodeChange}
+                onMount={handleEditorMount}
+              />
             </Suspense>
           </div>
 

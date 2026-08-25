@@ -209,6 +209,9 @@ const darkTheme = EditorView.theme({
   '.cm-completionIcon-text':{color:'#FAF9F5',backgroundColor:'#FAF9F511'},
   '.cm-scroller':{overflow:'auto'},
   '.cm-completionInfo':{backgroundColor:'#252320',border:'1px solid #3C3934',borderRadius:'8px',color:'#FAF9F5',padding:'8px 12px',fontFamily:"var(--font-code)",fontSize:'13px'},
+  // 隐藏空补全提示（CodeMirror 默认显示 "No suggestions"）
+  '.cm-tooltip-autocomplete:has(> ul:empty)':{display:'none'},
+  '.cm-tooltip-autocomplete:has(> ul > li:only-child):not(:has(> ul > li[aria-selected]))':{display:'none'},
 },{dark:true});
 
 const lightTheme = EditorView.theme({
@@ -240,6 +243,9 @@ const lightTheme = EditorView.theme({
   '.cm-completionIcon-text':{color:'#141413',backgroundColor:'#14141308'},
   '.cm-scroller':{overflow:'auto'},
   '.cm-completionInfo':{backgroundColor:'#FAF9F5',border:'1px solid #D8D1C5',borderRadius:'8px',color:'#141413',padding:'8px 12px',fontFamily:"var(--font-code)",fontSize:'13px'},
+  // 隐藏空补全提示
+  '.cm-tooltip-autocomplete:has(> ul:empty)':{display:'none'},
+  '.cm-tooltip-autocomplete:has(> ul > li:only-child):not(:has(> ul > li[aria-selected]))':{display:'none'},
 },{dark:false});
 
 // ── API ──

@@ -601,9 +601,10 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
   //    editor.updateOptions()，触发 Monaco 重新配置，造成明显卡顿。──
   const mergedOptions = useMemo<EditorProps['options']>(() => ({
     ...props.options,
-    quickSuggestions: false,
-    suggestOnTriggerCharacters: false,
-    wordBasedSuggestions: 'off',
+    // ── 补全/建议：仅显示当前文档中出现的词 ──
+    quickSuggestions: { other: true, comments: false, strings: false },
+    suggestOnTriggerCharacters: true,
+    wordBasedSuggestions: 'currentDocument',
     suggestSelection: 'first',
     suggest: { ...(props.options?.suggest ?? {}), filterGraceful: false },
     tabCompletion: 'on',

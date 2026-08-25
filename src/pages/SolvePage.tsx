@@ -456,10 +456,10 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     codeLens: false,
     folding: false,
     stickyScroll: { enabled: true },
-    // ── 补全/建议：只保留 Ctrl+Space 显式触发 ──
-    quickSuggestions: false,
-    suggestOnTriggerCharacters: false,
-    wordBasedSuggestions: 'off',
+    // ── 补全/建议：仅显示当前文档中出现的词 ──
+    quickSuggestions: { other: true, comments: false, strings: false },
+    suggestOnTriggerCharacters: true,
+    wordBasedSuggestions: 'currentDocument',
     suggestSelection: 'first',
     tabCompletion: 'on',
     acceptSuggestionOnCommitCharacter: true,

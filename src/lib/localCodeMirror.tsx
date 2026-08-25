@@ -6,7 +6,7 @@ import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLineGutter } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { indentOnInput, bracketMatching, foldGutter, foldKeymap, syntaxHighlighting, HighlightStyle, type LanguageSupport } from '@codemirror/language';
-import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
+import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, acceptCompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { cpp } from '@codemirror/lang-cpp';
 import { javascript } from '@codemirror/lang-javascript';
@@ -170,7 +170,7 @@ const darkTheme = EditorView.theme({
   '&':{backgroundColor:'#1f1e1b',color:'#FAF9F5'},
   '.cm-content':{caretColor:'#E59A7F',fontFamily:"var(--font-code)"},
   '.cm-cursor,.cm-dropCursor':{borderLeftColor:'#E59A7F',borderLeftWidth:'2px'},
-  '&.cm-focused .cm-selectionBackground,.cm-selectionBackground':{backgroundColor:'#5D3C33 !important'},
+  '&.cm-focused .cm-selectionBackground,.cm-selectionBackground':{backgroundColor:'#6B4A3D !important'},
   '.cm-activeLine':{backgroundColor:'#252320'},
   '.cm-gutters':{backgroundColor:'#1f1e1b',color:'#96928B',border:'none',borderRight:'1px solid #32302C'},
   '.cm-activeLineGutter':{backgroundColor:'#252320',color:'#D8D3CA'},
@@ -310,7 +310,17 @@ function buildExtensions(language:string,theme:string,fontSize:number):Extension
     indentOnInput(),bracketMatching(),closeBrackets(),
     autocompletion({override:[completionSource(language)],activateOnTyping:true,maxRenderedOptions:15}),
     rectangularSelection(),crosshairCursor(),highlightActiveLine(),highlightSelectionMatches(),
-    keymap.of([...closeBracketsKeymap,...defaultKeymap,...searchKeymap,...historyKeymap,...foldKeymap,...completionKeymap,indentWithTab]),
+    keymap.of([
+      // Tab 优先接受补全，其次缩进
+      {key:'Tab', run:(view)=>{if(acceptCompletion(view))return true;return false;}, shift:indentWithTab.shift},
+      ...closeBracketsKeymap,
+      ...defaultKeymap,
+      ...searchKeymap,
+      ...historyKeymap,
+      ...foldKeymap,
+      ...completionKeymap,
+      indentWithTab,
+    ]),
     getLang(language),
     theme==='dark'?darkTheme:lightTheme,
     syntaxHighlighting(theme==='dark'?darkHL:lightHL),

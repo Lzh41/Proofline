@@ -453,7 +453,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     wordWrap: 'off',
     codeLens: false,
     folding: false,
-    stickyScroll: { enabled: false },
+    stickyScroll: { enabled: true },
     // ── 补全/建议：只保留 Ctrl+Space 显式触发 ──
     quickSuggestions: false,
     suggestOnTriggerCharacters: false,

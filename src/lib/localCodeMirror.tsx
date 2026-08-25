@@ -2,7 +2,7 @@
  * localCodeMirror.tsx — CodeMirror 6 编辑器（稳定版，不销毁重建）
  */
 import { useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorState, type Extension, Prec } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLineGutter } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { indentOnInput, bracketMatching, foldGutter, foldKeymap, syntaxHighlighting, HighlightStyle, type LanguageSupport } from '@codemirror/language';
@@ -66,7 +66,7 @@ function completionSource(langId: string) {
     const word = ctx.matchBefore(/[\w$.]*/);
     if (!word || (word.from === word.to && !ctx.explicit)) return null;
     const prefix = word.text.toLowerCase();
-    if (prefix.length === 0 && !ctx.explicit) return null;
+    if (prefix.length < 2 && !ctx.explicit) return null;
 
     const options: {label:string;detail:string;type:string;boost:number;apply?:string}[] = [];
     const seen = new Set<string>();
@@ -322,8 +322,13 @@ function buildExtensions(language:string,theme:string,fontSize:number):Extension
     history(),foldGutter(),drawSelection(),dropCursor(),
     EditorState.allowMultipleSelections.of(true),
     indentOnInput(),bracketMatching(),closeBrackets(),
-    autocompletion({override:[completionSource(language)],activateOnTyping:true,maxRenderedOptions:15}),
+    autocompletion({override:[completionSource(language)],activateOnTyping:false,maxRenderedOptions:15}),
     rectangularSelection(),crosshairCursor(),highlightActiveLine(),highlightSelectionMatches(),
+    // Prec.highest 确保 Tab/Enter 覆盖 completionKeymap 的默认行为
+    Prec.high(keymap.of([
+      {key:'Tab', run:(view)=>{if(acceptCompletion(view))return true;return false;}, shift:indentWithTab.shift},
+      {key:'Enter', run:()=>false},
+    ])),
     keymap.of([
       ...closeBracketsKeymap,
       ...defaultKeymap,
@@ -331,9 +336,6 @@ function buildExtensions(language:string,theme:string,fontSize:number):Extension
       ...historyKeymap,
       ...foldKeymap,
       ...completionKeymap,
-      // Tab 接受补全，Enter 只换行不接受补全（放在 completionKeymap 之后以覆盖其 Enter 绑定）
-      {key:'Tab', run:(view)=>{if(acceptCompletion(view))return true;return false;}, shift:indentWithTab.shift},
-      {key:'Enter', run:()=>false},
       indentWithTab,
     ]),
     getLang(language),

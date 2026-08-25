@@ -214,7 +214,6 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
   const viewRef = useRef<EditorView|null>(null);
   const onChangeRef = useRef(onChange);
   const onMountRef = useRef(onMount);
-  const prevDefaultRef = useRef(defaultValue);
 
   useEffect(()=>{onChangeRef.current=onChange;},[onChange]);
   useEffect(()=>{onMountRef.current=onMount;},[onMount]);
@@ -231,16 +230,8 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  // ── 切换题目时更新内容（不销毁重建）──
-  useEffect(()=>{
-    if(prevDefaultRef.current===defaultValue) return;
-    prevDefaultRef.current = defaultValue;
-    const v = viewRef.current;
-    if(!v) return;
-    // 用 dispatch 替换全部内容，保留 undo 历史
-    v.dispatch({changes:{from:0,to:v.state.doc.length,insert:defaultValue}});
-    v.focus();
-  },[defaultValue]);
+  // ── 编辑器内容只在创建时设置，之后由用户输入和 setValue 管理 ──
+  // React key 保证切换题目时组件重新挂载，无需额外 effect
 
   // ── 语言/主题/字号变化时重建 extensions（极少发生）──
   const extKey = `${language}|${theme}|${fontSize}`;

@@ -57,7 +57,7 @@ const SNIPPETS: Record<string, {label:string;detail:string;insertText:string}[]>
   ],
 };
 
-// ── 补全源（智能排序 + 文档标识符扫描限制）──
+// ── 补全源（只显示前缀匹配 + 文档中实际出现 ≥2 次的标识符）──
 function completionSource(langId: string) {
   const lang = langId.trim().toLowerCase();
   const langSnips = SNIPPETS[lang] ?? SNIPPETS.javascript ?? [];
@@ -66,37 +66,49 @@ function completionSource(langId: string) {
     const word = ctx.matchBefore(/[\w$.]*/);
     if (!word || (word.from === word.to && !ctx.explicit)) return null;
     const prefix = word.text.toLowerCase();
+    if (prefix.length === 0 && !ctx.explicit) return null;
 
-    // 1) 语言关键字
+    const options: {label:string;detail:string;type:string;boost:number;apply?:string}[] = [];
+    const seen = new Set<string>();
+
+    // 1) 代码片段（前缀匹配）
+    for (const s of langSnips) {
+      if (s.label.toLowerCase().startsWith(prefix) && !seen.has(s.label)) {
+        seen.add(s.label);
+        options.push({ label: s.label, detail: s.detail, type: 'snippet', boost: 10, apply: s.insertText });
+      }
+    }
+
+    // 2) 语言关键字（前缀匹配）
     const keywords = LANGUAGE_KEYWORDS[lang] ?? [];
-    const kwOpts = keywords
-      .filter(k => k.toLowerCase().startsWith(prefix))
-      .map(k => ({ label: k, detail: '关键字', type: 'keyword' as const, boost: 10 }));
+    for (const k of keywords) {
+      if (k.toLowerCase().startsWith(prefix) && !seen.has(k)) {
+        seen.add(k);
+        options.push({ label: k, detail: '关键字', type: 'keyword', boost: 8 });
+      }
+    }
 
-    // 2) 代码片段
-    const snipOpts = langSnips
-      .filter(s => s.label.toLowerCase().startsWith(prefix))
-      .map(s => ({ label: s.label, detail: s.detail, type: 'snippet' as const, apply: s.insertText, boost: 8 }));
-
-    // 3) 文档标识符（限制扫描长度避免大文件卡顿）
+    // 3) 文档标识符（只显示前缀匹配且出现 ≥2 次的）
     const doc = ctx.state.doc.toString();
     const scanLen = Math.min(doc.length, 50000);
     const scanText = scanLen < doc.length ? doc.slice(0, scanLen) : doc;
-    const idOpts: {label:string;detail:string;type:string;boost:number}[] = [];
-    const seen = new Set<string>();
+    const idCounts = new Map<string, number>();
     const re = /\b([A-Za-z_]\w*)\b/g;
     let m: RegExpExecArray|null;
     while ((m = re.exec(scanText))) {
       const id = m[1];
-      if (id.length > 1 && !seen.has(id) && !keywords.includes(id) && !langSnips.some(s => s.label === id)) {
+      if (id.length > 1 && !keywords.includes(id) && !langSnips.some(s => s.label === id)) {
+        idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
+      }
+    }
+    for (const [id, count] of idCounts) {
+      if (count >= 2 && id.toLowerCase().startsWith(prefix) && !seen.has(id)) {
         seen.add(id);
-        if (id.toLowerCase().startsWith(prefix)) {
-          idOpts.push({ label: id, detail: '当前文件', type: 'variable', boost: 2 });
-        }
+        options.push({ label: id, detail: '当前文件', type: 'variable', boost: 3 });
       }
     }
 
-    const options = [...snipOpts, ...kwOpts, ...idOpts];
+    if (options.length === 0) return null;
     return { from: word.from, options, validFor: /^[\w$]*$/ };
   };
 }
@@ -311,8 +323,9 @@ function buildExtensions(language:string,theme:string,fontSize:number):Extension
     autocompletion({override:[completionSource(language)],activateOnTyping:true,maxRenderedOptions:15}),
     rectangularSelection(),crosshairCursor(),highlightActiveLine(),highlightSelectionMatches(),
     keymap.of([
-      // Tab 优先接受补全，其次缩进
+      // Tab 接受补全，Enter 只换行不接受补全
       {key:'Tab', run:(view)=>{if(acceptCompletion(view))return true;return false;}, shift:indentWithTab.shift},
+      {key:'Enter', run:()=>false}, // 阻止 Enter 接受补全
       ...closeBracketsKeymap,
       ...defaultKeymap,
       ...searchKeymap,

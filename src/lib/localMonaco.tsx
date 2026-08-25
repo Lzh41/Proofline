@@ -645,7 +645,7 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
     padding: { top: 0, bottom: 0 },
     overviewRulerLanes: 0,
     hideCursorInOverviewRuler: true,
-    fixedOverflowWidgets: true,
+    fixedOverflowWidgets: false,
     unicodeHighlight: {
       nonBasicASCII: false,
       invisibleCharacters: false,

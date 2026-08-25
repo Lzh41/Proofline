@@ -506,7 +506,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8, useShadows: false },
     overviewRulerLanes: 0,
     hideCursorInOverviewRuler: true,
-    fixedOverflowWidgets: true,
+    fixedOverflowWidgets: false,
     unicodeHighlight: { nonBasicASCII: false, invisibleCharacters: false, ambiguousCharacters: false, includeComments: false, includeStrings: false },
   }), [fontSize]);
 

@@ -57,24 +57,57 @@ const SNIPPETS: Record<string, {label:string;detail:string;insertText:string}[]>
   ],
 };
 
+// ── 补全源（智能排序 + 文档标识符扫描限制）──
 function completionSource(langId: string) {
   const lang = langId.trim().toLowerCase();
+  const langSnips = SNIPPETS[lang] ?? SNIPPETS.javascript ?? [];
+
   return (ctx: CompletionContext): CompletionResult | null => {
-    const word = ctx.matchBefore(/[\w$]*/);
+    const word = ctx.matchBefore(/[\w$.]*/);
     if (!word || (word.from === word.to && !ctx.explicit)) return null;
-    const snips = SNIPPETS[lang] ?? SNIPPETS.javascript ?? [];
-    const opts: {label:string;detail:string;type:string;apply?:string}[] = snips.map(s=>({label:s.label,detail:s.detail,type:'keyword',apply:s.insertText}));
+    const prefix = word.text.toLowerCase();
+
+    // 1) 语言关键字
+    const keywords = LANGUAGE_KEYWORDS[lang] ?? [];
+    const kwOpts = keywords
+      .filter(k => k.toLowerCase().startsWith(prefix))
+      .map(k => ({ label: k, detail: '关键字', type: 'keyword' as const, boost: 10 }));
+
+    // 2) 代码片段
+    const snipOpts = langSnips
+      .filter(s => s.label.toLowerCase().startsWith(prefix))
+      .map(s => ({ label: s.label, detail: s.detail, type: 'snippet' as const, apply: s.insertText, boost: 8 }));
+
+    // 3) 文档标识符（限制扫描长度避免大文件卡顿）
     const doc = ctx.state.doc.toString();
-    const seen = new Set(snips.map(s=>s.label));
+    const scanLen = Math.min(doc.length, 50000);
+    const scanText = scanLen < doc.length ? doc.slice(0, scanLen) : doc;
+    const idOpts: {label:string;detail:string;type:string;boost:number}[] = [];
+    const seen = new Set<string>();
     const re = /\b([A-Za-z_]\w*)\b/g;
     let m: RegExpExecArray|null;
-    while((m=re.exec(doc))){
-      const id=m[1];
-      if(id.length>1&&!seen.has(id)){seen.add(id);opts.push({label:id,detail:'当前文件标识符',type:'variable'});}
+    while ((m = re.exec(scanText))) {
+      const id = m[1];
+      if (id.length > 1 && !seen.has(id) && !keywords.includes(id) && !langSnips.some(s => s.label === id)) {
+        seen.add(id);
+        if (id.toLowerCase().startsWith(prefix)) {
+          idOpts.push({ label: id, detail: '当前文件', type: 'variable', boost: 2 });
+        }
+      }
     }
-    return {from:word.from,options:opts,validFor:/^[\w$]*$/};
+
+    const options = [...snipOpts, ...kwOpts, ...idOpts];
+    return { from: word.from, options, validFor: /^[\w$]*$/ };
   };
 }
+
+// ── 语言关键字（按语言分组，补全时优先匹配）──
+const LANGUAGE_KEYWORDS: Record<string, string[]> = {
+  cpp: ['alignas','auto','bool','break','case','catch','char','class','const','constexpr','continue','default','delete','do','double','else','enum','explicit','false','float','for','if','include','inline','int','long','namespace','new','nullptr','private','protected','public','return','short','signed','sizeof','static','std','struct','switch','template','this','throw','true','try','typedef','typename','using','virtual','void','while','vector','map','set','string','iostream','endl','cout','cin'],
+  python: ['and','as','assert','async','await','break','class','continue','def','del','elif','else','False','finally','for','from','global','if','import','in','is','lambda','None','nonlocal','not','or','pass','raise','return','True','try','while','with','yield','print','range','len','list','dict','set','tuple','int','str','float','bool','input','open','map','filter','zip','enumerate','sorted','sum','min','max','abs'],
+  javascript: ['async','await','break','case','catch','class','const','continue','debugger','default','delete','do','else','export','extends','false','finally','for','function','if','import','in','instanceof','let','new','null','return','static','super','switch','this','throw','true','try','typeof','undefined','var','void','while','with','yield','console','log','length','push','pop','map','filter','reduce','forEach','find','includes','indexOf','slice','splice','concat','join','split','parseInt','parseFloat','Math','Array','Object','JSON','Promise','Date','RegExp','Error'],
+  typescript: ['abstract','any','as','async','await','boolean','break','case','catch','class','const','continue','declare','default','delete','else','enum','export','extends','false','finally','for','from','function','if','implements','import','in','interface','is','keyof','let','module','namespace','never','new','null','number','object','private','protected','public','readonly','return','static','string','super','switch','this','throw','true','try','type','typeof','unknown','undefined','var','void','while','Record','Partial','Required','Pick','Omit','Exclude','Extract','Partial','Readonly','Promise','Array','Map','Set'],
+};
 
 // ── 语法高亮 ──
 const darkHL = HighlightStyle.define([
@@ -135,7 +168,7 @@ const lightHL = HighlightStyle.define([
 // ── UI 主题 ──
 const darkTheme = EditorView.theme({
   '&':{backgroundColor:'#1f1e1b',color:'#FAF9F5'},
-  '.cm-content':{caretColor:'#E59A7F',fontFamily:"'JetBrains Mono',Consolas,'Courier New',monospace"},
+  '.cm-content':{caretColor:'#E59A7F',fontFamily:"var(--font-code)"},
   '.cm-cursor,.cm-dropCursor':{borderLeftColor:'#E59A7F',borderLeftWidth:'2px'},
   '&.cm-focused .cm-selectionBackground,.cm-selectionBackground':{backgroundColor:'#5D3C33 !important'},
   '.cm-activeLine':{backgroundColor:'#252320'},
@@ -143,26 +176,30 @@ const darkTheme = EditorView.theme({
   '.cm-activeLineGutter':{backgroundColor:'#252320',color:'#D8D3CA'},
   '.cm-foldPlaceholder':{backgroundColor:'#32302C',color:'#D8D3CA',border:'none'},
   '.cm-matchingBracket':{backgroundColor:'#5A554E44',outline:'none'},
-  '.cm-tooltip':{backgroundColor:'#252320',border:'1px solid #3C3934',color:'#FAF9F5',borderRadius:'6px',boxShadow:'0 4px 12px rgba(0,0,0,.4)'},
-  '.cm-tooltip-autocomplete':{backgroundColor:'#252320',borderRadius:'6px',overflow:'hidden'},
-  '.cm-tooltip-autocomplete>ul':{fontFamily:"'JetBrains Mono',Consolas,monospace",fontSize:'13px'},
-  '.cm-tooltip-autocomplete>ul>li':{padding:'4px 10px',lineHeight:'1.4'},
-  '&.cm-tooltip-autocomplete>ul>li[aria-selected]':{backgroundColor:'#332F2B',color:'#FAF9F5'},
-  '.cm-completionLabel':{color:'#FAF9F5'},
-  '.cm-completionDetail':{color:'#96928B',fontStyle:'italic',marginLeft:'6px'},
-  '.cm-completionIcon-keyword':{color:'#E59A7F'},
-  '.cm-completionIcon-variable':{color:'#FAF9F5'},
-  '.cm-completionIcon-function':{color:'#D6B06C'},
-  '.cm-completionIcon-class':{color:'#86B6C7'},
-  '.cm-completionIcon-string':{color:'#A8C99A'},
-  '.cm-completionIcon-number':{color:'#D6B06C'},
-  '.cm-completionIcon-snippet':{color:'#E59A7F'},
+  // ── 补全面板（匹配应用设计系统）──
+  '.cm-tooltip':{backgroundColor:'#252320',border:'1px solid #3C3934',color:'#FAF9F5',borderRadius:'8px',boxShadow:'0 8px 24px rgba(0,0,0,.5)',overflow:'hidden'},
+  '.cm-tooltip-autocomplete':{backgroundColor:'#252320',borderRadius:'8px',maxHeight:'280px'},
+  '.cm-tooltip-autocomplete>ul':{fontFamily:"var(--font-code)",fontSize:'13px',lineHeight:'1.5'},
+  '.cm-tooltip-autocomplete>ul>li':{padding:'5px 12px',display:'flex',alignItems:'center',gap:'8px'},
+  '.cm-tooltip-autocomplete>ul>li[aria-selected]':{backgroundColor:'#332F2B',color:'#FAF9F5'},
+  '.cm-completionLabel':{color:'#FAF9F5',flex:'1'},
+  '.cm-completionDetail':{color:'#96928B',fontStyle:'normal',fontSize:'12px',marginLeft:'auto',flexShrink:'0'},
+  '.cm-completionIcon':{width:'16px',height:'16px',borderRadius:'3px',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:'10px',fontWeight:'600',flexShrink:'0'},
+  '.cm-completionIcon-keyword':{color:'#E59A7F',backgroundColor:'#E59A7F22'},
+  '.cm-completionIcon-variable':{color:'#86B6C7',backgroundColor:'#86B6C722'},
+  '.cm-completionIcon-function':{color:'#D6B06C',backgroundColor:'#D6B06C22'},
+  '.cm-completionIcon-class':{color:'#86B6C7',backgroundColor:'#86B6C722'},
+  '.cm-completionIcon-string':{color:'#A8C99A',backgroundColor:'#A8C99A22'},
+  '.cm-completionIcon-number':{color:'#D6B06C',backgroundColor:'#D6B06C22'},
+  '.cm-completionIcon-snippet':{color:'#E59A7F',backgroundColor:'#E59A7F22'},
+  '.cm-completionIcon-text':{color:'#FAF9F5',backgroundColor:'#FAF9F511'},
   '.cm-scroller':{overflow:'auto'},
+  '.cm-completionInfo':{backgroundColor:'#252320',border:'1px solid #3C3934',borderRadius:'8px',color:'#FAF9F5',padding:'8px 12px',fontFamily:"var(--font-code)",fontSize:'13px'},
 },{dark:true});
 
 const lightTheme = EditorView.theme({
   '&':{backgroundColor:'#ffffff',color:'#141413'},
-  '.cm-content':{caretColor:'#CC785C',fontFamily:"'JetBrains Mono',Consolas,'Courier New',monospace"},
+  '.cm-content':{caretColor:'#CC785C',fontFamily:"var(--font-code)"},
   '.cm-cursor,.cm-dropCursor':{borderLeftColor:'#CC785C',borderLeftWidth:'2px'},
   '&.cm-focused .cm-selectionBackground,.cm-selectionBackground':{backgroundColor:'#E7C8BC !important'},
   '.cm-activeLine':{backgroundColor:'#F5F0E8'},
@@ -170,21 +207,25 @@ const lightTheme = EditorView.theme({
   '.cm-activeLineGutter':{backgroundColor:'#F5F0E8',color:'#4A453F'},
   '.cm-foldPlaceholder':{backgroundColor:'#E5DED2',color:'#4A453F',border:'none'},
   '.cm-matchingBracket':{backgroundColor:'#C9BDB044',outline:'none'},
-  '.cm-tooltip':{backgroundColor:'#FAF9F5',border:'1px solid #D8D1C5',color:'#141413',borderRadius:'6px',boxShadow:'0 4px 12px rgba(0,0,0,.12)'},
-  '.cm-tooltip-autocomplete':{backgroundColor:'#FAF9F5',borderRadius:'6px',overflow:'hidden'},
-  '.cm-tooltip-autocomplete>ul':{fontFamily:"'JetBrains Mono',Consolas,monospace",fontSize:'13px'},
-  '.cm-tooltip-autocomplete>ul>li':{padding:'4px 10px',lineHeight:'1.4'},
-  '&.cm-tooltip-autocomplete>ul>li[aria-selected]':{backgroundColor:'#EFE9DE',color:'#141413'},
-  '.cm-completionLabel':{color:'#141413'},
-  '.cm-completionDetail':{color:'#756F68',fontStyle:'italic',marginLeft:'6px'},
-  '.cm-completionIcon-keyword':{color:'#A9583E'},
-  '.cm-completionIcon-variable':{color:'#141413'},
-  '.cm-completionIcon-function':{color:'#8B5A2B'},
-  '.cm-completionIcon-class':{color:'#315F7D'},
-  '.cm-completionIcon-string':{color:'#386C5A'},
-  '.cm-completionIcon-number':{color:'#8B5A2B'},
-  '.cm-completionIcon-snippet':{color:'#A9583E'},
+  // ── 补全面板（匹配应用设计系统）──
+  '.cm-tooltip':{backgroundColor:'#FAF9F5',border:'1px solid #D8D1C5',color:'#141413',borderRadius:'8px',boxShadow:'0 8px 24px rgba(0,0,0,.1)',overflow:'hidden'},
+  '.cm-tooltip-autocomplete':{backgroundColor:'#FAF9F5',borderRadius:'8px',maxHeight:'280px'},
+  '.cm-tooltip-autocomplete>ul':{fontFamily:"var(--font-code)",fontSize:'13px',lineHeight:'1.5'},
+  '.cm-tooltip-autocomplete>ul>li':{padding:'5px 12px',display:'flex',alignItems:'center',gap:'8px'},
+  '.cm-tooltip-autocomplete>ul>li[aria-selected]':{backgroundColor:'#EFE9DE',color:'#141413'},
+  '.cm-completionLabel':{color:'#141413',flex:'1'},
+  '.cm-completionDetail':{color:'#756F68',fontStyle:'normal',fontSize:'12px',marginLeft:'auto',flexShrink:'0'},
+  '.cm-completionIcon':{width:'16px',height:'16px',borderRadius:'3px',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:'10px',fontWeight:'600',flexShrink:'0'},
+  '.cm-completionIcon-keyword':{color:'#A9583E',backgroundColor:'#A9583E15'},
+  '.cm-completionIcon-variable':{color:'#315F7D',backgroundColor:'#315F7D15'},
+  '.cm-completionIcon-function':{color:'#8B5A2B',backgroundColor:'#8B5A2B15'},
+  '.cm-completionIcon-class':{color:'#315F7D',backgroundColor:'#315F7D15'},
+  '.cm-completionIcon-string':{color:'#386C5A',backgroundColor:'#386C5A15'},
+  '.cm-completionIcon-number':{color:'#8B5A2B',backgroundColor:'#8B5A2B15'},
+  '.cm-completionIcon-snippet':{color:'#A9583E',backgroundColor:'#A9583E15'},
+  '.cm-completionIcon-text':{color:'#141413',backgroundColor:'#14141308'},
   '.cm-scroller':{overflow:'auto'},
+  '.cm-completionInfo':{backgroundColor:'#FAF9F5',border:'1px solid #D8D1C5',borderRadius:'8px',color:'#141413',padding:'8px 12px',fontFamily:"var(--font-code)",fontSize:'13px'},
 },{dark:false});
 
 // ── API ──
@@ -274,7 +315,7 @@ function buildExtensions(language:string,theme:string,fontSize:number):Extension
     theme==='dark'?darkTheme:lightTheme,
     syntaxHighlighting(theme==='dark'?darkHL:lightHL),
     EditorView.lineWrapping,
-    EditorView.theme({'.cm-content':{fontSize:`${fontSize}px`,lineHeight:'1.6'},'.cm-gutters':{fontSize:`${fontSize}px`}}),
+    EditorView.theme({'.cm-content':{fontSize:`${fontSize}px`,lineHeight:'1.6',fontFamily:'var(--font-code)'},'.cm-gutters':{fontSize:`${fontSize}px`}}),
   ];
 }
 

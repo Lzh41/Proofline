@@ -248,7 +248,7 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
               <LocalCodeMirror
                 height="100%"
                 language={language === 'cpp' ? 'cpp' : language}
-                defaultValue={codeRef.current}
+                defaultValue={findProblemCodeSnippet(problem, language) ?? ''}
                 theme={editorTheme === 'vs-dark' ? 'dark' : 'light'}
                 fontSize={editorFontSize}
                 onChange={handleCodeChange}

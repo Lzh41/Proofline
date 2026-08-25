@@ -1529,7 +1529,7 @@ export function SolvePage() {
 
             <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
               <CodeEditorSurface
-                defaultCode={codeRef.current}
+                defaultCode={initialEditorCode(problem, attempt, language, algorithmProblems)}
                 language={language}
                 theme={editorTheme}
                 fontSize={editorFontSize}

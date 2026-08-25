@@ -374,6 +374,7 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
   const onChangeRef = useRef(onChange);
   const onMountRef = useRef(onMount);
   const defaultValueRef = useRef(defaultValue);
+  const prevDefaultCodeRef = useRef(defaultValue);
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { onMountRef.current = onMount; }, [onMount]);
@@ -450,18 +451,22 @@ const LocalCodeMirror = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── 更新 extensions（销毁重建，使用最新的 defaultValue）──
+  // ── 更新 extensions（销毁重建）──
+  // 同时监听 defaultValue 变化：切换题目时即使 extensions 没变也要重建编辑器
   useEffect(() => {
     const view = viewRef.current;
     const parent = containerRef.current;
     if (!view || !parent) return;
+    // 只在 defaultValue 真正变化时才重建
+    if (prevDefaultCodeRef.current === defaultValue) return;
+    prevDefaultCodeRef.current = defaultValue;
     view.destroy();
-    // 使用最新的 defaultValue 而非旧编辑器内容
-    const state = EditorState.create({ doc: defaultValueRef.current, extensions });
+    // 始终使用最新的 defaultValue
+    const state = EditorState.create({ doc: defaultValue, extensions });
     const newView = new EditorView({ state, parent });
     viewRef.current = newView;
     if (handleRef.current) handleRef.current.view = newView;
-  }, [extensions]);
+  }, [extensions, defaultValue]);
 
   // ── 暴露 API ──
   useImperativeHandle(ref, () => ({

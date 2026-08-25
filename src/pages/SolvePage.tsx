@@ -445,7 +445,7 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
           height="100%"
           language={language === 'cpp' ? 'cpp' : language}
           defaultValue={defaultCode}
-          theme={theme === 'dark' ? 'dark' : 'light'}
+          theme={theme.includes('dark') ? 'dark' : 'light'}
           fontSize={fontSize}
           onChange={onChange}
           onMount={(handle) => {

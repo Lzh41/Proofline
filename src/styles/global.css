@@ -355,3 +355,8 @@ body::-webkit-scrollbar {
     transition-duration: .01ms !important;
   }
 }
+
+/* 隐藏 CodeMirror 补全弹窗的 "No suggestions" 空状态 */
+.cm-tooltip-autocomplete:has(> ul:empty) { display: none !important; }
+.cm-tooltip .cm-completionInfo:empty { display: none !important; }
+.cm-tooltip:has(> .cm-completionInfo:empty):not(:has(> ul)) { display: none !important; }

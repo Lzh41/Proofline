@@ -329,6 +329,20 @@ function buildExtensions(language:string,theme:string,fontSize:number):Extension
     EditorState.allowMultipleSelections.of(true),
     indentOnInput(),bracketMatching(),closeBrackets(),
     autocompletion({override:[completionSource(language)],activateOnTyping:false,maxRenderedOptions:15}),
+    // 补全弹窗状态监听：无建议时自动关闭
+    EditorView.updateListener.of((update) => {
+      if (update.selectionSet || update.docChanged) {
+        const tooltips = update.view.dom.querySelectorAll('.cm-tooltip-autocomplete');
+        tooltips.forEach((tip) => {
+          const ul = tip.querySelector('ul');
+          if (ul && ul.children.length === 0) {
+            (tip as HTMLElement).style.display = 'none';
+          } else if (ul && ul.children.length > 0) {
+            (tip as HTMLElement).style.display = '';
+          }
+        });
+      }
+    }),
     rectangularSelection(),crosshairCursor(),highlightActiveLine(),highlightSelectionMatches(),
     // Prec.highest 确保 Tab/Enter 覆盖 completionKeymap 的默认行为
     Prec.high(keymap.of([

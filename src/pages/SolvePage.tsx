@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import type { EditorView } from '@codemirror/view';
+import type { EditorProps } from '@monaco-editor/react';
+import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import {
   AlertTriangle,
   ArrowUpToLine,
@@ -45,8 +46,7 @@ import { editorThemeFor } from '../app/theme';
 import { useResolvedTheme } from '../app/useResolvedTheme';
 import styles from './Pages.module.css';
 
-const LocalCodeMirror = lazy(() => import('../lib/localCodeMirror'));
-type CodeMirrorHandle = import('../lib/localCodeMirror').CodeMirrorEditorHandle;
+const MonacoEditor = lazy(() => import('../lib/localMonaco'));
 
 // 编辑器文本本身由 Monaco 非受控维护；用户输入只更新 ref 与草稿保存定时器，
 // 不再同步 React 状态 —— 避免每个输入/删除停顿都触发整页重渲染造成卡顿。
@@ -433,25 +433,120 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
   theme: string;
   fontSize: number;
   onChange: (value: string) => void;
-  onEditorMount?: (handle: CodeMirrorHandle) => void;
+  onEditorMount?: (editor: Monaco.editor.IStandaloneCodeEditor) => void;
   onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
 }) {
-  const handleRef = useRef<CodeMirrorHandle | null>(null);
+  // 撤销/还原可用状态订阅随组件卸载释放，避免题目/语言切换重挂载后泄漏。
+  const editorSubscriptionsRef = useRef<Monaco.IDisposable[]>([]);
+  useEffect(() => () => {
+    editorSubscriptionsRef.current.forEach((subscription) => subscription.dispose());
+    editorSubscriptionsRef.current = [];
+  }, []);
+
+  const editorOptions = useMemo<EditorProps['options']>(() => ({
+    fontSize,
+    fontFamily: 'JetBrains Mono, Consolas, monospace',
+    scrollBeyondLastLine: false,
+    // ── 布局：保留 automaticLayout 以支持分栏拖动，但关闭不必要的布局触发 ──
+    automaticLayout: true,
+    padding: { top: 0, bottom: 0 },
+    wordWrap: 'off',
+    codeLens: false,
+    folding: false,
+    stickyScroll: { enabled: false },
+    // ── 补全/建议：只保留 Ctrl+Space 显式触发 ──
+    quickSuggestions: false,
+    suggestOnTriggerCharacters: false,
+    wordBasedSuggestions: 'off',
+    suggestSelection: 'first',
+    tabCompletion: 'on',
+    acceptSuggestionOnCommitCharacter: true,
+    acceptSuggestionOnEnter: 'off',
+    suggest: { filterGraceful: false, showMethods: false, showFunctions: false, showVariables: false, showKeywords: false, showSnippets: false },
+    // ── 输入/编辑：最小化每次按键的副作用 ──
+    // 'off' 彻底消除每次按键时的括号匹配检查，节省 0.5-2ms/按键。
+    autoClosingBrackets: 'languageDefined' as const,
+    autoClosingQuotes: 'languageDefined' as const,
+    autoClosingDelete: 'never' as const,
+    autoClosingOvertype: 'never' as const,
+    autoIndent: 'advanced',
+    formatOnPaste: false,
+    formatOnType: false,
+    // ── Tokenization 限制：防止长行/大文件阻塞主线程（VSCode 同款优化）──
+    maxTokenizationLineLength: 4096,
+    largeFileOptimizations: true,
+    // ── 光标/滚动：消除动画和定时器重绘 ──
+    smoothScrolling: false,
+    cursorSmoothCaretAnimation: 'off',
+    cursorBlinking: 'solid',
+    // ── 装饰/高亮：关闭所有不直接影响编辑的 per-line/per-char 装饰 ──
+    renderLineHighlight: 'none',
+    occurrencesHighlight: 'off',
+    selectionHighlight: false,
+    colorDecorators: false,
+    renderValidationDecorations: 'off',
+    renderWhitespace: 'none',
+    bracketPairColorization: { enabled: false },
+    matchBrackets: 'never',
+    guides: {
+      bracketPairs: false,
+      bracketPairsHorizontal: false,
+      highlightActiveBracketPair: false,
+      indentation: false,
+      highlightActiveIndentation: false,
+    },
+    // ── Hover/Inlay：关闭后台模型扫描 ──
+    hover: { enabled: false },
+    links: false,
+    parameterHints: { enabled: false },
+    // ── 布局/Chrome：减少 DOM 计算 ──
+    minimap: { enabled: false },
+    scrollbar: { verticalSliderSize: 8, horizontalSliderSize: 8, useShadows: false },
+    overviewRulerLanes: 0,
+    hideCursorInOverviewRuler: true,
+    fixedOverflowWidgets: true,
+    unicodeHighlight: { nonBasicASCII: false, invisibleCharacters: false, ambiguousCharacters: false, includeComments: false, includeStrings: false },
+  }), [fontSize]);
 
   return (
     <div className={styles.editorSurface}>
       <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
-        <LocalCodeMirror
+        <MonacoEditor
           height="100%"
           language={language === 'cpp' ? 'cpp' : language}
           defaultValue={defaultCode}
-          theme={theme.includes('dark') ? 'dark' : 'light'}
-          fontSize={fontSize}
-          onChange={onChange}
-          onMount={(handle) => {
-            handleRef.current = handle;
-            onEditorMount?.(handle);
+          onMount={(editor) => {
+            onEditorMount?.(editor);
+            // ── 撤销/重做状态同步 ──
+            // 优化：只订阅 onDidChangeModelContent（内容变化时）和 onDidBlurEditorText
+            // （失焦时，用于工具栏按钮点击前刷新状态）。
+            // 移除 onDidChangeModel 和 onDidFocusEditorText —— 模型切换和聚焦
+            // 不影响 undo/redo 可用性，减少每次按键的同步回调数量。
+            let last = { canUndo: false, canRedo: false };
+            let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+            const syncHistory = () => {
+              if (debounceTimer !== undefined) return; // 已有 pending 检查，跳过
+              debounceTimer = setTimeout(() => {
+                debounceTimer = undefined;
+                const model = editor.getModel();
+                if (!model || model.isDisposed()) return;
+                const next = { canUndo: Boolean(model?.canUndo()), canRedo: Boolean(model?.canRedo()) };
+                if (next.canUndo === last.canUndo && next.canRedo === last.canRedo) return;
+                last = next;
+                onHistoryChange?.(next.canUndo, next.canRedo);
+              }, 200);
+            };
+            editorSubscriptionsRef.current.forEach((subscription) => subscription.dispose());
+            editorSubscriptionsRef.current = [
+              editor.onDidChangeModelContent(syncHistory),
+              // 失焦时立即刷新（不 debounce），确保工具栏按钮拿到最新 undo/redo 状态
+              editor.onDidBlurEditorText(syncHistory),
+            ];
+            syncHistory();
           }}
+          onChange={(nextValue) => onChange(nextValue ?? '')}
+          theme={theme}
+          options={editorOptions}
         />
       </Suspense>
     </div>
@@ -488,7 +583,7 @@ export function SolvePage() {
   // 复习模式下使用空字符串，不保留之前的代码
   const codeRef = useRef(initialEditorCode(problem, attempt, attempt?.language ?? store.settings.defaultLanguage ?? 'cpp', algorithmProblems));
   const [editorHistory, setEditorHistory] = useState({ canUndo: false, canRedo: false });
-  const codeEditorRef = useRef<CodeMirrorHandle | null>(null);
+  const codeEditorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const [language, setLanguage] = useState(attempt?.language ?? store.settings.defaultLanguage ?? 'cpp');
   const [seconds, setSeconds] = useState(attempt?.durationSeconds ?? 0);
   const [running, setRunning] = useState(false);
@@ -597,24 +692,23 @@ export function SolvePage() {
     codeProblemIdRef.current = problem?.id;
     updateEditorCode(nextCode);
   }, [problem?.id, updateEditorCode]);
-  const handleCodeEditorMount = useCallback((handle: CodeMirrorHandle) => {
-    codeEditorRef.current = handle;
+  const handleCodeEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
+    codeEditorRef.current = editor;
   }, []);
-  const handleEditorHistoryChange = useCallback((_canUndo: boolean, _canRedo: boolean) => {
-    // CodeMirror 的 undo/redo 状态通过 view.state 内部管理
-    // 按钮始终可用，由 CM6 自己处理
+  const handleEditorHistoryChange = useCallback((canUndo: boolean, canRedo: boolean) => {
+    setEditorHistory({ canUndo, canRedo });
   }, []);
   const undoCode = useCallback(() => {
     const editor = codeEditorRef.current;
     if (!editor) return;
     editor.focus();
-    editor.undo();
+    editor.trigger('toolbar', 'undo', null);
   }, []);
   const redoCode = useCallback(() => {
     const editor = codeEditorRef.current;
     if (!editor) return;
     editor.focus();
-    editor.redo();
+    editor.trigger('toolbar', 'redo', null);
   }, []);
   const visibleCoachTurns = useMemo(() => {
     // 五个教练功能各自只展示最新回答；AI 解惑模块单独保留完整多轮记录。
@@ -1529,7 +1623,7 @@ export function SolvePage() {
 
             <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
               <CodeEditorSurface
-                defaultCode={initialEditorCode(problem, attempt, language, algorithmProblems)}
+                defaultCode={codeRef.current}
                 language={language}
                 theme={editorTheme}
                 fontSize={editorFontSize}

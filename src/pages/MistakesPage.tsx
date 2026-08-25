@@ -265,7 +265,7 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
           <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
             <Suspense fallback={<div className={styles.notice} style={{ margin: 16 }}>正在加载本地编辑器…</div>}>
               <MonacoEditor height="100%" language={language === 'cpp' ? 'cpp' : language} defaultValue={codeRef.current} theme={editorTheme} options={{
-                fontSize: editorFontSize, fontFamily: 'JetBrains Mono, Consolas, monospace', scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 0, bottom: 0 },
+                fontSize: editorFontSize, fontFamily: 'JetBrains Mono, Consolas, monospace', tabSize: 4, insertSpaces: true, scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 0, bottom: 0 },
                 wordWrap: 'off', codeLens: false, folding: false, stickyScroll: { enabled: true },
                 // ── 补全/建议 ──
                 quickSuggestions: false, suggestOnTriggerCharacters: false, wordBasedSuggestions: 'off', suggestSelection: 'first', tabCompletion: 'on',

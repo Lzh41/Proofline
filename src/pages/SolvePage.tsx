@@ -446,6 +446,8 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
   const editorOptions = useMemo<EditorProps['options']>(() => ({
     fontSize,
     fontFamily: 'JetBrains Mono, Consolas, monospace',
+    tabSize: 4,
+    insertSpaces: true,
     scrollBeyondLastLine: false,
     // ── 布局：保留 automaticLayout 以支持分栏拖动，但关闭不必要的布局触发 ──
     automaticLayout: true,

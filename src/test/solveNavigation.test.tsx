@@ -27,7 +27,7 @@ vi.mock('../lib/localMonaco', () => ({
       fontSize?: number;
       stickyScroll?: { enabled?: boolean; maxLineCount?: number; defaultModel?: string };
       tabCompletion?: string;
-      quickSuggestions?: unknown;
+      quickSuggestions?: { other?: boolean; comments?: boolean; strings?: boolean };
       suggestOnTriggerCharacters?: boolean;
       matchBrackets?: string;
       links?: boolean;
@@ -48,7 +48,7 @@ vi.mock('../lib/localMonaco', () => ({
         data-sticky-max-lines={String(options?.stickyScroll?.maxLineCount ?? '')}
         data-sticky-model={String(options?.stickyScroll?.defaultModel ?? '')}
         data-tab-completion={String(options?.tabCompletion ?? '')}
-        data-quick-suggestions={String(options?.quickSuggestions === true)}
+        data-quick-suggestions={String(options?.quickSuggestions?.other === true)}
         data-suggest-on-trigger={String(options?.suggestOnTriggerCharacters === true)}
         data-match-brackets={String(options?.matchBrackets ?? '')}
         data-links={String(options?.links ?? true)}
@@ -534,7 +534,7 @@ const helper = (value: number): number => value * 2;`.split('\n');
     expect((useAppStore.getState().settings as { editorFontSize?: number }).editorFontSize).toBe(20);
   });
 
-  it('编辑器关闭高频全文服务并保留显式补全选项', async () => {
+  it('编辑器保留文档内补全并关闭昂贵装饰选项', async () => {
     render(
       <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
         <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
@@ -542,12 +542,12 @@ const helper = (value: number): number => value * 2;`.split('\n');
     );
 
     const editor = await screen.findByLabelText('代码编辑器 Mock');
-    expect(editor).toHaveAttribute('data-sticky-scroll', 'false');
+    expect(editor).toHaveAttribute('data-sticky-scroll', 'true');
     expect(editor).toHaveAttribute('data-sticky-max-lines', '');
     expect(editor).toHaveAttribute('data-sticky-model', '');
     expect(editor).toHaveAttribute('data-tab-completion', 'on');
-    expect(editor).toHaveAttribute('data-quick-suggestions', 'false');
-    expect(editor).toHaveAttribute('data-suggest-on-trigger', 'false');
+    expect(editor).toHaveAttribute('data-quick-suggestions', 'true');
+    expect(editor).toHaveAttribute('data-suggest-on-trigger', 'true');
     expect(editor).toHaveAttribute('data-match-brackets', 'never');
     expect(editor).toHaveAttribute('data-links', 'false');
     expect(editor).toHaveAttribute('data-parameter-hints', 'false');

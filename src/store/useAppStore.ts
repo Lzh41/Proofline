@@ -44,7 +44,7 @@ import { chooseTextFile, downloadTextFile } from '../lib/browserFiles';
 import { createEmptySnapshot, normalizeSnapshot } from '../lib/data';
 import { createId, uniqueStrings } from '../lib/ids';
 import { importSnapshot } from '../lib/importer';
-import { mergeInterviewCatalog } from '../lib/interviews';
+import { interviewRoleRequirements, mergeInterviewCatalog, problemToInterviewCatalogItem, retrieveInterviewCatalog } from '../lib/interviews';
 import { searchKnowledge } from '../lib/knowledge';
 import { generatePlan } from '../lib/planner';
 import { fetchPublicProblem, inferProblemFromUrl, isSafeAiEndpoint } from '../lib/platform';
@@ -73,7 +73,7 @@ function aiCompletionsUrl(baseUrl: string): string {
 function completionTokenBudget(prompt: string): number {
   // 最近练习复盘要覆盖多道题并输出 5 个章节，预算不足会被截断成半篇笔记。
   if (prompt.includes('最近练习复盘')) return 8_192;
-  if (prompt.includes('本轮请求：生成主题面试题')) return 6_144;
+  if (prompt.includes('资深技术面试出题官')) return 12_288;
   if (prompt.includes('本轮请求：给完整代码')) return 8_192;
   return 4_096;
 }
@@ -1056,7 +1056,48 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (!get().settings.hasAiCredential) throw new Error('请先在设置中保存 AI 密钥');
       if (!get().settings.aiModel.trim()) throw new Error('请先在设置中填写模型 ID');
       if (!get().settings.privacyConfirmed) throw new Error('发送技术主题前需要确认隐私提示');
-      const prompt = buildInterviewExaminerPrompt(input);
+      const rawRequirements = Array.isArray(input.requirements)
+        ? input.requirements.map((item) => item.trim()).filter(Boolean).join('；')
+        : input.requirements?.trim() ?? '';
+      const requirements = rawRequirements || input.topic?.trim() || input.jobTitle?.trim() || input.position?.trim() || '';
+      const roleRequirements = interviewRoleRequirements(input.role);
+      const promptRequirements = uniqueStrings([requirements, ...roleRequirements]).join('；');
+      const matchedQuestions = retrieveInterviewCatalog(INTERVIEW_CATALOG, {
+        role: input.role,
+        roles: [input.role],
+        query: `${input.jobTitle ?? input.position ?? ''} ${promptRequirements}`,
+        limit: Math.max(24, Math.min(48, Math.round(input.count) * 3)),
+        minPerFormat: 2,
+      });
+      // 内置题库之外，个人导入/AI 生成题也属于用户自己的检索语料；只取少量高相关题，
+      // 避免把整份历史题库塞进 prompt，同时按 ID 去重防止内置题重复出现。
+      const personalCatalog = get().problems
+        .filter((problem) => problem.kind === 'interview' && problem.interview?.contentOrigin !== 'builtin')
+        .map(problemToInterviewCatalogItem)
+        .filter((item): item is NonNullable<ReturnType<typeof problemToInterviewCatalogItem>> => Boolean(item));
+      const personalMatches = retrieveInterviewCatalog(personalCatalog, {
+        role: input.role,
+        roles: [input.role],
+        query: `${input.jobTitle ?? input.position ?? ''} ${requirements}`,
+        limit: 8,
+        minPerFormat: 1,
+      });
+      const allMatchedQuestions = [...matchedQuestions, ...personalMatches].filter((item, index, source) => source.findIndex((candidate) => candidate.id === item.id) === index);
+      const catalogContext = allMatchedQuestions.map((item) => ({
+        id: item.id,
+        title: item.question,
+        category: item.category,
+        format: item.format,
+        difficulty: item.difficulty,
+        roles: uniqueStrings([item.primaryRole, ...item.roles]),
+        tags: item.tags.slice(0, 8),
+        keyPoints: item.keyPoints.slice(0, 6),
+      }));
+      const prompt = buildInterviewExaminerPrompt({
+        ...input,
+        requirements: promptRequirements,
+        catalogContext,
+      });
       let response: string;
       if (isTauriRuntime()) {
         const onEvent = new Channel<AiStreamEvent>();
@@ -1071,7 +1112,11 @@ export const useAppStore = create<AppStore>((set, get) => {
       } else {
         response = await browserAiRequest(get().settings, prompt);
       }
-      return parseInterviewExaminerResponse(response);
+      const parsed = parseInterviewExaminerResponse(response);
+      return {
+        ...parsed,
+        matchedQuestions: catalogContext,
+      };
     },
     cancelAiRequest: async () => {
       if (isTauriRuntime()) await invoke('cancel_ai_request');

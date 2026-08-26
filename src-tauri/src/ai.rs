@@ -196,7 +196,7 @@ fn coach_instruction(intent: &str) -> Result<(&'static str, &'static str), Strin
         )),
         "interview-examiner" => Ok((
             "生成主题面试题",
-            "围绕用户指定的技术主题、岗位、难度和题量，生成不重复、不换皮且有真实区分度的考点与题目；答案必须技术准确，并包含回答要点和递进追问。",
+            "先依据职位名称和岗位需求审计本地题库覆盖，再围绕未覆盖能力域补齐不重复、不换皮且有真实区分度的考点与题目；答案必须技术准确，并包含回答要点和递进追问。",
         )),
         _ => Err("未知的 AI 代码教练请求类型".to_string()),
     }
@@ -505,7 +505,9 @@ fn request_error(context: &str, error: reqwest::Error) -> String {
 
 fn completion_token_budget(intent: &str, prompt: &str) -> u32 {
     if intent == "interview-examiner" || prompt.contains("本轮请求：生成主题面试题") {
-        6_144
+        // 岗位出题会同时返回覆盖审计、能力缺口和较多完整参考答案；
+        // 6K 容易在 15~20 道题时被截断，保持与浏览器端预算一致。
+        12_288
     } else if intent == "complete" || prompt.contains("本轮请求：给完整代码") {
         8_192
     } else if prompt.contains("最近练习复盘") {
@@ -623,7 +625,7 @@ mod tests {
         assert!(!uses_reasoning_model("gpt-4o-mini"));
         assert_eq!(completion_token_budget("explain", ""), 4_096);
         assert_eq!(completion_token_budget("complete", ""), 8_192);
-        assert_eq!(completion_token_budget("interview-examiner", ""), 6_144);
+        assert_eq!(completion_token_budget("interview-examiner", ""), 12_288);
         assert_eq!(
             completion_token_budget("explain", "这是一次\"最近练习复盘\"任务"),
             8_192

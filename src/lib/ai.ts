@@ -17,10 +17,29 @@ export interface InterviewPromptInput {
 }
 
 export interface InterviewExaminerInput {
-  topic: string;
+  /** 兼容旧调用；新 UI 使用 requirements 传入职位名称与岗位需求。 */
+  topic?: string;
+  /** 可选的自由职位名称；未提供时回退到 topic 或 roleLabel。 */
+  jobTitle?: string;
+  position?: string;
   role: string;
   difficulty: Exclude<Difficulty, 'unknown'>;
   count: number;
+  requirements?: string | string[];
+  catalogContext?: InterviewCatalogContextItem[];
+  excludedQuestions?: InterviewExaminerQuestion[];
+  roleLabel?: string;
+}
+
+export interface InterviewCatalogContextItem {
+  id: string;
+  title: string;
+  category: string;
+  format: InterviewFormat;
+  difficulty: Exclude<Difficulty, 'unknown'>;
+  roles: string[];
+  tags: string[];
+  keyPoints: string[];
 }
 
 export interface InterviewExaminerQuestion {
@@ -32,6 +51,8 @@ export interface InterviewExaminerQuestion {
   keyPoints: string[];
   referenceAnswer: string;
   followUps: string[];
+  origin?: 'generated' | 'catalog';
+  gap?: string;
 }
 
 export interface InterviewExaminerResult {
@@ -39,6 +60,47 @@ export interface InterviewExaminerResult {
   overview: string;
   checkpoints: string[];
   questions: InterviewExaminerQuestion[];
+  matchedQuestions?: InterviewCatalogContextItem[];
+  coverage?: string[];
+  gaps?: string[];
+}
+
+export const MAX_INTERVIEW_EXAMINER_QUESTIONS = 40;
+
+/**
+ * 过滤追加轮次中与历史题目重复的题面或回答要点。
+ * AI 提示词负责语义层面的避重，这里再用规范化后的本地规则兜底，
+ * 防止同轮重复或模型返回同一知识点的改写题被直接追加。
+ */
+export function filterInterviewQuestionAdditions(
+  candidates: InterviewExaminerQuestion[],
+  excluded: InterviewExaminerQuestion[],
+): InterviewExaminerQuestion[] {
+  const accepted: InterviewExaminerQuestion[] = [];
+  const seen = [...excluded];
+  for (const candidate of candidates) {
+    const candidateTitle = normalizeInterviewComparable(candidate.title);
+    const candidateKeyPoints = comparableInterviewKeyPoints(candidate);
+    const duplicate = seen.some((previous) => {
+      if (candidateTitle && candidateTitle === normalizeInterviewComparable(previous.title)) return true;
+      const previousKeyPoints = new Set(comparableInterviewKeyPoints(previous));
+      return candidateKeyPoints.some((point) => previousKeyPoints.has(point));
+    });
+    if (duplicate) continue;
+    accepted.push(candidate);
+    seen.push(candidate);
+  }
+  return accepted;
+}
+
+function normalizeInterviewComparable(value: string): string {
+  return value.toLocaleLowerCase('zh-CN').replace(/[^\p{Script=Han}\p{L}\p{N}]+/gu, '');
+}
+
+function comparableInterviewKeyPoints(question: InterviewExaminerQuestion): string[] {
+  return question.keyPoints
+    .map(normalizeInterviewComparable)
+    .filter((point) => point.length >= 4);
 }
 
 export type AiStreamEvent =
@@ -217,25 +279,48 @@ export function buildInterviewPrompt(input: InterviewPromptInput): string {
 }
 
 export function buildInterviewExaminerPrompt(input: InterviewExaminerInput): string {
-  const topic = input.topic.trim();
+  const requirements = normalizeExaminerRequirements(input.requirements);
+  const position = input.jobTitle?.trim() || input.position?.trim() || input.topic?.trim() || input.roleLabel?.trim() || '';
+  const topic = requirements || position;
   const role = input.role.trim();
-  if (!topic) throw new Error('请先填写技术主题');
+  const roleLabel = input.roleLabel?.trim() || role;
+  if (!position && !requirements) throw new Error('请先填写职位名称或岗位需求');
   if (!role) throw new Error('请选择岗位方向');
-  const count = Math.min(10, Math.max(1, Math.round(input.count)));
+  const requestedCount = Number.isFinite(input.count) ? Math.round(input.count) : 1;
+  const count = Math.min(MAX_INTERVIEW_EXAMINER_QUESTIONS, Math.max(1, requestedCount));
+  const catalogContext = input.catalogContext ?? [];
+  const excludedQuestions = input.excludedQuestions ?? [];
+  const catalogText = catalogContext.length
+    ? catalogContext.map((item, index) => [
+      `${index + 1}. [${item.id}] ${item.title}`,
+      `分类：${item.category}；题型：${item.format}；难度：${item.difficulty}`,
+      `标签：${item.tags.join('、') || '无'}`,
+      `已覆盖要点：${item.keyPoints.join('、')}`,
+    ].join('\n')).join('\n\n')
+    : '本地题库没有命中题目，请完全依据岗位需求拆解能力域。';
 
   return [
-    '你是 Proofline 的资深技术面试出题官。请基于真实企业面试深度，系统拆解用户指定主题，不要生成重复、换皮或只有定义背诵价值的问题。',
-    `技术主题：${topic}`,
-    `目标岗位：${role}`,
+    '你是 Proofline 的资深技术面试出题官。请基于职位名称与岗位需求拆解真实企业面试范围，先做题库覆盖审计，再只为覆盖不足的能力域补充全新问题。',
+    `职位名称：${position || '未单独填写'}`,
+    `技术主题/输入关键词：${input.topic?.trim() || '未指定'}`,
+    `岗位需求：${requirements || '请根据职位名称和岗位方向推断，并明确标注推断边界'}`,
+    `目标岗位：${roleLabel}（${role}）`,
     `整体难度：${input.difficulty}`,
-    `题目数量：${count}`,
-    '考点必须覆盖概念原理、关键公式或机制、工程实现、性能与边界、故障排查或方案权衡；根据主题选择真正相关的维度，不要生搬硬套。',
+    `需要新增的题目数量：${count}`,
+    '本地题库检索结果（仅作为已有覆盖证据，不要复述或改写这些题）：\n' + catalogText,
+    excludedQuestions.length
+      ? `上一轮已生成题目（本轮严禁复用其题面、主要知识点或同义变体）：\n${excludedQuestions.map((item, index) => `${index + 1}. ${item.title}｜${item.category}｜${item.keyPoints.join('、')}`).join('\n')}`
+      : '这是第一轮生成，没有上一轮题目需要排除。',
+    '先从岗位需求提取能力域清单，再将检索题按能力域归类，明确已覆盖领域与覆盖不足/未覆盖领域。新增题必须主要落在缺口领域；若某领域已有题，只能从不同的工程场景、故障边界、系统权衡或项目落地角度补题，不得与检索题同义、换词或只改数字。',
+    '涉猎面必须完整：按岗位需求实际涉及的范围覆盖基础原理、核心技术、工程实现、数据与指标、性能成本、可靠性与安全、故障排查、系统设计、项目落地和协作影响（不相关的维度不要硬塞）。题目数量不足以覆盖全部维度时，优先覆盖岗位需求中出现且题库缺失的领域。',
     '每道题都要给出可用于复习的完整参考答案、至少 3 个回答要点，以及 1 至 3 个能够区分候选人深度的递进追问。答案必须技术准确、直接回答问题，并解释关键因果。',
     '只输出一个合法 JSON 对象，不要输出 Markdown 代码围栏、解释文字或额外前后缀。必须严格使用以下结构：',
     JSON.stringify({
-      topic,
+      topic: position || topic,
       overview: '这个主题在目标岗位中的考察范围与能力目标',
       checkpoints: ['核心考点一', '核心考点二'],
+      coverage: ['岗位需求中已覆盖的能力域'],
+      gaps: ['岗位需求中仍需补足的能力域'],
       questions: [{
         title: '完整面试问题',
         category: '知识分类',
@@ -245,9 +330,11 @@ export function buildInterviewExaminerPrompt(input: InterviewExaminerInput): str
         keyPoints: ['回答要点一', '回答要点二', '回答要点三'],
         referenceAnswer: '完整、准确、可直接用于复习的参考答案',
         followUps: ['递进追问及考察方向'],
+        origin: 'generated',
+        gap: '这道题补足的岗位能力域',
       }],
     }, null, 2),
-    `questions 数组必须恰好包含 ${count} 道互不重复的问题。所有自然语言字段使用简体中文，技术名词、公式和代码标识符可保留英文。`,
+    `questions 数组必须恰好包含 ${count} 道全新且互不重复的问题，origin 必须为 generated；不得复制检索题，也不得与上一轮生成题在题面或核心知识点上重复。所有自然语言字段使用简体中文，技术名词、公式和代码标识符可保留英文。`,
   ].join('\n\n');
 }
 
@@ -279,6 +366,8 @@ export function parseInterviewExaminerResponse(response: string): InterviewExami
     overview: requiredText(record.overview, '考点概览'),
     checkpoints: stringList(record.checkpoints, '核心考点'),
     questions,
+    coverage: optionalStringList(record.coverage),
+    gaps: optionalStringList(record.gaps),
   };
 }
 
@@ -302,6 +391,8 @@ function parseExaminerQuestion(value: unknown, index: number): InterviewExaminer
     keyPoints: stringList(record.keyPoints, `第 ${index + 1} 道题回答要点`),
     referenceAnswer: requiredText(record.referenceAnswer, `第 ${index + 1} 道题参考答案`),
     followUps: stringList(record.followUps, `第 ${index + 1} 道题追问`),
+    origin: 'generated',
+    gap: typeof record.gap === 'string' && record.gap.trim() ? record.gap.trim() : undefined,
   };
 }
 
@@ -315,6 +406,17 @@ function stringList(value: unknown, field: string): string[] {
   const items = value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean);
   if (!items.length) throw new Error(`${field}不能为空`);
   return items;
+}
+
+function optionalStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean);
+  return items.length ? items : undefined;
+}
+
+function normalizeExaminerRequirements(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value.map((item) => item.trim()).filter(Boolean).join('；');
+  return value?.trim() ?? '';
 }
 
 function legacyIntent(level?: number): AiCoachIntent {

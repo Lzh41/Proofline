@@ -16,7 +16,7 @@
   <a href="https://github.com/Lzh41/Proofline"><img src="https://img.shields.io/github/stars/Lzh41/Proofline?style=flat-square&color=E8B86D" alt="GitHub stars" /></a>
 </p>
 
-> 当前版本：`0.1.8` · Windows x64 · Tauri 2 · React 19 · SQLite
+> 当前版本：`0.1.9` · Windows x64 · Tauri 2 · React 19 · SQLite
 
 ## 先看它在做什么
 
@@ -49,7 +49,7 @@
 
 - **21 个岗位方向、1083 道题**：覆盖大语言模型、NLP、RAG、推荐系统、后端、前端、测试、数据、机器学习等方向。
 - **组合检索**：岗位、关键词、八股主题、题型、难度和掌握度可以一起筛选。
-- **AI 面试出题官**：输入 `Transformer`、`RAG` 或“搜索排序”，生成考点地图、面试问题、参考答案和递进追问。
+- **AI 面试出题官**：按职位名称和岗位需求先检索题库，再补齐未覆盖的能力域，生成考点地图、面试问题、参考答案和递进追问；支持继续补充不重复的新一轮题目。
 - **一键收入个人题库**：勾选出题官生成的题目后直接保存，避免复制粘贴和重复整理。
 - **真实回答闭环**：回答草稿自动保存，提交后查看参考答案、遗漏点和改进表达，再选择“掌握 / 模糊 / 不会”。
 
@@ -78,8 +78,8 @@ Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从�
 
 前往 [Releases](https://github.com/Lzh41/Proofline/releases) 下载：
 
-- `Proofline_0.1.8_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
-- `Proofline_0.1.8_x64-portable.exe`：Windows x64 便携版，免安装运行。
+- `Proofline_0.1.9_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
+- `Proofline_0.1.9_x64-portable.exe`：Windows x64 便携版，免安装运行。
 
 当前版本未配置商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。下载后请先核对 Release 页面中的 SHA-256。若系统没有 WebView2 Runtime，安装阶段需要联网下载安装运行时。
 
@@ -126,7 +126,7 @@ React 19 · TypeScript · Vite · Tauri 2 · Rust · SQLite · Zustand · CSS Mo
 
 ## 验证记录
 
-- 前端测试：`34` 个测试文件，`231/231` 通过。
+- 前端测试：`35` 个测试文件，`235/235` 通过。
 - Rust 测试：`65/65` 通过。
 - Windows x64 NSIS 安装包和便携版已构建。
 - 已在全新安装目录验证：首次启动、导入题目、完全退出、重启后数据持久化。

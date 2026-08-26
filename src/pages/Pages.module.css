@@ -3591,6 +3591,25 @@
 
 .interviewExaminerForm :global(.field) { min-width: 0; }
 .interviewExaminerForm :global(.button) { min-height: 38px; white-space: nowrap; }
+.interviewExaminerRequirements { grid-column: 1 / -1; }
+.interviewExaminerRequirements :global(.textarea) { min-height: 74px; resize: vertical; line-height: 1.45; }
+
+.interviewExaminerScope {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--subtle-fill);
+  font-family: var(--font-code);
+  font-size: 9px;
+}
+.interviewExaminerScope span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.interviewExaminerScope svg { color: var(--accent); }
 
 .interviewExaminerNotice,
 .interviewExaminerError {
@@ -3613,7 +3632,7 @@
   flex: 1 1 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   border-top: 1px solid var(--line-strong);
   overflow: hidden;
 }
@@ -3630,6 +3649,28 @@
 .interviewExaminerResults > header span { color: var(--accent); font-family: var(--font-code); font-size: 9px; font-weight: 800; }
 .interviewExaminerResults > header h3 { margin: 4px 0 0; overflow-wrap: anywhere; color: var(--ink); font-family: var(--font-reading); font-size: 14px; line-height: 1.35; white-space: normal; }
 .interviewExaminerResults > header small { flex: 0 0 auto; color: var(--muted); font-family: var(--font-code); font-size: 9px; }
+
+.interviewExaminerCoverage {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-bottom: 9px;
+}
+.interviewExaminerCoverage strong { margin-right: 3px; color: var(--muted); font-size: 9px; }
+.interviewExaminerCoverage span {
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--subtle-fill);
+  font-size: 8px;
+}
+.interviewExaminerCoverage .interviewExaminerGap {
+  color: var(--warning, var(--danger));
+  border-color: color-mix(in srgb, var(--warning, var(--danger)) 45%, var(--line));
+  background: color-mix(in srgb, var(--warning, var(--danger)) 10%, var(--surface));
+}
 
 .interviewCheckpointRail {
   display: flex;
@@ -3713,6 +3754,15 @@
 }
 
 .interviewExaminerFooter > span { min-width: 0; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+
+.interviewExaminerFooterActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.interviewExaminerFooterActions :global(.button) { white-space: nowrap; }
 
 .interviewExaminerEmpty {
   flex: 1 1 0;
@@ -4182,8 +4232,14 @@
   .interviewReferenceToggle small { display: none; }
   .interviewMasteryBar > div { display: grid; grid-template-columns: 1fr; }
   .interviewExaminerForm { grid-template-columns: 1fr; }
+  .interviewExaminerBody { overflow-y: auto; scrollbar-width: thin; }
+  .interviewExaminerForm { max-height: none; overflow: visible; padding-right: 0; }
   .interviewExaminerTopic,
   .interviewExaminerForm :global(.button) { grid-column: auto; }
   .interviewExaminerResults > header { align-items: flex-start; flex-direction: column; gap: 5px; }
   .interviewExaminerQuestionCopy small { white-space: normal; }
+  .interviewExaminerFooter { align-items: stretch; flex-direction: column; }
+  .interviewExaminerFooter > span { white-space: normal; }
+  .interviewExaminerFooterActions { width: 100%; }
+  .interviewExaminerFooterActions :global(.button) { flex: 1; }
 }

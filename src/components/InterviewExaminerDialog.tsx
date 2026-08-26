@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
-import { BookOpenCheck, Check, LoaderCircle, Sparkles, WandSparkles, X } from 'lucide-react';
+import { BookOpenCheck, Check, LoaderCircle, RefreshCcw, Sparkles, WandSparkles, X } from 'lucide-react';
 import { useStoreView } from '../app/storeAdapter';
-import { INTERVIEW_ROLES } from '../lib/interviews';
-import type { InterviewExaminerResult } from '../lib/ai';
+import { INTERVIEW_ROLES, INTERVIEW_ROLE_REQUIREMENTS, interviewRoleRequirements, retrieveInterviewCatalog } from '../lib/interviews';
+import { INTERVIEW_CATALOG } from '../data/interviewCatalog';
+import { filterInterviewQuestionAdditions, type InterviewExaminerResult } from '../lib/ai';
 import type { Difficulty } from '../types';
 import styles from '../pages/Pages.module.css';
 
@@ -16,15 +17,18 @@ export function InterviewExaminerDialog() {
   const store = useStoreView();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [topic, setTopic] = useState('');
-  const [role, setRole] = useState('llm-algorithm');
+  const [role, setRole] = useState('llm-app');
+  const [jobTitle, setJobTitle] = useState('');
+  const [requirements, setRequirements] = useState(() => interviewRoleRequirements('llm-app').join('\n'));
   const [difficulty, setDifficulty] = useState<Exclude<Difficulty, 'unknown'>>('medium');
-  const [count, setCount] = useState(5);
+  const [count, setCount] = useState(20);
   const [result, setResult] = useState<InterviewExaminerResult>();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [progress, setProgress] = useState('');
 
   const hasAi = Boolean(store.settings.hasAiCredential && store.settings.aiModel?.trim() && store.requestInterviewExaminer);
   const selectedCount = selected.size;
@@ -32,10 +36,30 @@ export function InterviewExaminerDialog() {
     () => result?.questions.filter((_, index) => selected.has(index)) ?? [],
     [result, selected],
   );
+  const activeRole = useMemo(() => INTERVIEW_ROLES.find((item) => item.id === role), [role]);
+  const requirementList = useMemo(
+    () => requirements.split(/\r?\n|[,，]/).map((item) => item.trim()).filter(Boolean),
+    [requirements],
+  );
+  const catalogMatches = useMemo(() => {
+    const query = [topic, jobTitle, requirements].filter(Boolean).join(' ');
+    return retrieveInterviewCatalog(INTERVIEW_CATALOG, { role, roles: [role], query, limit: 24, minPerFormat: 2 });
+  }, [jobTitle, requirements, role, topic]);
+  const catalogContext = useMemo(() => catalogMatches.map((item) => ({
+    id: item.id,
+    title: item.question,
+    category: item.category,
+    format: item.format,
+    difficulty: item.difficulty,
+    roles: [...new Set([item.primaryRole, ...item.roles])],
+    tags: item.tags.slice(0, 8),
+    keyPoints: item.keyPoints.slice(0, 6),
+  })), [catalogMatches]);
 
   const open = () => {
     setError('');
     setMessage('');
+    setProgress('');
     if (typeof dialogRef.current?.showModal === 'function') dialogRef.current.showModal();
     else dialogRef.current?.setAttribute('open', '');
   };
@@ -45,10 +69,10 @@ export function InterviewExaminerDialog() {
     else dialogRef.current?.removeAttribute('open');
   };
 
-  const generate = async () => {
+  const generate = async (append = false) => {
     if (busy) return;
-    if (!topic.trim()) {
-      setError('先填写要准备的技术主题，例如 Transformer、RAG 或分布式事务。');
+    if (!topic.trim() && !jobTitle.trim() && !requirements.trim()) {
+      setError('先填写目标职位或技术主题，例如 RAG 工程师、Transformer 或分布式事务。');
       return;
     }
     if (!hasAi) {
@@ -63,11 +87,38 @@ export function InterviewExaminerDialog() {
     setBusy(true);
     setError('');
     setMessage('');
+    setProgress(append ? '正在排除上一轮题目并补齐新的能力域…' : `正在检索本地题库，已找到 ${catalogMatches.length} 道相关题…`);
     try {
-      const generated = await store.requestInterviewExaminer?.({ topic: topic.trim(), role, difficulty, count });
+      const generated = await store.requestInterviewExaminer?.({
+        topic: topic.trim() || jobTitle.trim(),
+        role,
+        difficulty,
+        count,
+        roleLabel: jobTitle.trim() || activeRole?.label || role,
+        requirements: [jobTitle.trim() || topic.trim(), ...requirementList].filter(Boolean).join('；'),
+        catalogContext,
+        excludedQuestions: append ? (result?.questions ?? []) : [],
+      });
       if (!generated) throw new Error('AI 没有返回有效的面试题');
-      setResult(generated);
-      setSelected(new Set(generated.questions.map((_, index) => index)));
+      if (append && result) {
+        const additions = filterInterviewQuestionAdditions(generated.questions, result.questions);
+        const offset = result.questions.length;
+        setResult({
+          ...result,
+          overview: generated.overview || result.overview,
+          checkpoints: [...new Set([...result.checkpoints, ...generated.checkpoints])],
+          coverage: [...new Set([...(result.coverage ?? []), ...(generated.coverage ?? [])])],
+          gaps: generated.gaps ?? result.gaps,
+          questions: [...result.questions, ...additions],
+          matchedQuestions: generated.matchedQuestions ?? result.matchedQuestions,
+        });
+        setSelected((current) => new Set([...current, ...additions.map((_, index) => offset + index)]));
+        setProgress(`已补充 ${additions.length} 道新题，当前共 ${result.questions.length + additions.length} 道；已排除上一轮题目。`);
+      } else {
+        setResult(generated);
+        setSelected(new Set(generated.questions.map((_, index) => index)));
+        setProgress(`已检索 ${generated.matchedQuestions?.length ?? catalogMatches.length} 道题，并生成 ${generated.questions.length} 道覆盖题。`);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'AI 出题失败，请稍后重试。');
     } finally {
@@ -139,16 +190,24 @@ export function InterviewExaminerDialog() {
       <button className="button" type="button" onClick={open}><WandSparkles size={15} />AI 面试出题官</button>
       <dialog className={`${styles.dialog} ${styles.interviewExaminerDialog}`} ref={dialogRef}>
         <div className={styles.dialogHead}>
-          <div><span className={styles.interviewEyebrow}><Sparkles size={13} />AI 面试出题官</span><h2>把一个主题拆成完整面试考点</h2></div>
+          <div><span className={styles.interviewEyebrow}><Sparkles size={13} />AI 面试出题官</span><h2>按岗位需求补齐面试考点</h2></div>
           <button className="iconButton" type="button" aria-label="关闭 AI 面试出题官" onClick={close}><X size={17} /></button>
         </div>
         <div className={styles.interviewExaminerBody}>
           <div className={styles.interviewExaminerForm}>
-            <label className={`field ${styles.interviewExaminerTopic}`}><span>技术主题</span><input className="input" aria-label="技术主题" value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如 Transformer、RAG、NLP、Redis" /></label>
-            <label className="field"><span>岗位方向</span><select className="select" aria-label="出题岗位方向" value={role} onChange={(event) => setRole(event.target.value)}>{INTERVIEW_ROLES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            <label className={`field ${styles.interviewExaminerTopic}`}><span>目标职位 / 技术主题</span><input className="input" aria-label="技术主题" value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如 RAG 工程师、Transformer、分布式事务" /></label>
+            <label className="field"><span>岗位方向</span><select className="select" aria-label="出题岗位方向" value={role} onChange={(event) => { const next = event.target.value; setRole(next); setRequirements((INTERVIEW_ROLE_REQUIREMENTS[next] ?? interviewRoleRequirements(next)).join('\n')); }}>{INTERVIEW_ROLES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            <label className="field"><span>职位名称（可选）</span><input className="input" aria-label="职位名称" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} placeholder="例如 高级 RAG 工程师" /></label>
             <label className="field"><span>难度</span><select className="select" aria-label="出题难度" value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>{Object.entries(DIFFICULTY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label className="field"><span>题目数</span><select className="select" aria-label="生成题目数量" value={count} onChange={(event) => setCount(Number(event.target.value))}>{[3, 5, 8, 10].map((value) => <option key={value} value={value}>{value} 道</option>)}</select></label>
-            <button className="button buttonPrimary" type="button" disabled={busy} onClick={() => void generate()}>{busy ? <LoaderCircle className={styles.spin} size={15} /> : <Sparkles size={15} />}{busy ? '正在梳理考点' : '生成面试考点'}</button>
+            <label className="field"><span>题目数</span><select className="select" aria-label="生成题目数量" value={count} onChange={(event) => setCount(Number(event.target.value))}>{[5, 10, 15, 20].map((value) => <option key={value} value={value}>{value} 道</option>)}</select></label>
+            <label className={`field ${styles.interviewExaminerRequirements}`}><span>岗位需求（可编辑，每行一项）</span><textarea className="textarea" aria-label="岗位需求" rows={4} value={requirements} onChange={(event) => setRequirements(event.target.value)} /></label>
+            <button className="button buttonPrimary" type="button" aria-label="生成面试考点" disabled={busy} onClick={() => void generate()}>{busy ? <LoaderCircle className={styles.spin} size={15} /> : <Sparkles size={15} />}{busy ? '正在检索并出题' : '检索题库并生成'}</button>
+          </div>
+
+          <div className={styles.interviewExaminerScope} aria-live="polite">
+            <span><BookOpenCheck size={14} />岗位覆盖 {requirementList.length} 个维度</span>
+            <span>本地题库命中 {catalogMatches.length} 道</span>
+            {progress && <span>{progress}</span>}
           </div>
 
           {!hasAi && <div className={styles.interviewExaminerNotice}><BookOpenCheck size={15} /><span>配置 AI 后即可按主题生成题目；现有面试题库与本地练习不受影响。</span></div>}
@@ -158,8 +217,13 @@ export function InterviewExaminerDialog() {
             <div className={styles.interviewExaminerResults}>
               <header>
                 <div><span>{result.topic}</span><h3>{result.overview}</h3></div>
-                <small>{result.questions.length} 道题 · 已选 {selectedCount} 道</small>
+                <small>{result.questions.length} 道题 · 已选 {selectedCount} 道 · 题库命中 {result.matchedQuestions?.length ?? catalogMatches.length} 道</small>
               </header>
+              <div className={styles.interviewExaminerCoverage}>
+                <strong>岗位需求覆盖</strong>
+                {(result.coverage?.length ? result.coverage : requirementList).map((item) => <span key={item}>{item}</span>)}
+                {result.gaps?.map((item) => <span className={styles.interviewExaminerGap} key={`gap-${item}`}>待补：{item}</span>)}
+              </div>
               <div className={styles.interviewCheckpointRail} aria-label="核心考点">{result.checkpoints.map((item) => <span key={item}>{item}</span>)}</div>
               <div className={styles.interviewExaminerQuestions}>
                 {result.questions.map((question, index) => (
@@ -176,10 +240,13 @@ export function InterviewExaminerDialog() {
               </div>
               <footer className={styles.interviewExaminerFooter}>
                 <span role="status">{message || '勾选真正需要复习的题目，再加入个人面试题库。'}</span>
-                <button className="button buttonPrimary" type="button" disabled={!selectedCount || saving} onClick={() => void saveSelected()}>{saving ? '正在加入…' : '加入个人题库'}</button>
+                <div className={styles.interviewExaminerFooterActions}>
+                  <button className="button" type="button" disabled={busy || saving} onClick={() => void generate(true)}><RefreshCcw size={14} />{busy ? '补题中…' : '继续补充一轮'}</button>
+                  <button className="button buttonPrimary" type="button" disabled={!selectedCount || saving || busy} onClick={() => void saveSelected()}>{saving ? '正在加入…' : '加入个人题库'}</button>
+                </div>
               </footer>
             </div>
-          ) : !busy && <div className={styles.interviewExaminerEmpty}><WandSparkles size={27} /><strong>输入一个主题，得到完整的考点地图</strong><span>每道题都包含参考答案、回答要点和递进追问，可直接加入个人题库。</span></div>}
+          ) : !busy && <div className={styles.interviewExaminerEmpty}><WandSparkles size={27} /><strong>输入职位需求，先检索题库再补齐缺口</strong><span>每道新题都包含参考答案、回答要点和递进追问，可直接加入个人题库。</span></div>}
         </div>
       </dialog>
     </>

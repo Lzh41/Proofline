@@ -1,4 +1,4 @@
-import type { VocabularyDifficulty, VocabularyProgress, VocabularyReview, VocabularyWord } from './lib/vocabulary';
+import type { VocabularyDifficulty, VocabularyProgress, VocabularyReview, VocabularyScope, VocabularySessionState, VocabularyWord } from './lib/vocabulary';
 
 export type PlatformSource = 'leetcode-cn' | 'leetcode' | 'nowcoder' | 'luogu';
 export type PlatformBatchItemStatus = 'fetched' | 'paid-only' | 'not-found' | 'failed' | 'cancelled';
@@ -239,6 +239,14 @@ export interface DailyPlan {
   reviewMistakeIds: string[];
   completedProblemIds: string[];
   completedVocabularyWordIds: string[];
+  /** 今日计划中已经完成预览背诵的词；用于关闭应用后恢复预览进度。 */
+  vocabularyPreviewedWordIds?: string[];
+  /** 今日计划中标记为“不熟悉”的词，生成次日计划时会作为额外词带入。 */
+  vocabularyUnfamiliarWordIds?: string[];
+  /** 从前一日不熟悉队列带入的额外词，不占用当日新词目标。 */
+  vocabularyExtraWordIds?: string[];
+  /** 明日计划中仅因前一日“不熟”新增的词；取消标记时从任务中移除。 */
+  vocabularyExtraOnlyWordIds?: string[];
   focusTags: string[];
   difficultyRatio: { easy: number; medium: number; hard: number };
   vocabularyDifficulty: VocabularyDifficulty | 'all';
@@ -280,6 +288,9 @@ export interface AppSettings {
   dailyTargetProblems: number;
   dailyTargetInterviewQuestions: number;
   dailyTargetVocabularyWords: number;
+  /** 词汇页最后一次选择的方向/难度，关闭应用后恢复。 */
+  lastVocabularyDifficulty?: VocabularyScope;
+  vocabularySessions?: Partial<Record<VocabularyScope, VocabularySessionState>>;
   interviewCatalogVersion: number;
   /** 浏览器缓存仅保存内置面试题的稳定 ID，启动时从打包目录还原正文。 */
   browserCatalogCompact?: boolean;
@@ -353,7 +364,7 @@ export interface PlanOptions {
   targetVocabularyWords?: number;
   now?: number;
   completedProblemIds?: string[];
-  vocabularyDifficulty?: VocabularyDifficulty | 'all';
+  vocabularyDifficulty?: VocabularyScope;
 }
 
 export interface RunCodeRequest {

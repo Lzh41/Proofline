@@ -1,22 +1,27 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AppDataSnapshot, Problem } from '../types';
+import { VOCABULARY_CATALOG_FULL } from '../data/vocabularyCatalog';
 import { createEmptySnapshot, normalizeSnapshot } from './data';
 
 const STORAGE_KEY = 'xiti.app-data.v1';
+const BUILTIN_VOCABULARY_IDS = new Set(VOCABULARY_CATALOG_FULL.map((word) => word.id));
 export const READ_ONLY_REPOSITORY_MESSAGE = 'SQLite 读取失败后，本地回退数据处于只读状态；请刷新并重新连接主存储';
 
 function compactBrowserSnapshot(snapshot: AppDataSnapshot): AppDataSnapshot {
-  // 浏览器预览只把 SQLite 的可选缓存写入 localStorage。内置面试目录会在
-  // Store 初始化时按稳定 catalogId 从打包目录还原，避免首次启动序列化近千道
-  // 完整参考答案，并发页面争用 localStorage 存储锁导致主线程长时间卡住。
+  // 浏览器缓存省略打包内置的面试正文和词条；加载时分别从稳定 catalogId
+  // 和当前词库目录恢复，避免词库扩充后占满 localStorage。
   if (isTauriRuntime()) return snapshot;
   const hasBuiltinInterview = snapshot.problems.some((problem) => (
     problem.kind === 'interview' && problem.interview?.contentOrigin === 'builtin' && problem.interview.catalogId
   ));
-  if (!hasBuiltinInterview) return snapshot;
   return {
     ...snapshot,
-    settings: { ...snapshot.settings, interviewCatalogVersion: snapshot.settings.interviewCatalogVersion, browserCatalogCompact: true },
+    settings: {
+      ...snapshot.settings,
+      interviewCatalogVersion: snapshot.settings.interviewCatalogVersion,
+      browserCatalogCompact: hasBuiltinInterview || snapshot.settings.browserCatalogCompact === true,
+    },
+    vocabularyWords: snapshot.vocabularyWords.filter((word) => !BUILTIN_VOCABULARY_IDS.has(word.id)),
     problems: snapshot.problems.map((problem) => {
       const interview = problem.interview;
       if (problem.kind !== 'interview' || interview?.contentOrigin !== 'builtin' || !interview.catalogId) return problem;

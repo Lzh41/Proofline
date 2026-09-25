@@ -3,6 +3,7 @@ import { ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, RotateCcw, Sparkl
 import { useSearchParams } from 'react-router-dom';
 import { todayKey, useStoreView } from '../app/storeAdapter';
 import { EmptyState, ProgressBar, SectionHeader } from '../components/PagePrimitives';
+import { rememberVocabularyDifficulty, writeVocabularySessionJournal } from '../lib/vocabularySessionJournal';
 import {
   difficultyLabel,
   filterVocabularyWords,
@@ -13,6 +14,8 @@ import {
   type VocabularyDifficulty,
   type VocabularyGrade,
   type VocabularyReviewDirection,
+  type VocabularyScope,
+  type VocabularySessionState,
   type VocabularyWord,
 } from '../lib/vocabulary';
 import styles from './Pages.module.css';
@@ -32,14 +35,18 @@ export function VocabularyPage() {
   const store = useStoreView();
   const [searchParams, setSearchParams] = useSearchParams();
   const today = todayKey();
-  const plan = store.dailyPlans.find((item) => item.date === today);
   const [mode, setMode] = useState<PageMode>('practice');
-  const [difficulty, setDifficulty] = useState<VocabularyDifficulty | 'all'>(plan?.vocabularyDifficulty ?? 'all');
+  const initialScope = (store.settings.lastVocabularyDifficulty
+    ?? store.dailyPlans.find((item) => item.date === today)?.vocabularyDifficulty
+    ?? 'all') as VocabularyScope;
+  const [difficulty, setDifficulty] = useState<VocabularyScope>(initialScope);
+  const plan = store.dailyPlans.find((item) => item.date === today && item.vocabularyDifficulty === difficulty);
   const [statusFilter, setStatusFilter] = useState<WordStatusFilter>('all');
   const [query, setQuery] = useState('');
   const [expandedWordId, setExpandedWordId] = useState<string | null>(null);
   const [queue, setQueue] = useState<SessionCard[]>([]);
   const [queueIndex, setQueueIndex] = useState(0);
+  const [phase, setPhase] = useState<'preview' | 'practice'>('practice');
   const [revealed, setRevealed] = useState(false);
   const [answerDraft, setAnswerDraft] = useState('');
   const [cardStartedAt, setCardStartedAt] = useState(Date.now());
@@ -47,22 +54,29 @@ export function VocabularyPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const wrongSpellingContinueRef = useRef<HTMLButtonElement | null>(null);
+  const [loadedSessionScope, setLoadedSessionScope] = useState<VocabularyScope | null>(null);
+  const latestSessionRef = useRef<{
+    scope: VocabularyScope;
+    session: VocabularySessionState;
+    ready: boolean;
+  } | null>(null);
 
   const progressByWordId = useMemo(
-    () => Object.fromEntries(store.vocabularyProgress.map((item) => [item.wordId, item])),
-    [store.vocabularyProgress],
+    () => Object.fromEntries(store.vocabularyProgress.filter((item) => (item.scope ?? 'all') === difficulty).map((item) => [item.wordId, item])),
+    [difficulty, store.vocabularyProgress],
   );
-  const progressById = useMemo(() => new Map(store.vocabularyProgress.map((item) => [item.wordId, item])), [store.vocabularyProgress]);
+  const progressById = useMemo(() => new Map(store.vocabularyProgress.filter((item) => (item.scope ?? 'all') === difficulty).map((item) => [item.wordId, item])), [difficulty, store.vocabularyProgress]);
   const dueWords = useMemo(
     () => selectDueVocabularyWords(store.vocabularyWords, progressByWordId, difficulty),
     [difficulty, progressByWordId, store.vocabularyWords],
   );
-  const dueCount = store.vocabularyProgress.filter((item) => item.state !== 'new' && item.dueAt <= Date.now()).length;
-  const reviewsToday = store.vocabularyReviews.filter((item) => todayKey(new Date(item.reviewedAt)) === today).length;
+  const dueCount = store.vocabularyProgress.filter((item) => (item.scope ?? 'all') === difficulty && item.state !== 'new' && item.dueAt <= Date.now()).length;
+  const reviewsToday = store.vocabularyReviews.filter((item) => (item.scope ?? 'all') === difficulty && todayKey(new Date(item.reviewedAt)) === today).length;
   const targetWords = plan?.targetVocabularyWords ?? store.settings.dailyTargetVocabularyWords ?? 10;
   const completedNewWords = plan?.completedVocabularyWordIds.length ?? 0;
   const nextCard = queue[queueIndex];
-  const activeWord = nextCard?.word;
+  const sessionScopeLoaded = loadedSessionScope === difficulty;
+  const activeWord = sessionScopeLoaded && phase === 'practice' ? nextCard?.word : undefined;
   const activeProgress = activeWord ? progressById.get(activeWord.id) : undefined;
   const activeIsNew = !activeProgress || activeProgress.state === 'new';
   const spellingMatches = !activeWord || nextCard?.direction !== 'meaning-to-word'
@@ -76,6 +90,7 @@ export function VocabularyPage() {
     setMode('practice');
     setQueue([{ word, direction: 'meaning-to-word' }]);
     setQueueIndex(0);
+    setPhase('practice');
     setRevealed(false);
     setAnswerDraft('');
     setCardStartedAt(Date.now());
@@ -84,8 +99,90 @@ export function VocabularyPage() {
   }, [setSearchParams, store.vocabularyWords, wordFromUrl]);
 
   useEffect(() => {
-    if (plan?.vocabularyDifficulty) setDifficulty(plan.vocabularyDifficulty);
-  }, [plan?.vocabularyDifficulty]);
+    if (store.settings.lastVocabularyDifficulty) setDifficulty(store.settings.lastVocabularyDifficulty);
+  }, [store.settings.lastVocabularyDifficulty]);
+
+  useEffect(() => {
+    if (!store.initialized) return;
+    const saved = store.settings.vocabularySessions?.[difficulty];
+    const wordsById = new Map(store.vocabularyWords.map((word) => [word.id, word]));
+    const restoredQueue = (saved?.cards ?? [])
+      .map((card): SessionCard | null => {
+        const word = wordsById.get(card.wordId);
+        return word ? { word, direction: card.direction, retry: card.retry } : null;
+      })
+      .filter((card): card is SessionCard => card !== null);
+    setQueue(restoredQueue);
+    setQueueIndex(Math.min(saved?.index ?? 0, restoredQueue.length));
+    setPhase(saved?.phase ?? 'practice');
+    setRevealed(saved?.revealed ?? false);
+    setAnswerDraft(saved?.answerDraft ?? '');
+    setSessionPoints(saved?.sessionPoints ?? 0);
+    setCardStartedAt(Date.now());
+    setLoadedSessionScope(difficulty);
+  }, [difficulty, store.initialized, store.vocabularyWords]);
+
+  useEffect(() => {
+    if (!store.initialized || loadedSessionScope !== difficulty) return;
+    writeVocabularySessionJournal(difficulty, {
+      cards: queue.map((card) => ({ wordId: card.word.id, direction: card.direction, retry: card.retry })),
+      index: queueIndex,
+      phase,
+      revealed,
+      answerDraft,
+      sessionPoints,
+    });
+  }, [answerDraft, difficulty, loadedSessionScope, phase, queue, queueIndex, revealed, sessionPoints, store.initialized]);
+
+  useEffect(() => {
+    if (!store.initialized || loadedSessionScope !== difficulty || !store.saveVocabularySession) return;
+    const session: VocabularySessionState = {
+      cards: queue.map((card) => ({ wordId: card.word.id, direction: card.direction, retry: card.retry })),
+      index: queueIndex,
+      phase,
+      revealed,
+      answerDraft,
+      sessionPoints,
+    };
+    latestSessionRef.current = { scope: difficulty, session, ready: true };
+    const timeout = window.setTimeout(() => {
+      void Promise.resolve(store.saveVocabularySession?.(difficulty, session)).catch((error) => {
+        setMessage(error instanceof Error ? error.message : String(error));
+      });
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [answerDraft, difficulty, loadedSessionScope, phase, queue, queueIndex, revealed, sessionPoints, store.initialized, store.saveVocabularySession]);
+
+  latestSessionRef.current = {
+    scope: difficulty,
+    session: {
+      cards: queue.map((card) => ({ wordId: card.word.id, direction: card.direction, retry: card.retry })),
+      index: queueIndex,
+      phase,
+      revealed,
+      answerDraft,
+      sessionPoints,
+    },
+    ready: store.initialized === true && loadedSessionScope === difficulty,
+  };
+
+  useEffect(() => {
+    const flushLatestSession = () => {
+      const latest = latestSessionRef.current;
+      if (!latest?.ready || !store.saveVocabularySession) return;
+      writeVocabularySessionJournal(latest.scope, latest.session);
+      void Promise.resolve(store.saveVocabularySession(latest.scope, latest.session)).catch((error) => {
+        setMessage(error instanceof Error ? error.message : String(error));
+      });
+    };
+    window.addEventListener('pagehide', flushLatestSession);
+    window.addEventListener('beforeunload', flushLatestSession);
+    return () => {
+      window.removeEventListener('pagehide', flushLatestSession);
+      window.removeEventListener('beforeunload', flushLatestSession);
+      flushLatestSession();
+    };
+  }, [store.saveVocabularySession]);
 
   const filteredWords = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -116,9 +213,9 @@ export function VocabularyPage() {
       const generated = await store.generateDailyPlan?.({ targetVocabularyWords: targetWords, vocabularyDifficulty: difficulty });
       const activePlan = generated && 'taskVocabularyWordIds' in generated
         ? generated
-        : store.dailyPlans.find((item) => item.date === today);
+        : store.dailyPlans.find((item) => item.date === today && item.vocabularyDifficulty === difficulty);
       const completed = new Set(activePlan?.completedVocabularyWordIds ?? []);
-      const nextProgress = Object.fromEntries(store.vocabularyProgress.map((item) => [item.wordId, item]));
+      const nextProgress = Object.fromEntries(store.vocabularyProgress.filter((item) => (item.scope ?? 'all') === difficulty).map((item) => [item.wordId, item]));
       const due = selectDueVocabularyWords(store.vocabularyWords, nextProgress, difficulty);
       const plannedNew = (activePlan?.taskVocabularyWordIds ?? [])
         .filter((wordId) => !completed.has(wordId))
@@ -138,10 +235,12 @@ export function VocabularyPage() {
       if (!nextQueue.length) {
         setQueue([]);
         setQueueIndex(0);
+        setPhase('practice');
         setMessage(difficulty === 'all' ? '没有到期单词，也没有尚未学习的新词。' : `${difficultyLabel(difficulty)}词目已全部排入或学完，换个难度再试试。`);
       } else {
         setQueue(nextQueue);
         setQueueIndex(0);
+        setPhase('preview');
         setRevealed(false);
         setAnswerDraft('');
         setCardStartedAt(Date.now());
@@ -161,6 +260,7 @@ export function VocabularyPage() {
     try {
       await store.recordVocabularyReview({
         wordId: activeWord.id,
+        scope: difficulty,
         direction: nextCard.direction,
         rating: grade,
         response: answerDraft,
@@ -188,6 +288,7 @@ export function VocabularyPage() {
     try {
       await store.recordVocabularyReview({
         wordId: activeWord.id,
+        scope: difficulty,
         direction: nextCard.direction,
         rating: correct ? 'good' : 'again',
         response: answerDraft,
@@ -235,6 +336,7 @@ export function VocabularyPage() {
   const practiceWord = (word: VocabularyWord) => {
     setQueue([{ word, direction: 'meaning-to-word' }]);
     setQueueIndex(0);
+    setPhase('practice');
     setRevealed(false);
     setAnswerDraft('');
     setCardStartedAt(Date.now());
@@ -243,8 +345,22 @@ export function VocabularyPage() {
   };
 
   const completedSession = queue.length > 0 && queueIndex >= queue.length;
+  const previewingSession = sessionScopeLoaded && phase === 'preview' && queue.length > 0;
+  const beginPractice = () => {
+    setPhase('practice');
+    setQueueIndex(0);
+    setRevealed(false);
+    setAnswerDraft('');
+    setCardStartedAt(Date.now());
+    setMessage('');
+  };
 
   const difficultyOptions = ['all', ...VOCABULARY_DIFFICULTY_OPTIONS.map((option) => option.value)] as const;
+  const changeDifficulty = (next: VocabularyScope) => {
+    setDifficulty(next);
+    rememberVocabularyDifficulty(next);
+    void store.updateSettings?.({ lastVocabularyDifficulty: next });
+  };
 
   return (
     <div className={styles.vocabularyPage}>
@@ -257,19 +373,54 @@ export function VocabularyPage() {
         </div>
         <div className={styles.vocabularyDifficulty} role="group" aria-label="按难度筛选">
           {difficultyOptions.map((option) => (
-            <button className={difficulty === option ? styles.vocabularyDifficultyActive : ''} type="button" key={option} aria-pressed={difficulty === option} onClick={() => setDifficulty(option)}>
+            <button className={difficulty === option ? styles.vocabularyDifficultyActive : ''} type="button" key={option} aria-pressed={difficulty === option} onClick={() => changeDifficulty(option)}>
               {option === 'all' ? '全部' : difficultyLabel(option)}
             </button>
           ))}
         </div>
-        <button className="button buttonPrimary" type="button" disabled={busy} onClick={() => { void startSession(); }}><Sparkles size={16} />开始刷词</button>
       </div>
 
       {mode === 'practice' && (
         <div className={styles.vocabularyPracticeLayout}>
           <section className={styles.paperPanel}>
-            <SectionHeader title={activeWord ? `本轮 ${queueIndex + 1} / ${queue.length}` : completedSession ? '本轮完成' : '今日安排'} meta={activeWord ? activeIsNew ? '新词' : '到期复习' : `${dueWords.length} 个到期`} />
-            {activeWord ? (
+            <SectionHeader title={!sessionScopeLoaded ? '正在恢复学习进度' : previewingSession ? '本轮背诵准备' : activeWord ? `本轮 ${queueIndex + 1} / ${queue.length}` : completedSession ? '本轮完成' : '今日安排'} meta={!sessionScopeLoaded ? '' : previewingSession ? `${queue.length} 个单词` : activeWord ? activeIsNew ? '新词' : '到期复习' : `${dueWords.length} 个到期`} />
+            {!sessionScopeLoaded ? (
+              <div className={styles.vocabularySessionRestore} role="status">正在恢复当前考试方向的词单与进度…</div>
+            ) : previewingSession ? (
+              <div className={styles.vocabularyRoundPreview}>
+                <div className={styles.vocabularyRoundPreviewIntro}>
+                  <h2>先把本轮单词看一遍</h2>
+                  <p>英文、音标和释义都在这里。准备好后再开始回忆。</p>
+                </div>
+                <ol className={styles.vocabularyRoundPreviewList} aria-label="本轮全部单词">
+                  {queue.map((card, index) => {
+                    const progress = progressById.get(card.word.id);
+                    const tag = card.retry
+                      ? '错词重做'
+                      : card.direction === 'word-to-meaning'
+                        ? '到期复习'
+                        : progress && progress.state !== 'new'
+                          ? '计划新词'
+                          : '今日新词';
+                    return (
+                      <li className={styles.vocabularyRoundPreviewItem} key={`${card.word.id}-${index}`}>
+                        <span className={styles.vocabularyRoundPreviewIndex}>{index + 1}</span>
+                        <span className={styles.vocabularyRoundPreviewWord}>
+                          <strong>{card.word.word}</strong>
+                          <small>{card.word.phonetic} · {card.word.partOfSpeech}</small>
+                        </span>
+                        <span className={styles.vocabularyRoundPreviewMeaning}>{card.word.meaning}</span>
+                        <span className={`${styles.vocabularyRoundPreviewTag} ${card.direction === 'word-to-meaning' ? styles.vocabularyRoundPreviewReview : ''}`}>{tag}</span>
+                      </li>
+                    );
+                  })}
+                </ol>
+                <div className={styles.vocabularyRoundPreviewFooter}>
+                  <span>共 {queue.length} 个词，包含到期复习与今日新词</span>
+                  <button className="button buttonPrimary" type="button" disabled={busy} onClick={beginPractice}><ArrowRight size={15} />开始刷词</button>
+                </div>
+              </div>
+            ) : activeWord ? (
               <div className={styles.vocabularySession}>
                 <div className={styles.vocabularySessionCard}>
                   <div className={styles.vocabularySessionRail}>
@@ -279,7 +430,7 @@ export function VocabularyPage() {
                   <div className={styles.vocabularyPrompt}>
                     <span>{nextCard.direction === 'meaning-to-word' ? '试着回忆这个英文单词' : '先想出中文释义，再揭晓'}</span>
                     <strong>{nextCard.direction === 'meaning-to-word' ? activeWord.meaning : activeWord.word}</strong>
-                    <small>{activeWord.partOfSpeech}{nextCard.direction === 'word-to-meaning' && activeWord.phonetic ? ` · ${activeWord.phonetic}` : ''}</small>
+                    <small>{activeWord.partOfSpeech} · {activeWord.phonetic || '音标待补充'}</small>
                   </div>
                   {!revealed && nextCard.direction === 'meaning-to-word' && (
                     <div className={styles.vocabularySpellingEntry}>
@@ -307,7 +458,11 @@ export function VocabularyPage() {
                       </div>}
                       {activeWord.mnemonic && <p className={styles.vocabularyMnemonic}><Sparkles size={14} />{activeWord.mnemonic}</p>}
                       {nextCard.direction === 'meaning-to-word' && !spellingMatches ? (
-                        <button ref={wrongSpellingContinueRef} className="button buttonPrimary" type="button" aria-keyshortcuts="Enter" disabled={busy} onClick={continueAfterSpellingMistake}><ArrowRight size={15} />继续，稍后再做</button>
+                        <button ref={wrongSpellingContinueRef} className="button buttonPrimary" type="button" aria-keyshortcuts="Enter" disabled={busy} onClick={continueAfterSpellingMistake} onKeyDown={(event) => {
+                          if (event.key !== 'Enter' || busy) return;
+                          event.preventDefault();
+                          continueAfterSpellingMistake();
+                        }}><ArrowRight size={15} />继续，稍后再做</button>
                       ) : nextCard.direction === 'word-to-meaning' ? (
                         <div className={styles.vocabularyGradeRow}>
                           {GRADES.map((grade) => <button className={grade.value === 'again' ? styles.vocabularyGradeAgain : ''} key={grade.value} type="button" disabled={busy} onClick={() => { void submitGrade(grade.value); }}><strong>{grade.label}</strong><small>{grade.detail}</small></button>)}
@@ -323,7 +478,10 @@ export function VocabularyPage() {
                 <h2>本轮记忆已写入</h2>
                 <p>今日已复习 {reviewsToday + queue.length} 次 · 本轮获得 {sessionPoints} 分</p>
                 <ProgressBar value={targetWords ? (completedNewWords / targetWords) * 100 : 100} label={`新词目标 ${completedNewWords}/${targetWords}`} />
-                <button className="button" type="button" onClick={() => setMode('library')}><BookOpen size={15} />回到词库</button>
+                <div className={styles.vocabularyCompleteActions}>
+                  <button className="button buttonPrimary" type="button" disabled={busy} onClick={() => { void startSession(); }}><RotateCcw size={15} />再开始一轮</button>
+                  <button className="button" type="button" onClick={() => setMode('library')}><BookOpen size={15} />回到词库</button>
+                </div>
               </div>
             ) : (
               <div className={styles.vocabularyStartPanel}>
@@ -342,7 +500,6 @@ export function VocabularyPage() {
               <div className={styles.vocabularyAsideMetric}><span>下次复习</span><strong>{activeProgress?.lastReviewedAt ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(activeProgress.dueAt)) : '首次学习'}</strong><small>{activeProgress?.intervalDays ? `当前间隔 ${activeProgress.intervalDays} 天` : '答后按评分安排'}</small></div>
             </section>
             <div className={styles.vocabularyNote}><RotateCcw size={16} /><span>新词看释义回忆拼写，到期复习看单词回忆含义。</span></div>
-            {dueWords.length > 0 && <button className="button" type="button" disabled={busy} onClick={() => { void startSession(); }}><RotateCcw size={15} />先复习 {dueWords.length} 个到期词</button>}
           </aside>
         </div>
       )}
@@ -362,7 +519,7 @@ export function VocabularyPage() {
               return (
                 <article className={styles.vocabularyWordRow} key={word.id}>
                   <button className={styles.vocabularyWordButton} type="button" aria-expanded={expanded} onClick={() => setExpandedWordId(expanded ? null : word.id)}>
-                    <span className={styles.vocabularyWordIdentity}><strong>{word.word}</strong><small>{word.phonetic} · {word.partOfSpeech}</small></span>
+                    <span className={styles.vocabularyWordIdentity}><strong>{word.word}</strong><small>{word.phonetic || '音标待补充'} · {word.partOfSpeech}</small></span>
                     <span className={styles.vocabularyWordMeaning}>{word.meaning}</span>
                     <span className={styles.vocabularyWordLevel}>{word.level}</span>
                     <span className={`${styles.vocabularyStatus} ${status === 'mastered' ? styles.vocabularyStatusMastered : status === 'new' ? styles.vocabularyStatusNew : styles.vocabularyStatusLearning}`}>{status === 'mastered' ? '已掌握' : status === 'new' ? '新词' : '复习中'}</span>

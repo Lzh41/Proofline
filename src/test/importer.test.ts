@@ -3,6 +3,24 @@ import { importSnapshot } from '../lib/importer';
 import { problem, snapshot } from './fixtures';
 
 describe('数据导入', () => {
+  it('合并词汇进度时按方向作用域区分同一个词', () => {
+    const current = snapshot();
+    current.vocabularyProgress = [{
+      wordId: 'achieve', scope: 'cet4', dueAt: 100, intervalDays: 1, easeFactor: 2.5,
+      repetitions: 1, lapses: 0, state: 'learning', streak: 1, lastReviewedAt: 100,
+    }];
+    const incoming = snapshot();
+    incoming.vocabularyProgress = [{
+      wordId: 'achieve', scope: 'cet6', dueAt: 200, intervalDays: 3, easeFactor: 2.5,
+      repetitions: 2, lapses: 0, state: 'review', streak: 2, lastReviewedAt: 200,
+    }];
+
+    const result = importSnapshot(current, incoming);
+
+    expect(result.snapshot.vocabularyProgress).toHaveLength(2);
+    expect(result.snapshot.vocabularyProgress.map((item) => item.scope).sort()).toEqual(['cet4', 'cet6']);
+  });
+
   it('按平台链接去重并保留个人内容', () => {
     const current = snapshot();
     current.problems = [problem({ content: '我的题面笔记', tags: ['个人标签'], attachments: [{ id: 'a', name: 'a.png', mimeType: 'image/png', path: 'a.png', size: 1, createdAt: 1 }] })];

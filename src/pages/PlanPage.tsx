@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarCheck2, Check, Languages, RefreshCw, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { DailyPlan } from '../types';
@@ -12,19 +12,40 @@ export function PlanPage() {
   const store = useStoreView();
   const navigate = useNavigate();
   const date = todayKey();
-  const current = store.dailyPlans.find((item) => item.date === date);
+  const initialScope = store.settings.lastVocabularyDifficulty
+    ?? store.dailyPlans.find((item) => item.date === date)?.vocabularyDifficulty
+    ?? 'all';
+  const [vocabularyDifficulty, setVocabularyDifficulty] = useState<VocabularyDifficulty | 'all'>(initialScope);
+  const current = store.dailyPlans.find((item) => item.date === date && item.vocabularyDifficulty === vocabularyDifficulty);
   const [targetMinutes, setTargetMinutes] = useState(String(current?.targetMinutes ?? store.settings.dailyTargetMinutes ?? 60));
   const [targetAlgorithmProblems, setTargetAlgorithmProblems] = useState(String(current?.targetAlgorithmProblems ?? store.settings.dailyTargetProblems ?? 3));
   const [targetInterviewQuestions, setTargetInterviewQuestions] = useState(String(current?.targetInterviewQuestions ?? store.settings.dailyTargetInterviewQuestions ?? 2));
   const [targetVocabularyWords, setTargetVocabularyWords] = useState(String(current?.targetVocabularyWords ?? store.settings.dailyTargetVocabularyWords ?? 10));
-  const [vocabularyDifficulty, setVocabularyDifficulty] = useState<VocabularyDifficulty | 'all'>(current?.vocabularyDifficulty ?? 'all');
   const [targetError, setTargetError] = useState('');
   const [focusTags, setFocusTags] = useState((current?.focusTags ?? []).join('，'));
   const [ratio, setRatio] = useState(current?.difficultyRatio ?? { easy: 30, medium: 50, hard: 20 });
   const [message, setMessage] = useState('');
 
+  useEffect(() => {
+    if (store.settings.lastVocabularyDifficulty && store.settings.lastVocabularyDifficulty !== vocabularyDifficulty) {
+      setVocabularyDifficulty(store.settings.lastVocabularyDifficulty);
+    }
+  }, [store.settings.lastVocabularyDifficulty]);
+
+  useEffect(() => {
+    setTargetMinutes(String(current?.targetMinutes ?? store.settings.dailyTargetMinutes ?? 60));
+    setTargetAlgorithmProblems(String(current?.targetAlgorithmProblems ?? store.settings.dailyTargetProblems ?? 3));
+    setTargetInterviewQuestions(String(current?.targetInterviewQuestions ?? store.settings.dailyTargetInterviewQuestions ?? 2));
+    setTargetVocabularyWords(String(current?.targetVocabularyWords ?? store.settings.dailyTargetVocabularyWords ?? 10));
+    setFocusTags((current?.focusTags ?? []).join('，'));
+    setRatio(current?.difficultyRatio ?? { easy: 30, medium: 50, hard: 20 });
+  }, [current?.id, store.settings.dailyTargetInterviewQuestions, store.settings.dailyTargetMinutes, store.settings.dailyTargetProblems, store.settings.dailyTargetVocabularyWords, vocabularyDifficulty]);
+
   const tasks = useMemo(() => (current?.taskProblemIds ?? []).map((id) => store.problems.find((problem) => problem.id === id)).filter(Boolean), [current?.taskProblemIds, store.problems]);
   const vocabularyTasks = useMemo(() => (current?.taskVocabularyWordIds ?? []).map((id) => store.vocabularyWords.find((word) => word.id === id)).filter((word): word is VocabularyWord => word !== undefined), [current?.taskVocabularyWordIds, store.vocabularyWords]);
+  const vocabularyPreviewedWordIds = current?.vocabularyPreviewedWordIds ?? [];
+  const vocabularyUnfamiliarWordIds = current?.vocabularyUnfamiliarWordIds ?? [];
+  const vocabularyExtraWordIds = current?.vocabularyExtraWordIds ?? [];
   const totalRatio = ratio.easy + ratio.medium + ratio.hard;
   const parsedTargets = {
     minutes: Number(targetMinutes),
@@ -64,6 +85,9 @@ export function PlanPage() {
       completedProblemIds: current?.completedProblemIds ?? [],
       taskVocabularyWordIds: current?.taskVocabularyWordIds ?? [],
       completedVocabularyWordIds: current?.completedVocabularyWordIds ?? [],
+      vocabularyPreviewedWordIds,
+      vocabularyUnfamiliarWordIds,
+      vocabularyExtraWordIds,
     };
     await store.savePlan?.(plan);
     await store.updateSettings?.({
@@ -71,6 +95,7 @@ export function PlanPage() {
       dailyTargetProblems: parsedTargets.algorithm,
       dailyTargetInterviewQuestions: parsedTargets.interview,
       dailyTargetVocabularyWords: parsedTargets.vocabulary,
+      lastVocabularyDifficulty: vocabularyDifficulty,
     });
     setMessage('每日目标已保存。');
   };
@@ -126,10 +151,25 @@ export function PlanPage() {
         {!tasks.length && <EmptyState title="任务单还未生成" message="保存目标后生成任务；题库数量不足时会保留已有题目并提示补充。" action={<button className="button buttonAccent" type="button" onClick={generate}>生成任务</button>} />}
       </section>
       <section className={styles.section}>
-        <SectionHeader title="今日新词" meta={`${current?.completedVocabularyWordIds.length ?? 0}/${current?.targetVocabularyWords ?? parsedTargets.vocabulary} 已完成`} action={<button className="button buttonPrimary" type="button" onClick={() => navigate('/vocabulary')}><Languages size={15} />开始刷词</button>} />
+        <SectionHeader title="今日新词预览" meta={`${vocabularyPreviewedWordIds.length}/${vocabularyTasks.length} 已预览 · ${current?.completedVocabularyWordIds.length ?? 0}/${current?.targetVocabularyWords ?? parsedTargets.vocabulary} 已完成`} action={<button className="button buttonPrimary" type="button" onClick={() => navigate('/vocabulary')}><Languages size={15} />开始刷词</button>} />
+        {vocabularyTasks.length > 0 && <p style={{ margin: '8px 0 14px', color: 'var(--muted)' }}>先看英词、音标和中文义项，再进入主动拼写；不熟悉的词会自动加入明日额外复习。</p>}
         {vocabularyTasks.map((word) => {
           const completed = current?.completedVocabularyWordIds.includes(word.id) ?? false;
-          return <div className={styles.row} key={word.id}><div className={styles.rowMain}><strong>{word.word}<span className={styles.vocabularyPlanMeta}> · {word.level} · {word.meaning}</span></strong><p>{word.example}</p></div><div className={styles.rowActions}>{completed ? <span className={`${styles.badge} ${styles.badgeAccent}`}><Check size={12} />完成</span> : <button className="button" type="button" onClick={() => navigate(`/vocabulary?word=${encodeURIComponent(word.id)}`)}>学习</button>}</div></div>;
+          const previewed = vocabularyPreviewedWordIds.includes(word.id);
+          const unfamiliar = vocabularyUnfamiliarWordIds.includes(word.id);
+          const extra = vocabularyExtraWordIds.includes(word.id);
+          return <div className={styles.row} key={word.id}>
+            <div className={styles.rowMain}>
+              <strong>{word.word}<span className={styles.vocabularyPlanMeta}> · {word.phonetic} · {word.level} · {word.meaning}</span></strong>
+              <p>{word.example || '遮住中文义项，先回忆这个词的意思和用法。'}</p>
+            </div>
+            <div className={styles.rowActions}>
+              {extra && <span className={styles.badge}>明日额外</span>}
+              {completed && <span className={`${styles.badge} ${styles.badgeAccent}`}><Check size={12} />完成</span>}
+              {!completed && <button className="button" type="button" onClick={() => void store.markVocabularyPreviewed?.(word.id, date, vocabularyDifficulty)}>{previewed ? '已预览' : '标记已背'}</button>}
+              {!completed && <button className={`button${unfamiliar ? ' buttonDanger' : ''}`} type="button" aria-pressed={unfamiliar} onClick={() => void (unfamiliar ? store.unmarkVocabularyUnfamiliar?.(word.id, date, vocabularyDifficulty) : store.markVocabularyUnfamiliar?.(word.id, date, vocabularyDifficulty))}>{unfamiliar ? '取消不熟' : '标记不熟'}</button>}
+            </div>
+          </div>;
         })}
         {!vocabularyTasks.length && <EmptyState compact title="还没有今日新词" message="设定每日数量和难度后生成今日任务；到期复习会在刷词时优先出现。" action={<button className="button" type="button" onClick={() => navigate('/vocabulary')}>浏览词库</button>} />}
       </section>

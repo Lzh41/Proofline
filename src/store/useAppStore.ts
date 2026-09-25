@@ -56,14 +56,22 @@ import { runProblemSample } from '../lib/problemRunner';
 import { calculateStatistics, dateKey, isSuccessfulAttempt } from '../lib/statistics';
 import { readCachedTheme } from '../app/theme';
 import {
+  clearPersistedVocabularySessionJournal,
+  getVocabularySessionJournalRevision,
+  restoreVocabularySessionJournal,
+} from '../lib/vocabularySessionJournal';
+import {
   createInitialVocabularyProgress,
   isVocabularyDifficulty,
   isVocabularySpellingCorrect,
+  filterVocabularyWords,
   reviewVocabularyWord,
   selectVocabularyPlanWords,
   type VocabularyDifficulty,
   type VocabularyGrade,
   type VocabularyReviewDirection,
+  type VocabularyScope,
+  type VocabularySessionState,
   type VocabularyWord,
 } from '../lib/vocabulary';
 
@@ -75,6 +83,77 @@ let initializationPromise: Promise<void> | null = null;
 const AI_REQUEST_TIMEOUT_MS = 600_000;
 const AI_PROMPT_MAX_BYTES = 96 * 1024;
 const AI_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
+
+function previousDateKey(date: string): string {
+  const parsed = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return '';
+  parsed.setDate(parsed.getDate() - 1);
+  return dateKey(parsed.getTime());
+}
+
+function nextDateKey(date: string): string {
+  const parsed = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return '';
+  parsed.setDate(parsed.getDate() + 1);
+  return dateKey(parsed.getTime());
+}
+
+function syncNextDayVocabularyExtra(
+  plans: DailyPlan[],
+  wordId: string,
+  date: string,
+  scope: VocabularyScope,
+  isUnfamiliar: boolean,
+  eligibleWordIds: ReadonlySet<string>,
+): DailyPlan[] {
+  const nextDate = nextDateKey(date);
+  if (!nextDate || !eligibleWordIds.has(wordId)) return plans;
+  return plans.map((plan) => {
+    if (plan.date !== nextDate || plan.vocabularyDifficulty !== scope) return plan;
+    const extras = new Set(plan.vocabularyExtraWordIds ?? []);
+    const extraOnly = new Set(plan.vocabularyExtraOnlyWordIds ?? []);
+    const wasExtra = extras.has(wordId);
+    const nextExtras = new Set(extras);
+    const nextTasks = new Set(plan.taskVocabularyWordIds);
+    const nextCompleted = new Set(plan.completedVocabularyWordIds);
+
+    if (isUnfamiliar) {
+      nextExtras.add(wordId);
+      nextTasks.add(wordId);
+      if (!plan.taskVocabularyWordIds.includes(wordId)) extraOnly.add(wordId);
+      if (!plan.taskVocabularyWordIds.includes(wordId)) nextCompleted.delete(wordId);
+    } else {
+      nextExtras.delete(wordId);
+      if (wasExtra && extraOnly.has(wordId)) {
+        nextTasks.delete(wordId);
+        nextCompleted.delete(wordId);
+        extraOnly.delete(wordId);
+      }
+    }
+
+    const vocabularyExtraWordIds = [...nextExtras];
+    const taskVocabularyWordIds = [...nextTasks];
+    const completedVocabularyWordIds = [...nextCompleted];
+    const vocabularyExtraOnlyWordIds = [...extraOnly];
+    if (vocabularyExtraWordIds.length === (plan.vocabularyExtraWordIds ?? []).length
+      && taskVocabularyWordIds.length === plan.taskVocabularyWordIds.length
+      && completedVocabularyWordIds.length === plan.completedVocabularyWordIds.length
+      && vocabularyExtraOnlyWordIds.length === (plan.vocabularyExtraOnlyWordIds ?? []).length
+      && vocabularyExtraWordIds.every((id) => (plan.vocabularyExtraWordIds ?? []).includes(id))
+      && taskVocabularyWordIds.every((id) => plan.taskVocabularyWordIds.includes(id))
+      && completedVocabularyWordIds.every((id) => plan.completedVocabularyWordIds.includes(id))
+      && vocabularyExtraOnlyWordIds.every((id) => (plan.vocabularyExtraOnlyWordIds ?? []).includes(id))) return plan;
+
+    return {
+      ...plan,
+      vocabularyExtraWordIds,
+      vocabularyExtraOnlyWordIds,
+      taskVocabularyWordIds,
+      completedVocabularyWordIds,
+      updatedAt: Date.now(),
+    };
+  });
+}
 
 function aiCompletionsUrl(baseUrl: string): string {
   const normalized = baseUrl.trim().replace(/\/+$/, '');
@@ -131,7 +210,11 @@ interface AppStore extends AppDataSnapshot {
   addThoughtEvent: (input: Partial<ThoughtEvent>) => Promise<ThoughtEvent>;
   addMistake: (input: Partial<Mistake>) => Promise<Mistake>;
   completeReview: (mistakeId: string, success: boolean) => Promise<void>;
-  recordVocabularyReview: (input: { wordId: string; direction: VocabularyReviewDirection; rating: VocabularyGrade; response: string; correct: boolean; durationMs?: number }) => Promise<void>;
+  markVocabularyPreviewed: (wordId: string, date?: string, scope?: VocabularyScope) => Promise<void>;
+  markVocabularyUnfamiliar: (wordId: string, date?: string, scope?: VocabularyScope) => Promise<void>;
+  unmarkVocabularyUnfamiliar: (wordId: string, date?: string, scope?: VocabularyScope) => Promise<void>;
+  saveVocabularySession: (scope: VocabularyScope, session: VocabularySessionState) => Promise<void>;
+  recordVocabularyReview: (input: { wordId: string; scope?: VocabularyScope; direction: VocabularyReviewDirection; rating: VocabularyGrade; response: string; correct: boolean; durationMs?: number }) => Promise<void>;
   addKnowledgeNote: (input: Partial<KnowledgeNote>) => Promise<KnowledgeNote>;
   createKnowledgeNote: (input: Partial<KnowledgeNote>) => Promise<KnowledgeNote>;
   updateKnowledgeNote: (id: string, patch: Partial<KnowledgeNote>) => Promise<void>;
@@ -519,7 +602,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({ loading: true, error: null });
       const operation = enqueuePersistence(async () => {
         try {
-          const snapshot = await appRepository.load();
+          const snapshot = restoreVocabularySessionJournal(await appRepository.load());
           const readOnly = appRepository.isReadOnly();
           let recoveredSamples = false;
           let catalogUpdated = false;
@@ -760,21 +843,84 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({ mistakes: get().mistakes.map((item) => item.id === mistakeId ? applyReviewResult(item, success) : item) });
       await saveState(get, set);
     },
+    markVocabularyPreviewed: async (wordId, date = dateKey(Date.now()), scope = 'all') => {
+      await waitForInitialization();
+      const state = get();
+      const dailyPlans = state.dailyPlans.map((plan) => {
+        if (plan.date !== date || plan.vocabularyDifficulty !== scope || !plan.taskVocabularyWordIds.includes(wordId)) return plan;
+        return {
+          ...plan,
+          vocabularyPreviewedWordIds: uniqueStrings([...(plan.vocabularyPreviewedWordIds ?? []), wordId]),
+          updatedAt: Date.now(),
+        };
+      });
+      if (dailyPlans.every((plan, index) => plan === state.dailyPlans[index])) return;
+      set({ dailyPlans });
+      await saveState(get, set);
+    },
+    markVocabularyUnfamiliar: async (wordId, date = dateKey(Date.now()), scope = 'all') => {
+      await waitForInitialization();
+      const state = get();
+      const markedPlans = state.dailyPlans.map((plan) => {
+        if (plan.date !== date || plan.vocabularyDifficulty !== scope || !plan.taskVocabularyWordIds.includes(wordId)) return plan;
+        return {
+          ...plan,
+          vocabularyUnfamiliarWordIds: uniqueStrings([...(plan.vocabularyUnfamiliarWordIds ?? []), wordId]),
+          updatedAt: Date.now(),
+        };
+      });
+      const eligibleWordIds = new Set(filterVocabularyWords(state.vocabularyWords, scope).map((word) => word.id));
+      const dailyPlans = syncNextDayVocabularyExtra(markedPlans, wordId, date, scope, true, eligibleWordIds);
+      if (dailyPlans.every((plan, index) => plan === state.dailyPlans[index])) return;
+      set({ dailyPlans });
+      await saveState(get, set);
+    },
+    unmarkVocabularyUnfamiliar: async (wordId, date = dateKey(Date.now()), scope = 'all') => {
+      await waitForInitialization();
+      const state = get();
+      const unmarkedPlans = state.dailyPlans.map((plan) => {
+        if (plan.date !== date || plan.vocabularyDifficulty !== scope || !(plan.vocabularyUnfamiliarWordIds ?? []).includes(wordId)) return plan;
+        return {
+          ...plan,
+          vocabularyUnfamiliarWordIds: (plan.vocabularyUnfamiliarWordIds ?? []).filter((id) => id !== wordId),
+          updatedAt: Date.now(),
+        };
+      });
+      const eligibleWordIds = new Set(filterVocabularyWords(state.vocabularyWords, scope).map((word) => word.id));
+      const dailyPlans = syncNextDayVocabularyExtra(unmarkedPlans, wordId, date, scope, false, eligibleWordIds);
+      if (dailyPlans.every((plan, index) => plan === state.dailyPlans[index])) return;
+      set({ dailyPlans });
+      await saveState(get, set);
+    },
+    saveVocabularySession: async (scope, session) => {
+      await waitForInitialization();
+      const journalRevision = getVocabularySessionJournalRevision(scope);
+      set({
+        settings: {
+          ...get().settings,
+          vocabularySessions: { ...get().settings.vocabularySessions, [scope]: session },
+        },
+      });
+      await saveState(get, set);
+      if (journalRevision) clearPersistedVocabularySessionJournal(journalRevision);
+    },
     recordVocabularyReview: async (input) => {
       await waitForInitialization();
       const state = get();
       const vocabularyWord = state.vocabularyWords.find((word) => word.id === input.wordId);
       if (!vocabularyWord) throw new Error('词库中找不到这个单词');
+      const scope: VocabularyScope = input.scope ?? 'all';
       const now = Date.now();
       const spellingMatches = input.direction !== 'meaning-to-word'
         || isVocabularySpellingCorrect(input.response, vocabularyWord.word);
       const rating = spellingMatches ? input.rating : 'again';
-      const previous = state.vocabularyProgress.find((item) => item.wordId === input.wordId)
+      const previous = state.vocabularyProgress.find((item) => item.wordId === input.wordId && (item.scope ?? 'all') === scope)
         ?? createInitialVocabularyProgress(input.wordId, now);
-      const progress = reviewVocabularyWord(previous, rating, now);
+      const progress = { ...reviewVocabularyWord(previous, rating, now), scope };
       const review = {
         id: createId('vocab-review'),
         wordId: input.wordId,
+        scope,
         reviewedAt: now,
         direction: input.direction,
         rating,
@@ -782,16 +928,17 @@ export const useAppStore = create<AppStore>((set, get) => {
         correct: input.correct && spellingMatches && rating !== 'again',
         durationMs: input.durationMs,
       };
-      const wasNew = !state.vocabularyProgress.some((item) => item.wordId === input.wordId)
+      const wasNew = !state.vocabularyProgress.some((item) => item.wordId === input.wordId && (item.scope ?? 'all') === scope)
         || previous.state === 'new';
       const date = dateKey(now);
       const dailyPlans = state.dailyPlans.map((plan) => plan.date === date
+        && plan.vocabularyDifficulty === scope
         && wasNew
         && plan.taskVocabularyWordIds.includes(input.wordId)
         ? { ...plan, completedVocabularyWordIds: uniqueStrings([...plan.completedVocabularyWordIds, input.wordId]), updatedAt: now }
         : plan);
       set({
-        vocabularyProgress: [...state.vocabularyProgress.filter((item) => item.wordId !== input.wordId), progress],
+        vocabularyProgress: [...state.vocabularyProgress.filter((item) => !(item.wordId === input.wordId && (item.scope ?? 'all') === scope)), progress],
         vocabularyReviews: [review, ...state.vocabularyReviews],
         dailyPlans,
       });
@@ -830,16 +977,19 @@ export const useAppStore = create<AppStore>((set, get) => {
         '面试题目标',
       );
       const date = input.date ?? dateKey(now);
-      const existingPlan = get().dailyPlans.find((item) => item.date === date);
+      const requestedDifficulty = input.vocabularyDifficulty;
+      const vocabularyDifficulty: VocabularyDifficulty | 'all' = isVocabularyDifficulty(requestedDifficulty) || requestedDifficulty === 'all'
+        ? requestedDifficulty as VocabularyDifficulty | 'all'
+        : get().settings.lastVocabularyDifficulty
+          ?? get().dailyPlans.find((item) => item.date === date)?.vocabularyDifficulty
+          ?? 'all';
+      const existingPlan = get().dailyPlans.find((item) => item.id === input.id)
+        ?? get().dailyPlans.find((item) => item.date === date && item.vocabularyDifficulty === vocabularyDifficulty);
       const targetVocabularyWords = planTarget(
         input.targetVocabularyWords ?? existingPlan?.targetVocabularyWords ?? get().settings.dailyTargetVocabularyWords,
         '新词目标',
       );
       if (targetVocabularyWords > 100) throw new TypeError('新词目标不能超过 100');
-      const requestedDifficulty = input.vocabularyDifficulty;
-      const vocabularyDifficulty: VocabularyDifficulty | 'all' = isVocabularyDifficulty(requestedDifficulty) || requestedDifficulty === 'all'
-        ? requestedDifficulty as VocabularyDifficulty | 'all'
-        : existingPlan?.vocabularyDifficulty ?? 'all';
       const targetProblems = targetAlgorithmProblems + targetInterviewQuestions;
       const plan: DailyPlan = {
         id: input.id ?? existingPlan?.id ?? createId('plan'),
@@ -854,13 +1004,18 @@ export const useAppStore = create<AppStore>((set, get) => {
         reviewMistakeIds: uniqueStrings(input.reviewMistakeIds ?? existingPlan?.reviewMistakeIds ?? []),
         completedProblemIds: uniqueStrings(input.completedProblemIds ?? existingPlan?.completedProblemIds ?? []),
         completedVocabularyWordIds: uniqueStrings(input.completedVocabularyWordIds ?? existingPlan?.completedVocabularyWordIds ?? []),
+        vocabularyPreviewedWordIds: uniqueStrings(input.vocabularyPreviewedWordIds ?? existingPlan?.vocabularyPreviewedWordIds ?? []),
+        vocabularyUnfamiliarWordIds: uniqueStrings(input.vocabularyUnfamiliarWordIds ?? existingPlan?.vocabularyUnfamiliarWordIds ?? []),
+        vocabularyExtraWordIds: uniqueStrings(input.vocabularyExtraWordIds ?? existingPlan?.vocabularyExtraWordIds ?? []),
+        vocabularyExtraOnlyWordIds: uniqueStrings(input.vocabularyExtraOnlyWordIds ?? existingPlan?.vocabularyExtraOnlyWordIds ?? []),
         focusTags: uniqueStrings(input.focusTags ?? existingPlan?.focusTags ?? []),
         difficultyRatio: input.difficultyRatio ?? existingPlan?.difficultyRatio ?? { easy: 30, medium: 50, hard: 20 },
         vocabularyDifficulty,
         createdAt: input.createdAt ?? existingPlan?.createdAt ?? now,
         updatedAt: now,
       };
-      const index = get().dailyPlans.findIndex((item) => item.id === plan.id || item.date === plan.date);
+      const index = get().dailyPlans.findIndex((item) => item.id === plan.id
+        || (item.date === plan.date && item.vocabularyDifficulty === plan.vocabularyDifficulty));
       const dailyPlans = [...get().dailyPlans];
       if (index >= 0) dailyPlans[index] = { ...dailyPlans[index], ...plan, id: dailyPlans[index].id, createdAt: dailyPlans[index].createdAt };
       else dailyPlans.unshift(plan);
@@ -872,7 +1027,14 @@ export const useAppStore = create<AppStore>((set, get) => {
       await waitForInitialization();
       const state = get();
       const planDate = typeof options.date === 'string' ? options.date : dateKey(Date.now());
-      const previousPlan = state.dailyPlans.find((plan) => plan.date === planDate);
+      const requestedDifficulty = options.vocabularyDifficulty;
+      const vocabularyDifficulty: VocabularyDifficulty | 'all' = isVocabularyDifficulty(requestedDifficulty) || requestedDifficulty === 'all'
+        ? requestedDifficulty as VocabularyDifficulty | 'all'
+        : state.settings.lastVocabularyDifficulty
+          ?? state.dailyPlans.find((plan) => plan.date === planDate)?.vocabularyDifficulty
+          ?? 'all';
+      const previousPlan = state.dailyPlans.find((plan) => plan.date === planDate
+        && plan.vocabularyDifficulty === vocabularyDifficulty);
       const hasLegacyTarget = typeof options.targetProblems === 'number'
         && typeof options.targetAlgorithmProblems !== 'number'
         && typeof options.targetInterviewQuestions !== 'number';
@@ -894,11 +1056,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         '新词目标',
       );
       if (targetVocabularyWords > 100) throw new TypeError('新词目标不能超过 100');
-      const requestedDifficulty = options.vocabularyDifficulty;
-      const vocabularyDifficulty: VocabularyDifficulty | 'all' = isVocabularyDifficulty(requestedDifficulty) || requestedDifficulty === 'all'
-        ? requestedDifficulty as VocabularyDifficulty | 'all'
-        : previousPlan?.vocabularyDifficulty ?? 'all';
-      const progressByWordId = Object.fromEntries(state.vocabularyProgress.map((progress) => [progress.wordId, progress]));
+      // 每个方向/难度使用自己的间隔记录；旧快照的无 scope 记录按 all 读取。
+      const progressByWordId = Object.fromEntries(
+        state.vocabularyProgress
+          .filter((progress) => (progress.scope ?? 'all') === vocabularyDifficulty)
+          .map((progress) => [progress.wordId, progress]),
+      );
       const vocabularySelection = selectVocabularyPlanWords(
         state.vocabularyWords,
         progressByWordId,
@@ -907,20 +1070,37 @@ export const useAppStore = create<AppStore>((set, get) => {
         previousPlan?.taskVocabularyWordIds ?? [],
         previousPlan?.completedVocabularyWordIds ?? [],
       );
+      const scopeWordIds = new Set(filterVocabularyWords(state.vocabularyWords, vocabularyDifficulty).map((word) => word.id));
+      const previousDayPlan = state.dailyPlans.find((plan) => plan.date === previousDateKey(planDate)
+        && plan.vocabularyDifficulty === vocabularyDifficulty);
+      const vocabularyExtraWordIds = uniqueStrings((previousDayPlan?.vocabularyUnfamiliarWordIds ?? [])
+        .filter((wordId) => scopeWordIds.has(wordId)));
+      const vocabularyExtraOnlyWordIds = vocabularyExtraWordIds.filter((wordId) => !vocabularySelection.taskWordIds.includes(wordId));
       return get().savePlan({
         ...generated,
         targetVocabularyWords,
         vocabularyDifficulty,
-        taskVocabularyWordIds: uniqueStrings(vocabularySelection.taskWordIds),
+        taskVocabularyWordIds: uniqueStrings([...vocabularyExtraWordIds, ...vocabularySelection.taskWordIds]),
         completedVocabularyWordIds: uniqueStrings(vocabularySelection.completedWordIds),
+        vocabularyExtraWordIds,
+        vocabularyExtraOnlyWordIds,
       });
     },
     updateSettings: async (patch) => {
       if (!initializationPromise && !get().initialized && !get().error) return;
       await waitForInitialization();
       if (!get().initialized || get().loading) return;
+      const journalRevision = patch.lastVocabularyDifficulty === undefined
+        ? null
+        : getVocabularySessionJournalRevision(patch.lastVocabularyDifficulty);
       set({ settings: { ...get().settings, ...patch } });
       await saveState(get, set);
+      if (journalRevision?.selectionSavedAt !== undefined) {
+        clearPersistedVocabularySessionJournal({
+          scope: journalRevision.scope,
+          selectionSavedAt: journalRevision.selectionSavedAt,
+        });
+      }
     },
     restoreInterviewCatalog: async () => {
       await waitForInitialization();

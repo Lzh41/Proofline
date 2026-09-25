@@ -1,6 +1,7 @@
 import type { AppDataSnapshot, ImportResult, Problem } from '../types';
 import { normalizeSnapshot } from './data';
 import { normalizeText, uniqueStrings } from './ids';
+import { vocabularyProgressScope } from './vocabulary';
 
 function problemKey(problem: Problem): string {
   // 平台题号比页面查询参数和尾斜杠更稳定，优先用于批量同步去重。
@@ -98,11 +99,15 @@ export function importSnapshot(currentInput: AppDataSnapshot, incomingInput: unk
   const generations = mergeById(current.aiGenerations, incoming.aiGenerations);
   const vocabularyWords = mergeById(current.vocabularyWords, incoming.vocabularyWords);
   const vocabularyReviews = mergeById(current.vocabularyReviews, incoming.vocabularyReviews);
-  const vocabularyProgressByWord = new Map(current.vocabularyProgress.map((item) => [item.wordId, item]));
+  const vocabularyProgressByWord = new Map(current.vocabularyProgress.map((item) => [
+    `${vocabularyProgressScope(item)}:${item.wordId}`,
+    item,
+  ]));
   incoming.vocabularyProgress.forEach((item) => {
-    const currentProgress = vocabularyProgressByWord.get(item.wordId);
+    const key = `${vocabularyProgressScope(item)}:${item.wordId}`;
+    const currentProgress = vocabularyProgressByWord.get(key);
     if (!currentProgress || (item.lastReviewedAt ?? 0) > (currentProgress.lastReviewedAt ?? 0)) {
-      vocabularyProgressByWord.set(item.wordId, item);
+      vocabularyProgressByWord.set(key, item);
     }
   });
   const snapshot: AppDataSnapshot = {

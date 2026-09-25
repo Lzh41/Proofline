@@ -1,6 +1,6 @@
 import type { AppDataSnapshot, AppSettings, AppTheme, EditorFontSize } from '../types';
 import { VOCABULARY_CATALOG_FULL } from '../data/vocabularyCatalog';
-import { isVocabularyDifficulty, type VocabularyWord } from './vocabulary';
+import { isVocabularyDifficulty, type VocabularyReviewDirection, type VocabularyScope, type VocabularySessionCardState, type VocabularySessionState, type VocabularyWord } from './vocabulary';
 
 export const EDITOR_FONT_SIZES: EditorFontSize[] = [14, 16, 18, 20, 22];
 
@@ -14,6 +14,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dailyTargetProblems: 3,
   dailyTargetInterviewQuestions: 2,
   dailyTargetVocabularyWords: 10,
+  lastVocabularyDifficulty: undefined,
+  vocabularySessions: {},
   interviewCatalogVersion: 0,
   lastSolveProblemId: undefined,
   lastSolveProblemByMode: undefined,
@@ -111,6 +113,10 @@ function normalizePlans(value: unknown): AppDataSnapshot['dailyPlans'] {
         : 10,
       taskVocabularyWordIds: Array.isArray(plan.taskVocabularyWordIds) ? plan.taskVocabularyWordIds : [],
       completedVocabularyWordIds: Array.isArray(plan.completedVocabularyWordIds) ? plan.completedVocabularyWordIds : [],
+      vocabularyPreviewedWordIds: Array.isArray(plan.vocabularyPreviewedWordIds) ? plan.vocabularyPreviewedWordIds : [],
+      vocabularyUnfamiliarWordIds: Array.isArray(plan.vocabularyUnfamiliarWordIds) ? plan.vocabularyUnfamiliarWordIds : [],
+      vocabularyExtraWordIds: Array.isArray(plan.vocabularyExtraWordIds) ? plan.vocabularyExtraWordIds : [],
+      vocabularyExtraOnlyWordIds: Array.isArray(plan.vocabularyExtraOnlyWordIds) ? plan.vocabularyExtraOnlyWordIds : [],
       vocabularyDifficulty: isVocabularyDifficulty(plan.vocabularyDifficulty) ? plan.vocabularyDifficulty : 'all',
     };
   });
@@ -122,6 +128,52 @@ function normalizeVocabularyWords(value: unknown): VocabularyWord[] {
     if (!catalog.has(word.id)) catalog.set(word.id, word);
   });
   return [...catalog.values()];
+}
+
+function normalizeVocabularyProgress(value: unknown): AppDataSnapshot['vocabularyProgress'] {
+  return arrayValue<AppDataSnapshot['vocabularyProgress'][number]>(value, 'vocabularyProgress').map((item) => ({
+    ...item,
+    scope: isVocabularyDifficulty(item.scope) || item.scope === 'all' ? item.scope : 'all',
+  }));
+}
+
+function normalizeVocabularyReviews(value: unknown): AppDataSnapshot['vocabularyReviews'] {
+  return arrayValue<AppDataSnapshot['vocabularyReviews'][number]>(value, 'vocabularyReviews').map((item) => ({
+    ...item,
+    scope: isVocabularyDifficulty(item.scope) || item.scope === 'all' ? item.scope : 'all',
+  }));
+}
+
+export function normalizeVocabularySessions(value: unknown): Partial<Record<VocabularyScope, VocabularySessionState>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const sessions: Partial<Record<VocabularyScope, VocabularySessionState>> = {};
+  for (const [scope, raw] of Object.entries(value)) {
+    if (!(isVocabularyDifficulty(scope) || scope === 'all') || !raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const session = raw as Record<string, unknown>;
+    const cards: VocabularySessionCardState[] = Array.isArray(session.cards)
+      ? session.cards.flatMap((card) => {
+        if (!card || typeof card !== 'object') return [];
+        const rawCard = card as Record<string, unknown>;
+        const direction = rawCard.direction;
+        if (typeof rawCard.wordId !== 'string'
+          || (direction !== 'word-to-meaning' && direction !== 'meaning-to-word')) return [];
+        return [{
+          wordId: rawCard.wordId,
+          direction: direction as VocabularyReviewDirection,
+          ...(rawCard.retry === true ? { retry: true } : {}),
+        }];
+      }).slice(0, 10_000)
+      : [];
+    sessions[scope as VocabularyScope] = {
+      cards,
+      index: Number.isFinite(session.index) ? Math.max(0, Math.min(cards.length, Math.floor(session.index as number))) : 0,
+      phase: session.phase === 'preview' ? 'preview' : 'practice',
+      revealed: session.revealed === true,
+      answerDraft: typeof session.answerDraft === 'string' ? session.answerDraft.slice(0, 256) : '',
+      sessionPoints: Number.isFinite(session.sessionPoints) ? Math.max(0, Math.floor(session.sessionPoints as number)) : 0,
+    };
+  }
+  return sessions;
 }
 
 export function normalizeSnapshot(value: unknown): AppDataSnapshot {
@@ -137,6 +189,10 @@ export function normalizeSnapshot(value: unknown): AppDataSnapshot {
   settings.dailyTargetVocabularyWords = Number.isFinite(settings.dailyTargetVocabularyWords)
     ? Math.max(0, Math.min(100, Math.floor(settings.dailyTargetVocabularyWords)))
     : DEFAULT_SETTINGS.dailyTargetVocabularyWords;
+  settings.lastVocabularyDifficulty = isVocabularyDifficulty(settings.lastVocabularyDifficulty) || settings.lastVocabularyDifficulty === 'all'
+    ? settings.lastVocabularyDifficulty
+    : undefined;
+  settings.vocabularySessions = normalizeVocabularySessions(settings.vocabularySessions);
   settings.theme = normalizeTheme(settings.theme);
   settings.editorFontSize = normalizeEditorFontSize(settings.editorFontSize);
   settings.lastSolveProblemId = typeof settings.lastSolveProblemId === 'string' && settings.lastSolveProblemId.trim()
@@ -167,8 +223,8 @@ export function normalizeSnapshot(value: unknown): AppDataSnapshot {
     codeTemplates: arrayValue(raw.codeTemplates, 'codeTemplates'),
     dailyPlans: normalizePlans(raw.dailyPlans),
     vocabularyWords: normalizeVocabularyWords(raw.vocabularyWords),
-    vocabularyProgress: arrayValue<AppDataSnapshot['vocabularyProgress'][number]>(raw.vocabularyProgress, 'vocabularyProgress'),
-    vocabularyReviews: arrayValue<AppDataSnapshot['vocabularyReviews'][number]>(raw.vocabularyReviews, 'vocabularyReviews'),
+    vocabularyProgress: normalizeVocabularyProgress(raw.vocabularyProgress),
+    vocabularyReviews: normalizeVocabularyReviews(raw.vocabularyReviews),
     aiGenerations: arrayValue(raw.aiGenerations, 'aiGenerations'),
     settings,
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),

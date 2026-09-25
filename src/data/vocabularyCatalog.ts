@@ -1,6 +1,7 @@
 import type { VocabularyWord } from '../lib/vocabulary';
 import { SUPPLEMENTAL_VOCABULARY_CATALOG } from './vocabularySupplement';
 import { PUBLIC_VOCABULARY_CATALOG } from './vocabularyPublicAdapter';
+import { ECDICT_EXAM_VOCABULARY_CATALOG } from './vocabularyExamAdapter';
 
 export const VOCABULARY_CATALOG_VERSION = 3;
 
@@ -427,7 +428,7 @@ export const VOCABULARY_CATALOG: VocabularyWord[] = [
     mnemonic: 'quiet 是安静的；quite（相当）拼写相近，注意区分。', collocations: ['a quiet place', 'keep quiet'],
   },
   {
-    id: 'spend', word: 'spend', phonetic: '/spend/', partOfSpeech: 'verb', level: 'A2', difficulty: 'beginner', source: 'Proofline 内置词库（自编例句）',
+    id: 'spend', word: 'spend', phonetic: '/spɛnd/', partOfSpeech: 'verb', level: 'A2', difficulty: 'beginner', source: 'Proofline 内置词库（自编例句）',
     meaning: '花费（金钱或时间）；度过', definitionEn: 'To use money, or pass time doing something or being somewhere.',
     example: 'She spends twenty minutes reviewing words each day.', exampleTranslation: '她每天花二十分钟复习单词。',
     family: ['spend (v.) 花费；度过', 'spent (past) 花费了；度过了', 'spending (n.) 开支'],
@@ -709,19 +710,22 @@ export const VOCABULARY_CATALOG: VocabularyWord[] = [
 ];
 
 const catalogById = new Map(VOCABULARY_CATALOG.map((word) => [word.id, word]));
-const catalogWordKeys = new Set(VOCABULARY_CATALOG.map((word) => word.word.toLocaleLowerCase('en-US')));
-for (const word of SUPPLEMENTAL_VOCABULARY_CATALOG) {
+const catalogByWord = new Map(VOCABULARY_CATALOG.map((word) => [word.word.toLocaleLowerCase('en-US'), word]));
+const mergeVocabularyWord = (word: VocabularyWord) => {
   const wordKey = word.word.toLocaleLowerCase('en-US');
-  if (catalogById.has(word.id) || catalogWordKeys.has(wordKey)) continue;
+  const existing = catalogByWord.get(wordKey);
+  if (existing) {
+    existing.examTags = [...new Set([...(existing.examTags ?? []), ...(word.examTags ?? [])])];
+    if (!existing.phonetic && word.phonetic) existing.phonetic = word.phonetic;
+    return;
+  }
+  if (catalogById.has(word.id)) return;
   catalogById.set(word.id, word);
-  catalogWordKeys.add(wordKey);
-}
-for (const word of PUBLIC_VOCABULARY_CATALOG) {
-  const wordKey = word.word.toLocaleLowerCase('en-US');
-  if (catalogWordKeys.has(wordKey)) continue;
-  catalogById.set(word.id, word);
-  catalogWordKeys.add(wordKey);
-}
+  catalogByWord.set(wordKey, word);
+};
+for (const word of SUPPLEMENTAL_VOCABULARY_CATALOG) mergeVocabularyWord(word);
+for (const word of PUBLIC_VOCABULARY_CATALOG) mergeVocabularyWord(word);
+for (const word of ECDICT_EXAM_VOCABULARY_CATALOG) mergeVocabularyWord(word);
 
 /** 内置词库入口：基础词条、自编扩充词条和公开许可词表的去重合并。 */
 export const VOCABULARY_CATALOG_FULL: VocabularyWord[] = [...catalogById.values()];

@@ -11,7 +11,10 @@ export function TodayPage() {
   const navigate = useNavigate();
   const [message, setMessage] = useState('');
   const today = todayKey();
-  const plan = store.dailyPlans.find((item) => item.date === today);
+  const selectedVocabularyScope = store.settings.lastVocabularyDifficulty;
+  const plan = store.dailyPlans.find((item) => item.date === today
+    && (!selectedVocabularyScope || item.vocabularyDifficulty === selectedVocabularyScope))
+    ?? store.dailyPlans.find((item) => item.date === today);
   const dueMistakes = useMemo(
     () => store.mistakes.filter((item) => item.status !== 'mastered' && item.nextReviewAt <= Date.now()),
     [store.mistakes],
@@ -27,7 +30,11 @@ export function TodayPage() {
   const progress = plan?.targetProblems ? ((plan.completedProblemIds?.length ?? 0) / plan.targetProblems) * 100 : 0;
   const targetVocabularyWords = plan?.targetVocabularyWords ?? store.settings.dailyTargetVocabularyWords ?? 10;
   const completedVocabularyWords = plan?.completedVocabularyWordIds.length ?? 0;
-  const dueVocabularyWords = store.vocabularyProgress.filter((item) => item.state !== 'new' && item.dueAt <= Date.now()).length;
+  const dueVocabularyWords = store.vocabularyProgress.filter((item) => (
+    (!selectedVocabularyScope || (item.scope ?? 'all') === selectedVocabularyScope)
+    && item.state !== 'new'
+    && item.dueAt <= Date.now()
+  )).length;
 
   const generatePlan = async () => {
     if (!store.generateDailyPlan) {

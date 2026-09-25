@@ -1,4 +1,5 @@
 import type { VocabularyDifficulty, VocabularyLevel, VocabularyPartOfSpeech, VocabularyWord } from '../lib/vocabulary';
+import { SUPPLEMENTAL_PHONETICS } from './vocabularySupplementPhonetics';
 
 type ExamDifficulty = Extract<VocabularyDifficulty, 'cet4' | 'cet6' | 'toefl' | 'ielts' | 'postgrad' | 'sat'>;
 type Seed = readonly [word: string, meaning: string, level: VocabularyLevel, difficulty: 'beginner' | 'intermediate' | 'advanced', tags: ExamDifficulty[], partOfSpeech: VocabularyPartOfSpeech];
@@ -208,7 +209,7 @@ function seedToWord(seed: Seed): VocabularyWord {
   return {
     id: `supp-${word}`,
     word,
-    phonetic: '',
+    phonetic: SUPPLEMENTAL_PHONETICS[word] ?? '',
     partOfSpeech,
     level,
     difficulty,

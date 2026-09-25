@@ -10,6 +10,8 @@ export type VocabularyDifficulty =
   | 'ielts'
   | 'postgrad'
   | 'sat';
+/** 词汇数据和间隔进度的独立作用域。`all` 保留旧版本的全量学习记录。 */
+export type VocabularyScope = VocabularyDifficulty | 'all';
 export type VocabularyPartOfSpeech =
   | 'noun'
   | 'verb'
@@ -45,6 +47,8 @@ export interface VocabularyWord {
 /** The schedule state is stored by word id in the vocabulary repository. */
 export interface VocabularyProgress {
   wordId: string;
+  /** 旧快照没有该字段时按 `all` 读取；不同方向/难度不会共享进度。 */
+  scope?: VocabularyScope;
   dueAt: number;
   intervalDays: number;
   easeFactor: number;
@@ -59,12 +63,32 @@ export interface VocabularyProgress {
 export interface VocabularyReview {
   id: string;
   wordId: string;
+  /** 旧快照没有该字段时按 `all` 读取。 */
+  scope?: VocabularyScope;
   reviewedAt: number;
   direction: VocabularyReviewDirection;
   rating: VocabularyGrade;
   response: string;
   correct: boolean;
   durationMs?: number;
+}
+
+export interface VocabularySessionCardState {
+  wordId: string;
+  direction: VocabularyReviewDirection;
+  retry?: boolean;
+}
+
+export type VocabularySessionPhase = 'preview' | 'practice';
+
+/** 刷词页关闭时按 scope 保存队列和当前位置，答案反馈也可恢复。 */
+export interface VocabularySessionState {
+  cards: VocabularySessionCardState[];
+  index: number;
+  phase: VocabularySessionPhase;
+  revealed: boolean;
+  answerDraft: string;
+  sessionPoints: number;
 }
 
 export interface VocabularyDifficultyOption {
@@ -98,7 +122,7 @@ export interface VocabularySessionOptions {
   catalog: readonly VocabularyWord[];
   progressByWordId: Readonly<Record<string, VocabularyProgress>>;
   newWordsPerDay: number;
-  difficulty?: VocabularyDifficulty | 'all';
+  difficulty?: VocabularyScope;
   reviewLimit?: number;
   now?: number;
 }
@@ -112,6 +136,7 @@ export interface VocabularySession {
 export function createInitialVocabularyProgress(wordId: string, now = Date.now()): VocabularyProgress {
   return {
     wordId,
+    scope: 'all',
     state: 'new',
     dueAt: now,
     intervalDays: 0,
@@ -120,6 +145,26 @@ export function createInitialVocabularyProgress(wordId: string, now = Date.now()
     lapses: 0,
     streak: 0,
   };
+}
+
+/** 兼容旧记录并生成可用于 Map 的稳定键。 */
+export function vocabularyProgressScope(progress: Pick<VocabularyProgress, 'scope'>): VocabularyScope {
+  return progress.scope ?? 'all';
+}
+
+export function vocabularyProgressKey(scope: VocabularyScope, wordId: string): string {
+  return `${scope}:${wordId}`;
+}
+
+export function vocabularyProgressMatchesScope(progress: Pick<VocabularyProgress, 'scope'>, scope: VocabularyScope): boolean {
+  return vocabularyProgressScope(progress) === scope;
+}
+
+export function filterVocabularyProgressByScope(
+  progress: readonly VocabularyProgress[],
+  scope: VocabularyScope,
+): VocabularyProgress[] {
+  return progress.filter((item) => vocabularyProgressMatchesScope(item, scope));
 }
 
 export function isVocabularySpellingCorrect(response: string, expectedWord: string): boolean {
@@ -185,11 +230,11 @@ export function reviewVocabularyWord(
 
 export function filterVocabularyWords(
   catalog: readonly VocabularyWord[],
-  difficulty: VocabularyDifficulty | 'all' = 'all',
+  difficulty: VocabularyScope = 'all',
 ): VocabularyWord[] {
   if (difficulty === 'all') return [...catalog];
   if (isExamDifficulty(difficulty)) {
-    return catalog.filter((word) => word.examTags?.includes(difficulty) ?? inferExamTags(word.level).includes(difficulty));
+    return catalog.filter((word) => word.examTags?.includes(difficulty) ?? false);
   }
   return catalog.filter((word) => word.difficulty === difficulty);
 }
@@ -197,7 +242,7 @@ export function filterVocabularyWords(
 export function selectNewVocabularyWords(
   catalog: readonly VocabularyWord[],
   progressByWordId: Readonly<Record<string, VocabularyProgress>>,
-  difficulty: VocabularyDifficulty | 'all' = 'all',
+  difficulty: VocabularyScope = 'all',
   limit = Number.POSITIVE_INFINITY,
 ): VocabularyWord[] {
   return shuffleVocabularyWords(filterVocabularyWords(catalog, difficulty))
@@ -213,30 +258,31 @@ export interface VocabularyPlanSelection {
 export function selectVocabularyPlanWords(
   catalog: readonly VocabularyWord[],
   progressByWordId: Readonly<Record<string, VocabularyProgress>>,
-  difficulty: VocabularyDifficulty | 'all',
+  difficulty: VocabularyScope,
   target: number,
   previousTaskWordIds: readonly string[] = [],
   previousCompletedWordIds: readonly string[] = [],
 ): VocabularyPlanSelection {
   const catalogById = new Map(catalog.map((word) => [word.id, word]));
-  const completed = new Set(previousCompletedWordIds.filter((id) => catalogById.has(id)));
+  const eligibleIds = new Set(filterVocabularyWords(catalog, difficulty).map((word) => word.id));
+  const completed = new Set(previousCompletedWordIds.filter((id) => eligibleIds.has(id)));
 
   for (const id of previousTaskWordIds) {
     const progress = progressByWordId[id];
-    if (progress && progress.state !== 'new' && catalogById.has(id)) completed.add(id);
+    if (progress && progress.state !== 'new' && eligibleIds.has(id)) completed.add(id);
   }
 
   const pending = previousTaskWordIds.filter((id) => {
     const word = catalogById.get(id);
     const progress = progressByWordId[id];
     return word !== undefined
+      && eligibleIds.has(id)
       && !completed.has(id)
-      && (!progress || progress.state === 'new')
-      && filterVocabularyWords([word], difficulty).length > 0;
+      && (!progress || progress.state === 'new');
   });
   const reserved = new Set([...completed, ...pending]);
   const remaining = Math.max(0, toNonNegativeInteger(target) - completed.size - pending.length);
-  const availableCatalog = catalog.filter((word) => !reserved.has(word.id));
+  const availableCatalog = catalog.filter((word) => eligibleIds.has(word.id) && !reserved.has(word.id));
   const selected = selectNewVocabularyWords(availableCatalog, progressByWordId, difficulty, remaining);
 
   return {
@@ -248,7 +294,7 @@ export function selectVocabularyPlanWords(
 export function selectDueVocabularyWords(
   catalog: readonly VocabularyWord[],
   progressByWordId: Readonly<Record<string, VocabularyProgress>>,
-  difficulty: VocabularyDifficulty | 'all' = 'all',
+  difficulty: VocabularyScope = 'all',
   now = Date.now(),
   limit = Number.POSITIVE_INFINITY,
 ): VocabularyWord[] {
@@ -303,13 +349,6 @@ function shuffleVocabularyWords(words: VocabularyWord[]): VocabularyWord[] {
     [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
   }
   return shuffled;
-}
-
-function inferExamTags(level: VocabularyLevel): typeof EXAM_DIFFICULTIES[number][] {
-  if (level === 'A1' || level === 'A2') return ['cet4', 'ielts'];
-  if (level === 'B1') return ['cet4', 'cet6', 'ielts'];
-  if (level === 'B2') return ['cet6', 'toefl', 'ielts', 'postgrad'];
-  return ['cet6', 'toefl', 'ielts', 'postgrad', 'sat'];
 }
 
 function normalizeEase(value: number): number {

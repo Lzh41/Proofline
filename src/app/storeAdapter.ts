@@ -20,7 +20,7 @@ import type {
   ThoughtEvent,
   FinishInterviewInput,
 } from '../types';
-import type { VocabularyGrade, VocabularyProgress, VocabularyReview, VocabularyReviewDirection, VocabularyWord } from '../lib/vocabulary';
+import type { VocabularyGrade, VocabularyProgress, VocabularyReview, VocabularyReviewDirection, VocabularyScope, VocabularySessionState, VocabularyWord } from '../lib/vocabulary';
 import type {
   AiCoachIntent,
   InterviewCoachIntent,
@@ -38,6 +38,8 @@ export interface AppSettingsView {
   dailyTargetProblems?: number;
   dailyTargetInterviewQuestions?: number;
   dailyTargetVocabularyWords?: number;
+  lastVocabularyDifficulty?: VocabularyScope;
+  vocabularySessions?: Partial<Record<VocabularyScope, VocabularySessionState>>;
   interviewCatalogVersion?: number;
   lastSolveProblemId?: string;
   lastSolveProblemByMode?: Partial<Record<'function' | 'stdin', string>>;
@@ -105,7 +107,11 @@ export interface AppStoreView {
   deleteKnowledgeNote?: (id: string) => Promise<void> | void;
   savePlan?: (plan: Partial<DailyPlan>) => Promise<void> | void;
   generateDailyPlan?: (options?: Record<string, unknown>) => Promise<DailyPlan> | DailyPlan;
-  recordVocabularyReview?: (input: { wordId: string; direction: VocabularyReviewDirection; rating: VocabularyGrade; response: string; correct: boolean; durationMs?: number }) => Promise<void> | void;
+  markVocabularyPreviewed?: (wordId: string, date?: string, scope?: VocabularyScope) => Promise<void> | void;
+  markVocabularyUnfamiliar?: (wordId: string, date?: string, scope?: VocabularyScope) => Promise<void> | void;
+  unmarkVocabularyUnfamiliar?: (wordId: string, date?: string, scope?: VocabularyScope) => Promise<void> | void;
+  saveVocabularySession?: (scope: VocabularyScope, session: VocabularySessionState) => Promise<void> | void;
+  recordVocabularyReview?: (input: { wordId: string; scope?: VocabularyScope; direction: VocabularyReviewDirection; rating: VocabularyGrade; response: string; correct: boolean; durationMs?: number }) => Promise<void> | void;
   updateSettings?: (patch: Partial<AppSettingsView>) => Promise<void> | void;
   restoreInterviewCatalog?: () => Promise<number | void> | number | void;
   openPlatform?: (source: PlatformSource) => Promise<void> | void;

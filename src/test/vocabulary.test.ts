@@ -1,18 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { VOCABULARY_CATALOG, VOCABULARY_CATALOG_FULL } from '../data/vocabularyCatalog';
 import { PUBLIC_VOCABULARY_RECORDS, PUBLIC_VOCABULARY_STATS } from '../data/vocabularyPublicCatalog';
+import { ECDICT_EXAM_RECORDS, ECDICT_EXAM_SOURCE } from '../data/vocabularyExamRecords';
 import {
   buildVocabularySession,
   createInitialVocabularyProgress,
+  filterVocabularyProgressByScope,
   filterVocabularyWords,
   isVocabularySpellingCorrect,
   reviewVocabularyWord,
   selectVocabularyPlanWords,
+  type VocabularyDifficulty,
+  vocabularyProgressKey,
+  vocabularyProgressScope,
   VOCABULARY_BASE_INTERVALS,
   VOCABULARY_RETRY_MINUTES,
 } from '../lib/vocabulary';
 
 describe('英语词库', () => {
+  it('词汇进度作用域兼容旧快照并保持方向隔离', () => {
+    const legacy = createInitialVocabularyProgress('achieve', 100);
+    const cet6 = { ...legacy, scope: 'cet6' as const };
+    expect(vocabularyProgressScope(legacy)).toBe('all');
+    expect(vocabularyProgressScope(cet6)).toBe('cet6');
+    expect(vocabularyProgressKey('cet6', 'achieve')).toBe('cet6:achieve');
+    expect(filterVocabularyProgressByScope([legacy, cet6], 'cet6')).toEqual([cet6]);
+    expect(filterVocabularyProgressByScope([legacy, cet6], 'all')).toEqual([legacy]);
+  });
+
   it('包含 100 个内容完整、按 A1-C1 均衡分布且 ID 唯一的词条', () => {
     const ids = VOCABULARY_CATALOG.map((word) => word.id);
     expect(VOCABULARY_CATALOG).toHaveLength(100);
@@ -53,11 +68,57 @@ describe('英语词库', () => {
     }
   });
 
+  it('考试方向只使用明确来源标签，不从 CEFR 难度推断归属', () => {
+    const untaggedAdvanced = { ...VOCABULARY_CATALOG[0], level: 'C1' as const, examTags: undefined };
+    expect(filterVocabularyWords([untaggedAdvanced], 'sat')).toEqual([]);
+    expect(filterVocabularyWords([untaggedAdvanced], 'cet4')).toEqual([]);
+
+    for (const record of PUBLIC_VOCABULARY_RECORDS) {
+      const word = VOCABULARY_CATALOG_FULL.find((item) => item.word === record.word);
+      if (!word || record.examTags?.length || record.sources.includes('nawl') || record.sources.includes('ngsl')) continue;
+      for (const exam of ['cet4', 'cet6', 'toefl', 'ielts', 'postgrad', 'sat'] as const) {
+        expect(filterVocabularyWords([word], exam)).toEqual([]);
+      }
+    }
+  });
+
+  it('按 ECDICT 明确考试标签扩展词库，并为每个收录词提供可辨认的 IPA', () => {
+    expect(VOCABULARY_CATALOG_FULL).toHaveLength(11158);
+    expect(ECDICT_EXAM_SOURCE.recordCount).toBe(10515);
+    expect(ECDICT_EXAM_SOURCE.directionCounts).toMatchObject({
+      cet4: 3834,
+      cet6: 5385,
+      toefl: 6861,
+      ielts: 5000,
+      postgrad: 4793,
+    });
+    expect(ECDICT_EXAM_RECORDS.every((record) => (
+      record.meaning && /[\u3400-\u9fff]/u.test(record.meaning)
+      && record.definitionEn
+      && /^\/[^/\r\n]+\/(?:,\s*\/[^/\r\n]+\/)*$/u.test(record.phonetic)
+      && record.phonetic.replace(/[\/ ,]/g, '').toLocaleLowerCase('en-US') !== record.word
+    ))).toBe(true);
+
+    for (const [exam, count] of Object.entries(ECDICT_EXAM_SOURCE.directionCounts)) {
+      expect(filterVocabularyWords(VOCABULARY_CATALOG_FULL, exam as VocabularyDifficulty).length).toBeGreaterThanOrEqual(count);
+    }
+    expect(Object.fromEntries((['cet4', 'cet6', 'toefl', 'ielts', 'postgrad', 'sat'] as const).map((exam) => [
+      exam,
+      filterVocabularyWords(VOCABULARY_CATALOG_FULL, exam).length,
+    ]))).toEqual({ cet4: 3835, cet6: 5386, toefl: 7240, ielts: 5499, postgrad: 5223, sat: 3780 });
+  });
+
   it('公开词库的音标不为空且不会直接重复单词答案', () => {
     expect(PUBLIC_VOCABULARY_STATS.withPhonetic).toBe(3791);
     expect(PUBLIC_VOCABULARY_RECORDS.every((word) => word.sources.includes('ipaDict'))).toBe(true);
     expect(PUBLIC_VOCABULARY_RECORDS.every((word) => word.phonetic.startsWith('/') && word.phonetic.endsWith('/'))).toBe(true);
-    expect(PUBLIC_VOCABULARY_RECORDS.some((word) => word.word.toLocaleLowerCase('en-US') === word.phonetic.toLocaleLowerCase('en-US'))).toBe(false);
+    expect(VOCABULARY_CATALOG_FULL.find((word) => word.word === 'widespread')?.phonetic).toBe('/ˌwaɪdˈsprɛd/');
+    expect(PUBLIC_VOCABULARY_RECORDS.some((word) => word.word.toLocaleLowerCase('en-US') === word.phonetic.replace(/[\/ ,]/g, '').toLocaleLowerCase('en-US'))).toBe(false);
+    expect(VOCABULARY_CATALOG_FULL.every((word) => (
+      word.phonetic.trim().length > 0
+      && /^\/[^/\r\n]+\/(?:,\s*\/[^/\r\n]+\/)*$/u.test(word.phonetic)
+      && word.phonetic.replace(/[\/ ,]/g, '').toLocaleLowerCase('en-US') !== word.word.toLocaleLowerCase('en-US')
+    ))).toBe(true);
   });
 
   it('重新排程时保留已完成和待学词，并在排除预留词后补足每日目标', () => {
@@ -79,6 +140,23 @@ describe('英语词库', () => {
     expect(selection.taskWordIds).toHaveLength(5);
     expect(selection.taskWordIds).toContain(pending.id);
     expect(new Set(selection.taskWordIds).size).toBe(selection.taskWordIds.length);
+  });
+
+  it('重新生成计划时不会把其他难度已完成的词带进当前方向', () => {
+    const catalog = VOCABULARY_CATALOG;
+    const advanced = catalog.find((word) => word.difficulty === 'advanced')!;
+    const selection = selectVocabularyPlanWords(
+      catalog,
+      { [advanced.id]: { ...createInitialVocabularyProgress(advanced.id), state: 'learning' } },
+      'beginner',
+      1,
+      [advanced.id],
+      [advanced.id],
+    );
+
+    expect(selection.taskWordIds).not.toContain(advanced.id);
+    expect(selection.completedWordIds).not.toContain(advanced.id);
+    expect(selection.taskWordIds).toHaveLength(1);
   });
 });
 

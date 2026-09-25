@@ -1,16 +1,7 @@
-import type { VocabularyDifficulty, VocabularyLevel, VocabularyPartOfSpeech, VocabularyWord } from '../lib/vocabulary';
+import type { VocabularyDifficulty, VocabularyPartOfSpeech, VocabularyWord } from '../lib/vocabulary';
 import { PUBLIC_VOCABULARY_RECORDS, type PublicVocabularyRecord } from './vocabularyPublicCatalog';
 
 type ExamTag = Exclude<VocabularyDifficulty, 'beginner' | 'intermediate' | 'advanced'>;
-
-const LEVEL_EXAM_TAGS: Record<VocabularyLevel, ExamTag[]> = {
-  A1: ['cet4', 'ielts'],
-  A2: ['cet4', 'ielts'],
-  B1: ['cet4', 'cet6', 'ielts'],
-  B2: ['cet6', 'toefl', 'ielts', 'postgrad'],
-  C1: ['cet6', 'toefl', 'ielts', 'postgrad', 'sat'],
-  C2: ['cet6', 'toefl', 'ielts', 'postgrad', 'sat'],
-};
 
 const SOURCE_LABELS: Record<string, string> = {
   ngsl: 'NGSL 1.2',
@@ -26,9 +17,15 @@ function sourceLabel(record: PublicVocabularyRecord): string {
 }
 
 function examTagsFor(record: PublicVocabularyRecord): ExamTag[] {
-  return record.examTags && record.examTags.length > 0
-    ? [...record.examTags]
-    : [...LEVEL_EXAM_TAGS[record.level]];
+  const tags = new Set(record.examTags ?? []);
+  if (record.sources.includes('nawl')) {
+    tags.add('toefl');
+    tags.add('ielts');
+    tags.add('postgrad');
+    tags.add('sat');
+  }
+  if (record.sources.includes('ngsl')) tags.add('sat');
+  return [...tags];
 }
 
 function fallbackDefinition(record: PublicVocabularyRecord): string {
@@ -62,7 +59,7 @@ export function publicRecordToVocabularyWord(record: PublicVocabularyRecord): Vo
     family: [],
     collocations: [],
     mnemonic: `自生成回忆提示：用“${record.word}”造一个与你今天经历有关的短句，再遮住释义主动回忆。`,
-    source: `公开词库：${sourceLabel(record)}（考试标签为学习筛选，不代表官方大纲）`,
+    source: `公开词库：${sourceLabel(record)}（考试方向按明确标签或学术/高频语料筛选，不代表官方大纲）`,
   };
 }
 

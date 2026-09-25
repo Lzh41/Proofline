@@ -80,6 +80,54 @@ describe('数据快照规范化', () => {
     });
   });
 
+  it('为旧词汇记录补全全量作用域，并清理非法作用域', () => {
+    const snapshot = normalizeSnapshot({
+      schemaVersion: 2,
+      vocabularyProgress: [{ wordId: 'legacy', dueAt: 0, intervalDays: 0, easeFactor: 2.5, repetitions: 0, lapses: 0, state: 'new', streak: 0 }],
+      vocabularyReviews: [{ id: 'review', wordId: 'legacy', reviewedAt: 0, direction: 'meaning-to-word', rating: 'again', response: '', correct: false, scope: 'invalid' }],
+      settings: {
+        vocabularySessions: {
+          cet4: { phase: 'preview', cards: [{ wordId: 'legacy', direction: 'meaning-to-word', retry: true }], index: 0, revealed: true, answerDraft: 'wrong', sessionPoints: 2 },
+          invalid: { cards: [], index: 0 },
+        },
+      },
+    });
+
+    expect(snapshot.vocabularyProgress[0].scope).toBe('all');
+    expect(snapshot.vocabularyReviews[0].scope).toBe('all');
+    expect(snapshot.settings.vocabularySessions).toEqual({
+      cet4: { phase: 'preview', cards: [{ wordId: 'legacy', direction: 'meaning-to-word', retry: true }], index: 0, revealed: true, answerDraft: 'wrong', sessionPoints: 2 },
+    });
+  });
+
+  it('旧词汇会话没有阶段字段时默认恢复到刷词阶段', () => {
+    const snapshot = normalizeSnapshot({
+      schemaVersion: 2,
+      settings: {
+        vocabularySessions: {
+          all: {
+            cards: [{ wordId: 'legacy', direction: 'meaning-to-word' }],
+            index: 0,
+            revealed: false,
+            answerDraft: '',
+            sessionPoints: 0,
+          },
+        },
+      },
+    });
+
+    expect(snapshot.settings.vocabularySessions).toEqual({
+      all: {
+        phase: 'practice',
+        cards: [{ wordId: 'legacy', direction: 'meaning-to-word' }],
+        index: 0,
+        revealed: false,
+        answerDraft: '',
+        sessionPoints: 0,
+      },
+    });
+  });
+
   it.each([null, 1, 'snapshot', [], true])('拒绝非快照对象：%j', (value) => {
     expect(() => normalizeSnapshot(value)).toThrow(/快照.*对象/);
   });

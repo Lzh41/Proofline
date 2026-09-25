@@ -16,12 +16,17 @@ const PLATFORM_SOURCES_MIGRATION: &str = include_str!("../migrations/003_platfor
 const VOCABULARY_MIGRATION: &str = include_str!("../migrations/004_vocabulary.sql");
 const VOCABULARY_DIRECTIONS_MIGRATION: &str =
     include_str!("../migrations/005_vocabulary_directions.sql");
+const VOCABULARY_SCOPES_MIGRATION: &str = include_str!("../migrations/006_vocabulary_scopes.sql");
+const VOCABULARY_EXTRA_ONLY_MIGRATION: &str =
+    include_str!("../migrations/007_vocabulary_extra_only.sql");
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "initial", INITIAL_MIGRATION),
     (2, "interview_workbench", INTERVIEW_WORKBENCH_MIGRATION),
     (3, "platform_sources", PLATFORM_SOURCES_MIGRATION),
     (4, "vocabulary", VOCABULARY_MIGRATION),
     (5, "vocabulary_directions", VOCABULARY_DIRECTIONS_MIGRATION),
+    (6, "vocabulary_scopes", VOCABULARY_SCOPES_MIGRATION),
+    (7, "vocabulary_extra_only", VOCABULARY_EXTRA_ONLY_MIGRATION),
 ];
 
 pub fn open_database(path: &Path) -> Result<Connection, String> {
@@ -66,7 +71,7 @@ pub fn apply_migrations(path: &Path) -> Result<(), String> {
         }
         // Migration 3 rebuilds tables whose source CHECK constraint predates Luogu.
         // SQLite only allows toggling foreign-key enforcement outside a transaction.
-        if version == 3 || version == 5 {
+        if version == 3 || version == 5 || version == 6 {
             connection
                 .execute_batch("PRAGMA foreign_keys = OFF;")
                 .map_err(|error| error.to_string())?;
@@ -84,7 +89,7 @@ pub fn apply_migrations(path: &Path) -> Result<(), String> {
             )
             .map_err(|error| error.to_string())?;
         transaction.commit().map_err(|error| error.to_string())?;
-        if version == 3 || version == 5 {
+        if version == 3 || version == 5 || version == 6 {
             connection
                 .execute_batch("PRAGMA foreign_keys = ON;")
                 .map_err(|error| error.to_string())?;
@@ -455,10 +460,11 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
         }
         transaction
             .execute(
-                "INSERT INTO vocabulary_progress(word_id, status, repetitions, interval_days,
+                "INSERT INTO vocabulary_progress(scope, word_id, status, repetitions, interval_days,
                  ease_factor, lapses, streak, last_rating, due_at, last_reviewed_at)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
+                    vocabulary_scope(progress),
                     word_id,
                     value_or(progress, "state", "new"),
                     integer_value(progress, "repetitions", 0),
@@ -485,8 +491,8 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
         transaction
             .execute(
                 "INSERT INTO vocabulary_reviews(id, word_id, reviewed_at, direction, rating,
-                 response, correct, duration_ms)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 response, correct, duration_ms, scope)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     required_string(review, "id")?,
                     word_id,
@@ -496,6 +502,7 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
                     value_or(review, "response", ""),
                     bool_integer(review, "correct"),
                     optional_integer(review, "durationMs"),
+                    vocabulary_scope(review),
                 ],
             )
             .map_err(|error| error.to_string())?;
@@ -504,20 +511,7 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
     for plan in array_field(snapshot, "dailyPlans") {
         let id = required_string(plan, "id")?;
         let target_problems = integer_value(plan, "targetProblems", 3);
-        let vocabulary_difficulty = optional_string(plan, "vocabularyDifficulty").filter(|value| {
-            matches!(
-                value.as_str(),
-                "beginner"
-                    | "intermediate"
-                    | "advanced"
-                    | "cet4"
-                    | "cet6"
-                    | "toefl"
-                    | "ielts"
-                    | "postgrad"
-                    | "sat"
-            )
-        });
+        let vocabulary_difficulty = vocabulary_scope(plan);
         transaction
             .execute(
                 "INSERT INTO daily_plans(id, plan_date, target_minutes, target_problems,
@@ -525,8 +519,10 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
                  difficulty_ratio_json, task_problem_ids_json, review_mistake_ids_json,
                  completed_problem_ids_json, target_vocabulary_words,
                  task_vocabulary_word_ids_json, completed_vocabulary_word_ids_json,
+                 vocabulary_previewed_word_ids_json, vocabulary_unfamiliar_word_ids_json,
+                 vocabulary_extra_word_ids_json, vocabulary_extra_only_word_ids_json,
                  vocabulary_difficulty, created_at, updated_at)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
                 params![
                     id,
                     value_or(plan, "date", "1970-01-01"),
@@ -542,6 +538,10 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
                     integer_value(plan, "targetVocabularyWords", 10),
                     json_field(plan, "taskVocabularyWordIds", Value::Array(vec![])),
                     json_field(plan, "completedVocabularyWordIds", Value::Array(vec![])),
+                    json_field(plan, "vocabularyPreviewedWordIds", Value::Array(vec![])),
+                    json_field(plan, "vocabularyUnfamiliarWordIds", Value::Array(vec![])),
+                    json_field(plan, "vocabularyExtraWordIds", Value::Array(vec![])),
+                    json_field(plan, "vocabularyExtraOnlyWordIds", Value::Array(vec![])),
                     vocabulary_difficulty,
                     integer_value(plan, "createdAt", now_millis()),
                     integer_value(plan, "updatedAt", now_millis()),
@@ -793,6 +793,29 @@ fn value_or(value: &Value, key: &str, default: &str) -> String {
     string_value(value, key).unwrap_or_else(|| default.to_string())
 }
 
+fn vocabulary_scope(value: &Value) -> String {
+    match string_value(value, "scope").or_else(|| string_value(value, "vocabularyDifficulty")) {
+        Some(scope)
+            if matches!(
+                scope.as_str(),
+                "all"
+                    | "beginner"
+                    | "intermediate"
+                    | "advanced"
+                    | "cet4"
+                    | "cet6"
+                    | "toefl"
+                    | "ielts"
+                    | "postgrad"
+                    | "sat"
+            ) =>
+        {
+            scope
+        }
+        _ => "all".to_string(),
+    }
+}
+
 fn integer_value(value: &Value, key: &str, default: i64) -> i64 {
     value.get(key).and_then(Value::as_i64).unwrap_or(default)
 }
@@ -873,6 +896,43 @@ pub fn now_millis() -> i64 {
 mod tests {
     use super::*;
 
+    fn apply_migrations_through(path: &Path, max_version: i64) {
+        let mut connection = open_database(path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS schema_migrations (
+                   version INTEGER PRIMARY KEY,
+                   name TEXT NOT NULL,
+                   applied_at INTEGER NOT NULL
+                 );",
+            )
+            .unwrap();
+        for &(version, name, migration) in MIGRATIONS
+            .iter()
+            .filter(|(version, _, _)| *version <= max_version)
+        {
+            if version == 3 || version == 5 {
+                connection
+                    .execute_batch("PRAGMA foreign_keys = OFF;")
+                    .unwrap();
+            }
+            let transaction = connection.transaction().unwrap();
+            transaction.execute_batch(migration).unwrap();
+            transaction
+                .execute(
+                    "INSERT INTO schema_migrations(version, name, applied_at) VALUES(?1, ?2, 0)",
+                    params![version, name],
+                )
+                .unwrap();
+            transaction.commit().unwrap();
+            if version == 3 || version == 5 {
+                connection
+                    .execute_batch("PRAGMA foreign_keys = ON;")
+                    .unwrap();
+            }
+        }
+    }
+
     fn migration_versions(path: &Path) -> Vec<i64> {
         let connection = open_database(path).unwrap();
         let mut statement = connection
@@ -950,7 +1010,7 @@ mod tests {
 
         apply_migrations(&path).unwrap();
 
-        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5]);
+        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5, 6, 7]);
         assert!(table_columns(&path, "problems").contains(&"kind".to_string()));
         assert!(table_columns(&path, "problems").contains(&"interview_json".to_string()));
         assert!(table_columns(&path, "attempts").contains(&"mode".to_string()));
@@ -1066,7 +1126,7 @@ mod tests {
         apply_migrations(&path).unwrap();
         apply_migrations(&path).unwrap();
 
-        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5]);
+        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5, 6, 7]);
         assert_eq!(
             table_columns(&path, "problems")
                 .iter()
@@ -1105,7 +1165,7 @@ mod tests {
 
         apply_migrations(&path).unwrap();
 
-        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5]);
+        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5, 6, 7]);
         assert!(
             table_columns(&path, "daily_plans").contains(&"target_vocabulary_words".to_string())
         );
@@ -1118,6 +1178,70 @@ mod tests {
             )
             .unwrap();
         assert_eq!(table_count, 3);
+    }
+
+    #[test]
+    fn vocabulary_scope_migration_preserves_legacy_plan_tasks_and_all_scope() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("xiti.sqlite");
+        apply_migrations_through(&path, 5);
+        {
+            let connection = open_database(&path).unwrap();
+            connection
+                .execute(
+                    "INSERT INTO problems(id, source, title, created_at, updated_at)
+                     VALUES('p1', 'manual', '旧题', 1, 1)",
+                    [],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO daily_plans(id, plan_date, created_at, updated_at, vocabulary_difficulty)
+                     VALUES('legacy-plan', '2026-09-24', 1, 1, NULL)",
+                    [],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO daily_plan_tasks(plan_id, problem_id, task_type, sort_order)
+                     VALUES('legacy-plan', 'p1', 'new', 0)",
+                    [],
+                )
+                .unwrap();
+        }
+
+        apply_migrations(&path).unwrap();
+
+        let connection = open_database(&path).unwrap();
+        let scope: String = connection
+            .query_row(
+                "SELECT vocabulary_difficulty FROM daily_plans WHERE id = 'legacy-plan'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(scope, "all");
+        let preserved_tasks: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM daily_plan_tasks WHERE plan_id = 'legacy-plan' AND problem_id = 'p1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(preserved_tasks, 1);
+        connection
+            .execute(
+                "INSERT INTO daily_plans(id, plan_date, created_at, updated_at, vocabulary_difficulty)
+                 VALUES('cet4-plan', '2026-09-24', 2, 2, 'cet4')",
+                [],
+            )
+            .unwrap();
+        let foreign_key_errors: i64 = connection
+            .query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(foreign_key_errors, 0);
     }
 
     #[test]
@@ -1396,6 +1520,10 @@ mod tests {
                 "id": "plan1", "date": "2026-09-24", "targetVocabularyWords": 8,
                 "taskVocabularyWordIds": ["v1"], "completedVocabularyWordIds": [],
                 "vocabularyDifficulty": "all", "createdAt": 1, "updatedAt": 2
+            }, {
+                "id": "plan2", "date": "2026-09-24", "targetVocabularyWords": 5,
+                "taskVocabularyWordIds": ["v1"], "completedVocabularyWordIds": [],
+                "vocabularyDifficulty": "cet4", "createdAt": 1, "updatedAt": 2
             }], "aiGenerations": [], "settings": {},
             "vocabularyWords": [{
                 "id": "v1", "word": "retain", "level": "B2", "difficulty": "intermediate",
@@ -1408,11 +1536,19 @@ mod tests {
                 "wordId": "v1", "state": "review", "repetitions": 2,
                 "intervalDays": 3, "easeFactor": 2.5, "lapses": 0, "streak": 2,
                 "lastRating": "good", "dueAt": 86400000, "lastReviewedAt": 1
+            }, {
+                "wordId": "v1", "scope": "cet4", "state": "learning", "repetitions": 1,
+                "intervalDays": 1, "easeFactor": 2.3, "lapses": 0, "streak": 1,
+                "lastRating": "good", "dueAt": 86400000, "lastReviewedAt": 2
             }],
             "vocabularyReviews": [{
                 "id": "vr1", "wordId": "v1", "reviewedAt": 1,
                 "direction": "word-to-meaning", "rating": "good", "response": "保留",
                 "correct": true, "durationMs": 2500
+            }, {
+                "id": "vr2", "wordId": "v1", "scope": "cet4", "reviewedAt": 2,
+                "direction": "meaning-to-word", "rating": "again", "response": "",
+                "correct": false, "durationMs": 3000
             }]
         });
         save_snapshot(&path, &snapshot).unwrap();
@@ -1432,23 +1568,39 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(vocabulary_rows, 1);
+        assert_eq!(vocabulary_rows, 2);
         let vocabulary_state: String = connection
             .query_row(
-                "SELECT status FROM vocabulary_progress WHERE word_id = 'v1'",
+                "SELECT status FROM vocabulary_progress WHERE word_id = 'v1' AND scope = 'all'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
         assert_eq!(vocabulary_state, "review");
-        let vocabulary_difficulty: Option<String> = connection
+        let vocabulary_difficulty: String = connection
             .query_row(
                 "SELECT vocabulary_difficulty FROM daily_plans WHERE id = 'plan1'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(vocabulary_difficulty, None);
+        assert_eq!(vocabulary_difficulty, "all");
+        let scoped_plan_count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM daily_plans WHERE plan_date = '2026-09-24'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(scoped_plan_count, 2);
+        let scoped_progress_count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM vocabulary_progress WHERE word_id = 'v1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(scoped_progress_count, 2);
         let fts_matches: i64 = connection
             .query_row(
                 "SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH '哈希表'",

@@ -71,6 +71,7 @@ describe('数据快照规范化', () => {
 
     expect(snapshot.schemaVersion).toBe(2);
     expect(snapshot.problems[0].kind).toBe('algorithm');
+    expect(snapshot.problems[0].algorithmMode).toBe('function');
     expect(snapshot.attempts[0].mode).toBe('code');
     expect(snapshot.dailyPlans[0]).toMatchObject({
       targetProblems: 4,

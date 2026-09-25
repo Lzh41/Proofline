@@ -601,6 +601,13 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
   //    editor.updateOptions()，触发 Monaco 重新配置，造成明显卡顿。──
   const mergedOptions = useMemo<EditorProps['options']>(() => ({
     ...props.options,
+    // 题库模板来自多个平台，可能混用 Tab、2 空格和 4 空格。
+    // 关闭自动推断后，回车和 Tab 始终按统一的 4 空格对齐，避免
+    // 切换题目或语言后编辑器出现缩进漂移。
+    detectIndentation: false,
+    indentSize: 4,
+    tabSize: 4,
+    insertSpaces: true,
     // ── 补全/建议：仅显示当前文档中出现的词 ──
     quickSuggestions: { other: true, comments: false, strings: false },
     suggestOnTriggerCharacters: true,

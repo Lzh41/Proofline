@@ -53,15 +53,26 @@ import { appRepository, READ_ONLY_REPOSITORY_MESSAGE } from '../lib/repository';
 import { applyReviewResult, initialReviewSchedule } from '../lib/review';
 import { runCode } from '../lib/runCode';
 import { runProblemSample } from '../lib/problemRunner';
-import { calculateStatistics, isSuccessfulAttempt } from '../lib/statistics';
+import { calculateStatistics, dateKey, isSuccessfulAttempt } from '../lib/statistics';
 import { readCachedTheme } from '../app/theme';
+import {
+  createInitialVocabularyProgress,
+  isVocabularyDifficulty,
+  isVocabularySpellingCorrect,
+  reviewVocabularyWord,
+  selectVocabularyPlanWords,
+  type VocabularyDifficulty,
+  type VocabularyGrade,
+  type VocabularyReviewDirection,
+  type VocabularyWord,
+} from '../lib/vocabulary';
 
 let browserAiKey = '';
 let browserAiController: AbortController | null = null;
 let persistenceQueue: Promise<void> = Promise.resolve();
 let initializationPromise: Promise<void> | null = null;
 
-const AI_REQUEST_TIMEOUT_MS = 300_000;
+const AI_REQUEST_TIMEOUT_MS = 600_000;
 const AI_PROMPT_MAX_BYTES = 96 * 1024;
 const AI_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -120,6 +131,7 @@ interface AppStore extends AppDataSnapshot {
   addThoughtEvent: (input: Partial<ThoughtEvent>) => Promise<ThoughtEvent>;
   addMistake: (input: Partial<Mistake>) => Promise<Mistake>;
   completeReview: (mistakeId: string, success: boolean) => Promise<void>;
+  recordVocabularyReview: (input: { wordId: string; direction: VocabularyReviewDirection; rating: VocabularyGrade; response: string; correct: boolean; durationMs?: number }) => Promise<void>;
   addKnowledgeNote: (input: Partial<KnowledgeNote>) => Promise<KnowledgeNote>;
   createKnowledgeNote: (input: Partial<KnowledgeNote>) => Promise<KnowledgeNote>;
   updateKnowledgeNote: (id: string, patch: Partial<KnowledgeNote>) => Promise<void>;
@@ -171,6 +183,9 @@ function snapshotFrom(state: AppStore): AppDataSnapshot {
     knowledgeNotes: state.knowledgeNotes,
     codeTemplates: state.codeTemplates,
     dailyPlans: state.dailyPlans,
+    vocabularyWords: state.vocabularyWords,
+    vocabularyProgress: state.vocabularyProgress,
+    vocabularyReviews: state.vocabularyReviews,
     aiGenerations: state.aiGenerations,
     settings: state.settings,
     updatedAt: Date.now(),
@@ -235,6 +250,7 @@ function nowProblem(input: Partial<Problem>): Problem {
   return {
     id: input.id ?? createId('problem'),
     kind: input.kind ?? 'algorithm',
+    algorithmMode: input.algorithmMode ?? 'function',
     title: input.title?.trim() || '未命名题目',
     source: input.source ?? 'manual',
     sourceUrl: input.sourceUrl,
@@ -261,7 +277,7 @@ function nowProblem(input: Partial<Problem>): Problem {
 }
 
 function isPlatformSource(source: Problem['source']): source is PlatformSource {
-  return source === 'leetcode-cn' || source === 'leetcode' || source === 'nowcoder';
+  return source === 'leetcode-cn' || source === 'leetcode' || source === 'nowcoder' || source === 'luogu';
 }
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -316,7 +332,7 @@ function mergeRefreshedProblem(existing: Problem, incoming: Partial<Problem>, up
   return merged;
 }
 
-function problemFromBatchItem(source: PlatformSource, item: PlatformBatchFetchItem): Problem | null {
+function problemFromBatchItem(source: PlatformSource, item: PlatformBatchFetchItem, algorithmMode: Problem['algorithmMode'] = 'function'): Problem | null {
   if (!item.sourceUrl || (item.status !== 'fetched' && item.status !== 'paid-only')) return null;
   const inferred = inferProblemFromUrl(source, item.sourceUrl);
   const metadata = item.metadata ?? {};
@@ -325,6 +341,7 @@ function problemFromBatchItem(source: PlatformSource, item: PlatformBatchFetchIt
     ...metadata,
     id: inferred.id,
     kind: 'algorithm',
+    algorithmMode,
     source,
     sourceUrl: item.sourceUrl,
     externalId: metadata.externalId ?? item.requestedId,
@@ -347,6 +364,7 @@ function examplesEqual(left: Problem['examples'], right: Problem['examples']): b
 }
 
 function platformTemplateForLanguage(problem: Problem, language: string): string {
+  if (problem.algorithmMode === 'stdin') return '';
   const normalized = language.trim().toLowerCase().replace(/\s+/g, '');
   const aliases = normalized === 'cpp' || normalized === 'c++' || normalized === 'cpp17' || normalized === 'c++17'
     ? new Set(['cpp', 'c++', 'cpp17', 'c++17'])
@@ -742,6 +760,43 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({ mistakes: get().mistakes.map((item) => item.id === mistakeId ? applyReviewResult(item, success) : item) });
       await saveState(get, set);
     },
+    recordVocabularyReview: async (input) => {
+      await waitForInitialization();
+      const state = get();
+      const vocabularyWord = state.vocabularyWords.find((word) => word.id === input.wordId);
+      if (!vocabularyWord) throw new Error('词库中找不到这个单词');
+      const now = Date.now();
+      const spellingMatches = input.direction !== 'meaning-to-word'
+        || isVocabularySpellingCorrect(input.response, vocabularyWord.word);
+      const rating = spellingMatches ? input.rating : 'again';
+      const previous = state.vocabularyProgress.find((item) => item.wordId === input.wordId)
+        ?? createInitialVocabularyProgress(input.wordId, now);
+      const progress = reviewVocabularyWord(previous, rating, now);
+      const review = {
+        id: createId('vocab-review'),
+        wordId: input.wordId,
+        reviewedAt: now,
+        direction: input.direction,
+        rating,
+        response: input.response.trim(),
+        correct: input.correct && spellingMatches && rating !== 'again',
+        durationMs: input.durationMs,
+      };
+      const wasNew = !state.vocabularyProgress.some((item) => item.wordId === input.wordId)
+        || previous.state === 'new';
+      const date = dateKey(now);
+      const dailyPlans = state.dailyPlans.map((plan) => plan.date === date
+        && wasNew
+        && plan.taskVocabularyWordIds.includes(input.wordId)
+        ? { ...plan, completedVocabularyWordIds: uniqueStrings([...plan.completedVocabularyWordIds, input.wordId]), updatedAt: now }
+        : plan);
+      set({
+        vocabularyProgress: [...state.vocabularyProgress.filter((item) => item.wordId !== input.wordId), progress],
+        vocabularyReviews: [review, ...state.vocabularyReviews],
+        dailyPlans,
+      });
+      await saveState(get, set);
+    },
     addKnowledgeNote: async (input) => {
       await waitForInitialization();
       const now = Date.now();
@@ -774,8 +829,37 @@ export const useAppStore = create<AppStore>((set, get) => {
         usesLegacyTarget ? 0 : input.targetInterviewQuestions ?? get().settings.dailyTargetInterviewQuestions,
         '面试题目标',
       );
+      const date = input.date ?? dateKey(now);
+      const existingPlan = get().dailyPlans.find((item) => item.date === date);
+      const targetVocabularyWords = planTarget(
+        input.targetVocabularyWords ?? existingPlan?.targetVocabularyWords ?? get().settings.dailyTargetVocabularyWords,
+        '新词目标',
+      );
+      if (targetVocabularyWords > 100) throw new TypeError('新词目标不能超过 100');
+      const requestedDifficulty = input.vocabularyDifficulty;
+      const vocabularyDifficulty: VocabularyDifficulty | 'all' = isVocabularyDifficulty(requestedDifficulty) || requestedDifficulty === 'all'
+        ? requestedDifficulty as VocabularyDifficulty | 'all'
+        : existingPlan?.vocabularyDifficulty ?? 'all';
       const targetProblems = targetAlgorithmProblems + targetInterviewQuestions;
-      const plan: DailyPlan = { id: input.id ?? createId('plan'), date: input.date ?? new Date().toISOString().slice(0, 10), targetMinutes: input.targetMinutes ?? get().settings.dailyTargetMinutes, targetProblems, targetAlgorithmProblems, targetInterviewQuestions, taskProblemIds: uniqueStrings(input.taskProblemIds ?? []), reviewMistakeIds: uniqueStrings(input.reviewMistakeIds ?? []), completedProblemIds: uniqueStrings(input.completedProblemIds ?? []), focusTags: uniqueStrings(input.focusTags ?? []), difficultyRatio: input.difficultyRatio ?? { easy: 30, medium: 50, hard: 20 }, createdAt: input.createdAt ?? now, updatedAt: now };
+      const plan: DailyPlan = {
+        id: input.id ?? existingPlan?.id ?? createId('plan'),
+        date,
+        targetMinutes: input.targetMinutes ?? existingPlan?.targetMinutes ?? get().settings.dailyTargetMinutes,
+        targetProblems,
+        targetAlgorithmProblems,
+        targetInterviewQuestions,
+        targetVocabularyWords,
+        taskProblemIds: uniqueStrings(input.taskProblemIds ?? existingPlan?.taskProblemIds ?? []),
+        taskVocabularyWordIds: uniqueStrings(input.taskVocabularyWordIds ?? existingPlan?.taskVocabularyWordIds ?? []),
+        reviewMistakeIds: uniqueStrings(input.reviewMistakeIds ?? existingPlan?.reviewMistakeIds ?? []),
+        completedProblemIds: uniqueStrings(input.completedProblemIds ?? existingPlan?.completedProblemIds ?? []),
+        completedVocabularyWordIds: uniqueStrings(input.completedVocabularyWordIds ?? existingPlan?.completedVocabularyWordIds ?? []),
+        focusTags: uniqueStrings(input.focusTags ?? existingPlan?.focusTags ?? []),
+        difficultyRatio: input.difficultyRatio ?? existingPlan?.difficultyRatio ?? { easy: 30, medium: 50, hard: 20 },
+        vocabularyDifficulty,
+        createdAt: input.createdAt ?? existingPlan?.createdAt ?? now,
+        updatedAt: now,
+      };
       const index = get().dailyPlans.findIndex((item) => item.id === plan.id || item.date === plan.date);
       const dailyPlans = [...get().dailyPlans];
       if (index >= 0) dailyPlans[index] = { ...dailyPlans[index], ...plan, id: dailyPlans[index].id, createdAt: dailyPlans[index].createdAt };
@@ -786,11 +870,14 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
     generateDailyPlan: async (options = {}) => {
       await waitForInitialization();
+      const state = get();
+      const planDate = typeof options.date === 'string' ? options.date : dateKey(Date.now());
+      const previousPlan = state.dailyPlans.find((plan) => plan.date === planDate);
       const hasLegacyTarget = typeof options.targetProblems === 'number'
         && typeof options.targetAlgorithmProblems !== 'number'
         && typeof options.targetInterviewQuestions !== 'number';
       const generated = generatePlan(get().problems, get().attempts, get().mistakes, {
-        date: typeof options.date === 'string' ? options.date : undefined,
+        date: planDate,
         ...(hasLegacyTarget
           ? { targetProblems: options.targetProblems as number }
           : {
@@ -798,9 +885,35 @@ export const useAppStore = create<AppStore>((set, get) => {
               targetInterviewQuestions: typeof options.targetInterviewQuestions === 'number' ? options.targetInterviewQuestions : get().settings.dailyTargetInterviewQuestions,
             }),
         targetMinutes: typeof options.targetMinutes === 'number' ? options.targetMinutes : get().settings.dailyTargetMinutes,
-        completedProblemIds: get().dailyPlans.find((plan) => plan.date === (typeof options.date === 'string' ? options.date : new Date().toISOString().slice(0, 10)))?.completedProblemIds ?? [],
+        completedProblemIds: previousPlan?.completedProblemIds ?? [],
       });
-      return get().savePlan(generated);
+      const targetVocabularyWords = planTarget(
+        typeof options.targetVocabularyWords === 'number'
+          ? options.targetVocabularyWords
+          : previousPlan?.targetVocabularyWords ?? state.settings.dailyTargetVocabularyWords,
+        '新词目标',
+      );
+      if (targetVocabularyWords > 100) throw new TypeError('新词目标不能超过 100');
+      const requestedDifficulty = options.vocabularyDifficulty;
+      const vocabularyDifficulty: VocabularyDifficulty | 'all' = isVocabularyDifficulty(requestedDifficulty) || requestedDifficulty === 'all'
+        ? requestedDifficulty as VocabularyDifficulty | 'all'
+        : previousPlan?.vocabularyDifficulty ?? 'all';
+      const progressByWordId = Object.fromEntries(state.vocabularyProgress.map((progress) => [progress.wordId, progress]));
+      const vocabularySelection = selectVocabularyPlanWords(
+        state.vocabularyWords,
+        progressByWordId,
+        vocabularyDifficulty,
+        targetVocabularyWords,
+        previousPlan?.taskVocabularyWordIds ?? [],
+        previousPlan?.completedVocabularyWordIds ?? [],
+      );
+      return get().savePlan({
+        ...generated,
+        targetVocabularyWords,
+        vocabularyDifficulty,
+        taskVocabularyWordIds: uniqueStrings(vocabularySelection.taskWordIds),
+        completedVocabularyWordIds: uniqueStrings(vocabularySelection.completedWordIds),
+      });
     },
     updateSettings: async (patch) => {
       if (!initializationPromise && !get().initialized && !get().error) return;
@@ -822,7 +935,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
     openPlatform: async (source) => {
       if (isTauriRuntime()) await invoke('open_platform', { source });
-      else window.open(source === 'leetcode-cn' ? 'https://leetcode.cn/problemset/' : source === 'leetcode' ? 'https://leetcode.com/problemset/' : 'https://www.nowcoder.com/exam/oj', '_blank', 'noopener,noreferrer');
+      else window.open(source === 'leetcode-cn' ? 'https://leetcode.cn/problemset/' : source === 'leetcode' ? 'https://leetcode.com/problemset/' : source === 'nowcoder' ? 'https://www.nowcoder.com/exam/oj' : 'https://www.luogu.com.cn/problem/list', '_blank', 'noopener,noreferrer');
     },
     arrangePlatform: async (source) => {
       if (isTauriRuntime()) await invoke('arrange_platform', { source });
@@ -862,7 +975,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       });
       const incoming = createEmptySnapshot();
       incoming.problems = result.items
-        .map((item) => problemFromBatchItem(request.source, item))
+        .map((item) => problemFromBatchItem(request.source, item, request.algorithmMode))
         .filter((item): item is Problem => Boolean(item));
       let counts = { added: 0, updated: 0, skipped: 0 };
       await persistProblems(get, set, (problems, updatedAt) => {

@@ -5,6 +5,7 @@ const PLATFORM_HOSTS: Record<PlatformSource, readonly string[]> = {
   'leetcode-cn': ['leetcode.cn', 'www.leetcode.cn'],
   leetcode: ['leetcode.com', 'www.leetcode.com'],
   nowcoder: ['nowcoder.com', 'www.nowcoder.com', 'ac.nowcoder.com'],
+  luogu: ['luogu.com.cn', 'www.luogu.com.cn'],
 };
 
 export function isAllowedPlatformUrl(source: PlatformSource, value: string): boolean {
@@ -43,10 +44,11 @@ export function inferProblemFromUrl(source: PlatformSource, value: string, now =
   return {
     id: createId('problem'),
     kind: 'algorithm',
+    algorithmMode: source === 'luogu' ? 'stdin' : undefined,
     title,
     source,
     sourceUrl: value,
-    externalId: source === 'nowcoder' ? slug : undefined,
+    externalId: source === 'nowcoder' || source === 'luogu' ? slug : undefined,
     platformSlug: slug || undefined,
     difficulty: 'unknown',
     tags: [],

@@ -391,6 +391,14 @@
   align-items: center;
   gap: 10px;
   min-height: 38px;
+  min-width: max-content;
+  flex-wrap: wrap;
+}
+
+.batchImportAction :global(.button) {
+  min-width: 116px;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .batchImportAction small {
@@ -1168,7 +1176,7 @@
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: var(--solve-problem-row, clamp(176px, 25dvh, 232px)) 8px minmax(0, 1fr);
+  grid-template-rows: var(--solve-problem-row, clamp(300px, 42dvh, 380px)) 8px minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
 }
@@ -1213,6 +1221,8 @@
   background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
   backdrop-filter: blur(12px);
 }
+
+.solveProblemHeader > * { min-width: 0; }
 
 .solveProblemIdentity {
   min-width: 0;
@@ -1265,6 +1275,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .solveSectionLabel {
@@ -1282,6 +1293,22 @@
   flex-wrap: nowrap;
   overflow: hidden;
 }
+
+.solveModeSelect {
+  flex: 0 0 auto;
+  width: 178px;
+  max-width: 100%;
+  min-width: 148px;
+  min-height: 28px;
+  padding: 0 25px 0 8px;
+  border-color: color-mix(in srgb, var(--warning) 28%, var(--line));
+  color: var(--ink);
+  background: var(--subtle-fill);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.solveProblemMeta .solveModeSelect { width: 178px; }
 
 .solveProblemActions {
   min-width: 0;
@@ -1348,6 +1375,122 @@
   line-height: 1.78;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+/* 官网题面保留 Markdown 的层级，同时让阅读区在深色主题下有清晰的节奏。 */
+.problemText h1,
+.problemText h2,
+.problemText h3,
+.problemReaderText h1,
+.problemReaderText h2,
+.problemReaderText h3 {
+  color: var(--ink);
+  font-family: var(--font-reading);
+  line-height: 1.25;
+}
+
+.problemText h1,
+.problemReaderText h1 {
+  margin: 0 0 15px;
+  font-size: 1.45em;
+}
+
+.problemText h2,
+.problemReaderText h2 {
+  margin: 22px 0 9px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.14em;
+}
+
+.problemText h3,
+.problemReaderText h3 {
+  margin: 17px 0 7px;
+  color: var(--warning);
+  font-size: 1em;
+}
+
+.problemText p,
+.problemReaderText p {
+  margin: 0 0 12px;
+}
+
+.problemText ul,
+.problemText ol,
+.problemReaderText ul,
+.problemReaderText ol {
+  margin: 8px 0 14px;
+  padding-left: 1.55em;
+}
+
+.problemText li,
+.problemReaderText li {
+  padding-left: 3px;
+}
+
+.problemText li + li,
+.problemReaderText li + li {
+  margin-top: 5px;
+}
+
+.problemText blockquote,
+.problemReaderText blockquote {
+  margin: 14px 0;
+  padding: 9px 13px;
+  border-left: 3px solid var(--info);
+  color: var(--muted);
+  background: var(--info-soft);
+}
+
+.problemText code:not(pre code),
+.problemReaderText code:not(pre code) {
+  padding: 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--accent);
+  background: var(--subtle-fill);
+  font-family: var(--font-code);
+  font-size: .88em;
+}
+
+.problemText pre,
+.problemReaderText pre {
+  margin: 14px 0 16px;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  color: var(--body);
+  background: var(--surface-elevated);
+  font-family: var(--font-code);
+  font-size: .82em;
+  line-height: 1.65;
+  white-space: pre;
+}
+
+.problemText a,
+.problemReaderText a {
+  color: var(--info);
+  text-decoration-color: color-mix(in srgb, var(--info) 45%, transparent);
+  text-underline-offset: 3px;
+}
+
+.problemText img,
+.problemReaderText img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 14px auto;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.problemText hr,
+.problemReaderText hr {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 
 .problemBodyResizeHandle,
@@ -2548,7 +2691,7 @@
     overflow: hidden;
   }
 
-  .solveWorkspace { grid-template-rows: var(--solve-problem-row, clamp(188px, 28%, 240px)) 8px minmax(0, 1fr); }
+  .solveWorkspace { grid-template-rows: var(--solve-problem-row, clamp(280px, 40%, 340px)) 8px minmax(0, 1fr); }
   .solveProblem { height: auto; }
 
   .solveWorkbench {
@@ -2565,11 +2708,33 @@
 }
 
 @media (max-width: 760px) {
+  .solveContent {
+    height: auto;
+    min-height: calc(100dvh - 112px);
+    overflow-y: auto;
+  }
+
+  .solvePage,
+  .solveWorkspace {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .solveWorkspace { grid-template-rows: auto 8px auto; }
+  .solveProblem { min-height: 390px; overflow: visible; }
+  .solveProblemBody { min-height: 220px; max-height: 320px; overflow-y: auto; }
+  .solveWorkbench { height: auto; min-height: 570px; overflow: visible; }
+  .codeWorkbench,
+  .aiCoachPane { min-height: 270px; }
+
   .solveProblem { height: auto; }
   .solveProblemHeader,
   .solveProblemMeta { align-items: flex-start; }
   .solveProblemHeader { padding-block: 9px; }
-  .solveProblemMeta { flex-direction: column; gap: 4px; }
+  .solveProblemMeta { flex-direction: row; flex-wrap: wrap; gap: 4px 8px; }
+  .solveProblemMeta .solveSectionLabel { min-width: 0; flex: 1 1 180px; }
+  .solveProblemMeta .tags { flex: 1 1 100%; width: 0; margin-top: 0; }
   .solveProblemNavigator {
     max-width: 100%;
     grid-template-columns: 34px minmax(0, 1fr) 34px;
@@ -2617,9 +2782,12 @@
 }
 
 @media (max-width: 560px) {
-  .solveContent { height: calc(100dvh - 104px); }
-  .solveWorkspace { grid-template-rows: var(--solve-problem-row, clamp(190px, 30%, 232px)) 8px minmax(0, 1fr); }
-  .solveWorkbench { grid-template-rows: minmax(270px, 1.35fr) minmax(190px, 1fr); }
+  .solveContent {
+    min-height: calc(100dvh - 104px);
+  }
+  .solveWorkspace { grid-template-rows: auto 8px auto; }
+  .solveProblem { min-height: 390px; }
+  .solveWorkbench { grid-template-rows: minmax(320px, auto) minmax(250px, auto); min-height: 570px; }
   .codeWorkbenchTitle span { display: none; }
   .coachIntentButton { min-height: 34px; }
   .aiCoachModules { grid-auto-rows: minmax(180px, 1fr); }
@@ -3608,6 +3776,97 @@
   font-family: var(--font-code);
   font-size: 9px;
 }
+
+.batchQueue {
+  display: grid;
+  gap: 10px;
+}
+
+.batchQueueRow {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--subtle-fill);
+}
+
+.batchQueueTitle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.batchQueueTitle span {
+  color: var(--quiet);
+  font-size: 9px;
+}
+
+.batchQueueTitle .iconButton {
+  margin-left: auto;
+}
+
+.batchQueueResults {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.modeTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 18px;
+}
+
+.modeTabs .button {
+  min-width: 132px;
+  justify-content: center;
+}
+
+.modeCount {
+  color: var(--quiet);
+  font-family: var(--font-code);
+  font-size: 10px;
+}
+
+.problemModule {
+  margin-bottom: 38px;
+}
+
+.problemModuleHead {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.problemModuleHead h2 {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-family: var(--font-reading);
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.problemModuleHead h2 small {
+  margin-left: 8px;
+  color: var(--quiet);
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+@media (max-width: 680px) {
+  .problemModuleHead { align-items: start; }
+  .problemModuleHead h2 { font-size: 19px; }
+  .modeTabs .button { flex: 1 1 150px; }
+}
 .interviewExaminerScope span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .interviewExaminerScope svg { color: var(--accent); }
 
@@ -4242,4 +4501,649 @@
   .interviewExaminerFooter > span { white-space: normal; }
   .interviewExaminerFooterActions { width: 100%; }
   .interviewExaminerFooterActions :global(.button) { flex: 1; }
+}
+
+/* ==================== 页面布局精修 ====================
+ * 题库与平台页共享一套“工具栏 - 内容面板 - 操作区”层级，
+ * 桌面端保持密度，窄屏时只收窄列数，不让控件互相挤压。
+ */
+.problemFilters {
+  grid-template-columns: minmax(220px, 1.7fr) repeat(3, minmax(128px, .55fr));
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 22px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: var(--inset-highlight);
+}
+
+.problemFilters > * { min-width: 0; }
+.problemFilters .input,
+.problemFilters .select { min-height: 38px; }
+
+.modeTabs {
+  width: fit-content;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(156px, 1fr));
+  gap: 3px;
+  margin: 2px 0 16px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--inset-highlight);
+}
+
+.modeTabs .button {
+  min-width: 0;
+  min-height: 35px;
+  padding-inline: 13px;
+  border-color: transparent;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.modeTabs .button:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--hover-fill);
+  transform: none;
+  box-shadow: none;
+}
+
+.modeTabs .button.buttonPrimary {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--accent-contrast);
+  box-shadow: 0 5px 14px var(--accent-shadow);
+}
+
+.modeTabs .button.buttonPrimary:hover:not(:disabled) {
+  border-color: var(--accent-deep);
+  background: var(--accent-deep);
+  color: var(--accent-hover-contrast);
+}
+
+.modeCount {
+  min-width: 20px;
+  padding: 2px 5px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 9px;
+  line-height: 1.2;
+  opacity: .78;
+}
+
+.problemModule {
+  margin-bottom: 34px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--inset-highlight), 0 10px 26px color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.problemModuleHead {
+  align-items: center;
+  margin: 0;
+  padding: 14px 16px 13px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 58%);
+}
+
+.problemModuleHead h2 { font-size: 20px; }
+.problemModuleHead > :global(.button) { min-height: 34px; }
+.problemModule .tableWrap { border-top: 0; }
+
+.problemModule .table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.problemModule .table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--subtle-fill) 48%, transparent); }
+.problemModule .table tbody tr:hover { background: var(--hover-fill); }
+.problemModule .table td { height: 58px; }
+.problemModule .table td:last-child { width: 54px; text-align: right; }
+.problemModule .tableTitle { min-width: 260px; }
+
+.batchImport {
+  gap: 18px;
+  padding: 22px 24px;
+  border-radius: 9px;
+  background:
+    linear-gradient(115deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 40%),
+    var(--surface);
+  box-shadow: var(--inset-highlight), 0 12px 28px color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.batchImportHead { align-items: center; gap: 18px; }
+.batchImportHead h2 { font-size: 21px; }
+.batchImportHead > svg {
+  width: 34px;
+  height: 34px;
+  margin-top: 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 6px;
+  background: var(--accent-soft);
+}
+
+.batchQueue { gap: 8px; }
+
+.batchQueueRow {
+  gap: 9px;
+  padding: 12px 13px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 54%, var(--line));
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--surface-elevated) 58%, var(--subtle-fill));
+}
+
+.batchQueueTitle {
+  min-height: 22px;
+  align-items: center;
+}
+
+.batchQueueTitle strong {
+  padding: 3px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--ink);
+  background: var(--surface);
+  font-family: var(--font-code);
+  font-size: 9px;
+  letter-spacing: .03em;
+}
+
+.batchQueueRow .batchImportForm {
+  grid-template-columns: minmax(180px, 1.3fr) repeat(2, minmax(120px, .75fr));
+  gap: 9px;
+}
+
+.batchImportFooter {
+  grid-template-columns: minmax(170px, .56fr) minmax(0, 1.44fr);
+  align-items: end;
+  padding-top: 2px;
+}
+
+.batchImportFooter .batchImportAction {
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.batchImportFooter .batchImportAction small { margin-left: 2px; }
+
+.platformGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.platform {
+  min-height: 214px;
+  padding: 18px;
+  border-radius: 8px;
+}
+
+.platform:nth-child(4) { --platform-tone: var(--warning); }
+
+.platformHead > svg {
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--platform-tone) 30%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--platform-tone) 10%, transparent);
+  color: var(--platform-tone);
+}
+
+.platform h2 { margin-top: 16px; font-size: 19px; }
+.platform .buttonRow { gap: 6px; }
+.platform .buttonRow .button { min-height: 34px; padding-inline: 11px; }
+.platform .buttonRow .iconButton { width: 34px; height: 34px; }
+
+.solveProblemHeader {
+  align-items: flex-start;
+  padding: 11px 12px 10px 18px;
+  background: color-mix(in srgb, var(--surface-elevated) 97%, transparent);
+}
+
+.solveProblemIdentity { gap: 6px; }
+.solveProblemMeta { gap: 7px 9px; }
+.solveProblemMeta .tags { max-width: min(100%, 520px); overflow-x: auto; scrollbar-width: none; }
+.solveProblemMeta .tags::-webkit-scrollbar { display: none; }
+.solveProblemNavigator { margin-top: 1px; }
+.solveProblemActions { padding-top: 2px; }
+
+.solveProblem .problemText,
+.problemReaderText {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.solveProblem .problemText > :first-child,
+.problemReaderText > :first-child { margin-top: 0; }
+
+.solveProblem .problemText h1,
+.problemReaderText h1,
+.solveProblem .problemText h2,
+.problemReaderText h2,
+.solveProblem .problemText h3,
+.problemReaderText h3,
+.solveProblem .problemText h4,
+.problemReaderText h4 {
+  margin: 22px 0 9px;
+  color: var(--ink);
+  font-family: var(--font-reading);
+  line-height: 1.35;
+}
+
+.solveProblem .problemText h1,
+.problemReaderText h1 { font-size: 21px; }
+.solveProblem .problemText h2,
+.problemReaderText h2 { font-size: 18px; }
+.solveProblem .problemText h3,
+.problemReaderText h3 { font-size: 15px; }
+.solveProblem .problemText h4,
+.problemReaderText h4 { font-size: 13px; }
+
+.solveProblem .problemText p,
+.problemReaderText p { margin: 0 0 12px; }
+
+.solveProblem .problemText ul,
+.solveProblem .problemText ol,
+.problemReaderText ul,
+.problemReaderText ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.solveProblem .problemText li + li,
+.problemReaderText li + li { margin-top: 5px; }
+
+.solveProblem .problemText blockquote,
+.problemReaderText blockquote {
+  margin: 14px 0;
+  padding: 8px 13px;
+  border-left: 3px solid var(--info);
+  background: var(--info-soft);
+  color: var(--muted);
+}
+
+.solveProblem .problemText :not(pre) > code,
+.problemReaderText :not(pre) > code {
+  padding: 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--subtle-fill);
+  color: var(--accent);
+  font-family: var(--font-code);
+  font-size: .88em;
+}
+
+.solveProblem .problemText pre,
+.problemReaderText pre {
+  max-width: 100%;
+  margin: 14px 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 5px 5px 0;
+  background: var(--editor-bg);
+  color: var(--editor-ink);
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.solveProblem .problemText img,
+.problemReaderText img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 14px auto;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.solveProblem .problemText hr,
+.problemReaderText hr {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.problemReaderText { font-size: 15px; }
+
+@media (min-width: 761px) and (max-width: 1280px) {
+  .platformGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1150px) {
+  .problemFilters { grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(110px, .7fr)); }
+  .batchImportFooter { grid-template-columns: minmax(160px, .7fr) minmax(0, 1.3fr); }
+  .solveProblemHeader { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .solveProblemActions { max-width: min(48%, 420px); justify-content: flex-end; }
+}
+
+@media (max-width: 760px) {
+  .modeTabs { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .problemFilters { grid-template-columns: 1fr; padding: 8px; }
+  .problemModuleHead { padding: 13px 14px 12px; }
+  .problemModuleHead h2 { font-size: 18px; }
+  .batchImport { padding: 18px 16px; }
+  .batchImportHead { align-items: flex-start; }
+  .batchImportHead > svg { width: 32px; height: 32px; }
+  .batchQueueRow .batchImportForm,
+  .batchImportFooter { grid-template-columns: 1fr; }
+  .batchImportFooter .batchImportAction { width: 100%; }
+  .batchImportFooter .batchImportAction :global(.button) { flex: 1 1 auto; min-width: 0; }
+  .batchImportFooter .batchImportAction small { width: 100%; margin: 0; }
+  .platformGrid { grid-template-columns: 1fr; gap: 10px; }
+  .platform { min-height: 184px; }
+  .solveProblemHeader { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 10px 15px; }
+  .solveProblemMeta .solveModeSelect { width: 100%; min-width: 0; }
+  .solveProblemActions { width: 100%; max-width: none; justify-content: flex-start; padding-top: 8px; border-top: 1px solid var(--line); }
+  .solveProblem .problemText h1,
+  .problemReaderText h1 { font-size: 18px; }
+.problemReaderText { font-size: 14px; }
+}
+
+/* 英语词汇按训练顺序呈现：提示、回忆、反馈、下次复习。 */
+.todayMetrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+.vocabularyPage { display: grid; gap: 16px; }
+
+.vocabularyMetrics { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 4px; }
+
+.vocabularyPage :global(.pageHeader) { margin-bottom: 8px; }
+
+.vocabularyToolbar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.vocabularyToolbar .modeTabs { margin: 0; }
+
+.vocabularyDifficulty {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.vocabularyDifficulty button {
+  min-width: 62px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.vocabularyDifficulty button:hover { color: var(--ink); background: var(--hover-fill); }
+.vocabularyDifficulty button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vocabularyDifficulty .vocabularyDifficultyActive { border-color: var(--accent-border); color: var(--accent); background: var(--accent-soft); }
+
+.vocabularyPracticeLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(235px, .62fr);
+  align-items: start;
+  gap: 30px;
+}
+
+.vocabularyPracticeLayout > .paperPanel { min-width: 0; }
+.vocabularyAside { display: grid; gap: 19px; }
+
+.vocabularySession {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0 0;
+}
+
+.vocabularySessionRail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--quiet);
+  font-family: var(--font-code);
+  font-size: 9px;
+}
+
+.vocabularySessionRail span:first-child { color: var(--info); font-weight: 800; }
+
+.vocabularyPrompt {
+  min-height: 132px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 17px clamp(18px, 3vw, 34px);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 7%, var(--surface)), var(--surface) 58%);
+}
+
+.vocabularyPrompt > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.vocabularyPrompt strong {
+  color: var(--ink);
+  font-family: var(--font-reading);
+  font-size: 25px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.vocabularyPrompt small { color: var(--quiet); font-size: 10px; }
+
+.vocabularyAnswerField { display: grid; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 750; }
+.vocabularyAnswerField :global(.input) {
+  width: 100%;
+  min-height: 70px;
+  padding: 13px 16px;
+  font-family: var(--font-reading);
+  font-size: 24px;
+  line-height: 1.3;
+  letter-spacing: .02em;
+}
+
+.vocabularyAnswerField :global(.input):focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.vocabularyAnswer {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-elevated);
+}
+
+.vocabularyAnswerHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px 12px; }
+.vocabularyAnswerHead strong { color: var(--accent); font-family: var(--font-reading); font-size: 23px; }
+.vocabularyAnswerHead span { color: var(--muted); font-size: 10px; }
+.vocabularyAnswerHead span:last-child { color: var(--ink); font-size: 13px; font-weight: 750; }
+.vocabularyAnswer > p { margin: 0; color: var(--body); font-size: 11px; line-height: 1.65; }
+
+.vocabularyAnswer blockquote {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--info);
+  color: var(--body);
+  background: var(--info-soft);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.vocabularyAnswer blockquote span { color: var(--muted); }
+
+.vocabularyAnswerColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.vocabularyAnswerColumns > div { min-width: 0; }
+.vocabularyAnswerColumns small { color: var(--quiet); font-size: 9px; font-weight: 750; }
+.vocabularyAnswerColumns p { margin: 5px 0 0; color: var(--body); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+
+.vocabularyMnemonic { display: flex; align-items: flex-start; gap: 7px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--warning); }
+.vocabularyMnemonic svg { flex: 0 0 auto; margin-top: 1px; }
+
+.vocabularyGradeRow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 3px; }
+.vocabularyMismatch { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.5; }
+
+.vocabularyGradeRow button {
+  min-width: 0;
+  min-height: 60px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.vocabularyGradeRow button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+.vocabularyGradeRow button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vocabularyGradeRow button:disabled { cursor: not-allowed; opacity: .55; }
+.vocabularyGradeRow button strong { font-size: 11px; }
+.vocabularyGradeRow button small { color: var(--quiet); font-size: 8px; line-height: 1.3; }
+.vocabularyGradeRow .vocabularyGradeAgain { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.vocabularyGradeRow .vocabularyGradeAgain strong { color: var(--danger); }
+
+.vocabularyStartPanel,
+.vocabularyComplete {
+  display: grid;
+  justify-items: start;
+  gap: 20px;
+  padding: 25px 0 7px;
+}
+
+.vocabularyStartPanel > .progress,
+.vocabularyComplete > .progress { width: 100%; }
+.vocabularyStartPanel > p,
+.vocabularyComplete > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.vocabularyTargetLine { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.vocabularyTargetLine > div { padding-left: 12px; border-left: 1px solid var(--accent); }
+.vocabularyTargetLine small { display: block; color: var(--quiet); font-size: 10px; }
+.vocabularyTargetLine strong { display: block; margin-top: 6px; color: var(--ink); font-family: var(--font-code); font-size: 27px; }
+.vocabularyTargetLine strong span { color: var(--muted); font-family: var(--font-body); font-size: 11px; }
+.vocabularyComplete { width: min(500px, 100%); justify-items: center; margin: 28px auto 16px; text-align: center; }
+.vocabularyComplete h2 { margin: 0; font-size: 18px; }
+.vocabularyCompleteMark { width: 52px; height: 52px; display: grid; place-items: center; border: 1px solid var(--success); border-radius: 50%; color: var(--success); background: var(--success-soft); }
+
+.vocabularyAsideMetric { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 5px 12px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+.vocabularyAsideMetric span { color: var(--muted); font-size: 10px; }
+.vocabularyAsideMetric strong { color: var(--ink); font-family: var(--font-code); font-size: 19px; }
+.vocabularyAsideMetric small { grid-column: 1 / -1; color: var(--quiet); font-size: 9px; }
+.vocabularyNote { display: flex; align-items: flex-start; gap: 9px; padding: 11px 12px; border-left: 2px solid var(--info); color: var(--muted); background: var(--info-soft); font-size: 10px; line-height: 1.55; }
+.vocabularyNote svg { flex: 0 0 auto; color: var(--info); }
+
+.vocabularyLibraryTools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, .3fr); align-items: end; gap: 12px; padding: 17px 0; }
+.vocabularyLibraryTools > .input { min-height: 40px; }
+.vocabularyWordList { border-top: 1px solid var(--line); }
+.vocabularyWordRow { border-bottom: 1px solid var(--line); }
+
+.vocabularyWordButton {
+  width: 100%;
+  min-height: 67px;
+  display: grid;
+  grid-template-columns: minmax(130px, .72fr) minmax(120px, 1fr) 55px 73px 20px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 5px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vocabularyWordButton:hover { background: var(--hover-fill); }
+.vocabularyWordButton:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.vocabularyWordIdentity { min-width: 0; display: grid; gap: 4px; }
+.vocabularyWordIdentity strong { color: var(--ink); font-family: var(--font-reading); font-size: 15px; overflow-wrap: anywhere; }
+.vocabularyWordIdentity small { color: var(--quiet); font-size: 9px; }
+.vocabularyWordMeaning { color: var(--body); font-size: 11px; overflow-wrap: anywhere; }
+.vocabularyWordLevel { color: var(--info); font-family: var(--font-code); font-size: 10px; font-weight: 800; }
+.vocabularyStatus { justify-self: start; padding: 4px 7px; border: 1px solid var(--line); border-radius: 3px; font-size: 9px; white-space: nowrap; }
+.vocabularyStatusNew { color: var(--muted); background: var(--subtle-fill); }
+.vocabularyStatusLearning { color: var(--warning); background: var(--warning-soft); }
+.vocabularyStatusMastered { color: var(--success); background: var(--success-soft); }
+.vocabularyWordButton > svg { color: var(--quiet); transition: transform 140ms ease; }
+.vocabularyWordButton .vocabularyChevronOpen { transform: rotate(180deg); }
+
+.vocabularyWordDetail { display: grid; gap: 10px; padding: 0 12px 16px; color: var(--body); font-size: 10px; line-height: 1.6; }
+.vocabularyWordDetail > p { margin: 0; }
+.vocabularyWordDetail blockquote { display: grid; gap: 4px; margin: 0; padding: 9px 11px; border-left: 2px solid var(--info); background: var(--info-soft); overflow-wrap: anywhere; }
+.vocabularyWordDetail blockquote span { color: var(--muted); }
+.vocabularyWordDetail > div small { margin-right: 8px; color: var(--quiet); font-weight: 750; }
+.vocabularyWordDetail footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 5px; }
+.vocabularyWordDetail footer > small { color: var(--quiet); }
+.vocabularyPlanMeta { color: var(--muted); font-weight: 500; font-size: 11px; }
+
+@media (max-width: 1280px) {
+  .todayMetrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vocabularyPracticeLayout { grid-template-columns: minmax(0, 1.35fr) minmax(220px, .65fr); gap: 22px; }
+}
+
+@media (max-width: 920px) {
+  .vocabularyPracticeLayout { grid-template-columns: 1fr; }
+  .vocabularyAside { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .vocabularyNote { align-self: center; }
+}
+
+@media (max-width: 760px) {
+  .todayMetrics,
+  .vocabularyMetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vocabularyToolbar { align-items: stretch; flex-direction: column; }
+  .vocabularyToolbar .modeTabs { width: 100%; }
+  .vocabularyDifficulty { width: 100%; }
+  .vocabularyDifficulty button { min-width: 0; flex: 1 1 0; padding-inline: 5px; }
+  .vocabularyAside { grid-template-columns: 1fr; }
+  .vocabularyLibraryTools { grid-template-columns: 1fr; }
+  .vocabularyWordButton { grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px 10px; }
+  .vocabularyWordIdentity { grid-column: 1; grid-row: 1; }
+  .vocabularyWordButton > svg { grid-column: 3; grid-row: 1; }
+  .vocabularyStatus { grid-column: 2; grid-row: 1; }
+  .vocabularyWordMeaning { grid-column: 1 / -1; grid-row: 2; }
+  .vocabularyWordLevel { grid-column: 1; grid-row: 3; }
+}
+
+@media (max-width: 520px) {
+  .vocabularyAnswerColumns { grid-template-columns: 1fr; }
+  .vocabularyGradeRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vocabularyGradeRow button { min-height: 54px; }
+  .vocabularyPrompt { min-height: 170px; padding-inline: 18px; }
+  .vocabularyAnswerField :global(.input) { min-height: 62px; padding-inline: 14px; font-size: 22px; }
+  .vocabularyAnswer { padding: 12px; }
+  .vocabularyWordDetail footer { align-items: flex-start; flex-direction: column; }
 }

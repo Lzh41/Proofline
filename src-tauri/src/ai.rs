@@ -11,8 +11,8 @@ use uuid::Uuid;
 const KEYRING_SERVICE: &str = "com.xiti.desktop";
 const KEYRING_USER: &str = "ai-api-key";
 // 最近练习复盘的提示词是全应用最大的（多题题面 + 代码 + 复盘记录），
-// 推理模型思考时间也长；120 秒过紧会频繁误报超时，300 秒兼顾稳定性。
-const AI_TIMEOUT_SECS: u64 = 300;
+// 推理模型思考时间也长；120 秒过紧会频繁误报超时，600 秒兼顾稳定性。
+const AI_TIMEOUT_SECS: u64 = 600;
 const MAX_PROMPT_BYTES: usize = 96 * 1024;
 const MAX_STREAM_BUFFER_BYTES: usize = 2 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;

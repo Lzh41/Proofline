@@ -111,6 +111,7 @@ pub enum PlatformSource {
     LeetcodeCn,
     Leetcode,
     Nowcoder,
+    Luogu,
 }
 
 impl PlatformSource {
@@ -119,6 +120,7 @@ impl PlatformSource {
             Self::LeetcodeCn => "leetcode-cn",
             Self::Leetcode => "leetcode",
             Self::Nowcoder => "nowcoder",
+            Self::Luogu => "luogu",
         }
     }
 
@@ -127,6 +129,7 @@ impl PlatformSource {
             Self::LeetcodeCn => "力扣",
             Self::Leetcode => "LeetCode",
             Self::Nowcoder => "牛客",
+            Self::Luogu => "洛谷",
         }
     }
 
@@ -135,6 +138,7 @@ impl PlatformSource {
             Self::LeetcodeCn => "https://leetcode.cn/problemset/",
             Self::Leetcode => "https://leetcode.com/problemset/",
             Self::Nowcoder => "https://www.nowcoder.com/exam/oj",
+            Self::Luogu => "https://www.luogu.com.cn/problem/list",
         }
     }
 
@@ -148,6 +152,7 @@ impl PlatformSource {
                 "ac.nowcoder.com",
                 "passport.nowcoder.com",
             ],
+            Self::Luogu => &["luogu.com.cn", "www.luogu.com.cn"],
         }
     }
 
@@ -155,7 +160,7 @@ impl PlatformSource {
         match self {
             Self::LeetcodeCn => Some("https://leetcode.cn/graphql/"),
             Self::Leetcode => Some("https://leetcode.com/graphql/"),
-            Self::Nowcoder => None,
+            Self::Nowcoder | Self::Luogu => None,
         }
     }
 }
@@ -375,6 +380,7 @@ pub async fn fetch_public_problem(
             fetch_leetcode_problem(&client, source, &requested).await
         }
         PlatformSource::Nowcoder => fetch_nowcoder_problem(&client, &requested).await,
+        PlatformSource::Luogu => fetch_luogu_problem(&client, &requested).await,
     }
 }
 
@@ -415,6 +421,9 @@ pub async fn fetch_public_problem_range(
         PlatformSource::Nowcoder => {
             fetch_nowcoder_problem_range(&client, start, end, token.clone(), &on_event).await
         }
+        PlatformSource::Luogu => {
+            fetch_luogu_problem_range(&client, start, end, token.clone(), &on_event).await
+        }
     };
     if let Ok(mut active) = state.platform_import.lock() {
         if active.as_ref().is_some_and(|(id, _)| *id == request_id) {
@@ -450,7 +459,7 @@ fn validate_batch_range(
         (end_id, start_id)
     };
     let limit = match source {
-        PlatformSource::Nowcoder => 50,
+        PlatformSource::Nowcoder | PlatformSource::Luogu => 50,
         PlatformSource::LeetcodeCn | PlatformSource::Leetcode => 100,
     };
     let count = end
@@ -515,7 +524,7 @@ async fn fetch_leetcode_problem_range(
         let base = match source {
             PlatformSource::LeetcodeCn => "https://leetcode.cn",
             PlatformSource::Leetcode => "https://leetcode.com",
-            PlatformSource::Nowcoder => unreachable!(),
+            PlatformSource::Nowcoder | PlatformSource::Luogu => unreachable!(),
         };
         let source_url = format!("{base}/problems/{}/", entry.slug);
         if entry.paid_only {
@@ -745,6 +754,99 @@ async fn fetch_nowcoder_problem_range(
     })
 }
 
+async fn fetch_luogu_problem_range(
+    client: &Client,
+    start: u32,
+    end: u32,
+    token: CancellationToken,
+    on_event: &Channel<PlatformBatchProgress>,
+) -> Result<PlatformBatchFetchResult, String> {
+    let total = (end - start + 1) as usize;
+    let mut items = Vec::with_capacity(total);
+    let mut fetched_count = 0;
+    let mut not_found_count = 0;
+    let mut failed_count = 0;
+    let mut cancelled = false;
+
+    for id in start..=end {
+        let requested_id = format!("P{id}");
+        if token.is_cancelled() {
+            cancelled = true;
+            items.push(PlatformBatchFetchItem {
+                requested_id,
+                status: "cancelled",
+                source_url: None,
+                metadata: None,
+                error: Some("用户取消导入".to_string()),
+            });
+            continue;
+        }
+        let source_url = format!("https://www.luogu.com.cn/problem/{requested_id}");
+        let parsed_url = Url::parse(&source_url).expect("洛谷题目链接必须是有效网址");
+        match fetch_luogu_problem(client, &parsed_url).await {
+            Ok(metadata) => {
+                fetched_count += 1;
+                items.push(PlatformBatchFetchItem {
+                    requested_id: requested_id.clone(),
+                    status: "fetched",
+                    source_url: Some(source_url),
+                    metadata: Some(metadata),
+                    error: None,
+                });
+            }
+            Err(error) if error.contains("404") => {
+                not_found_count += 1;
+                items.push(PlatformBatchFetchItem {
+                    requested_id: requested_id.clone(),
+                    status: "not-found",
+                    source_url: Some(source_url),
+                    metadata: None,
+                    error: Some("洛谷公开题库中没有找到该题号".to_string()),
+                });
+            }
+            Err(error) => {
+                failed_count += 1;
+                items.push(PlatformBatchFetchItem {
+                    requested_id: requested_id.clone(),
+                    status: "failed",
+                    source_url: Some(source_url),
+                    metadata: None,
+                    error: Some(error),
+                });
+            }
+        }
+        emit_batch_progress(
+            on_event,
+            items.len(),
+            total,
+            id,
+            fetched_count,
+            failed_count,
+        );
+        if items.len() < total {
+            tokio::select! {
+                _ = token.cancelled() => { cancelled = true; }
+                _ = tokio::time::sleep(Duration::from_millis(180)) => {}
+            }
+        }
+    }
+    let _ = on_event.send(PlatformBatchProgress::Done {
+        completed: items.len(),
+        total,
+        cancelled,
+    });
+    Ok(PlatformBatchFetchResult {
+        source: PlatformSource::Luogu,
+        requested_count: total,
+        fetched_count,
+        paid_only_count: 0,
+        not_found_count,
+        failed_count,
+        cancelled,
+        items,
+    })
+}
+
 fn emit_batch_progress(
     on_event: &Channel<PlatformBatchProgress>,
     completed: usize,
@@ -769,7 +871,7 @@ async fn fetch_leetcode_catalog(
     let host = match source {
         PlatformSource::LeetcodeCn => "leetcode.cn",
         PlatformSource::Leetcode => "leetcode.com",
-        PlatformSource::Nowcoder => return Ok(HashMap::new()),
+        PlatformSource::Nowcoder | PlatformSource::Luogu => return Ok(HashMap::new()),
     };
     let response = client
         .get(format!("https://{host}/api/problems/algorithms/"))
@@ -943,6 +1045,99 @@ async fn fetch_nowcoder_problem(
         .map_err(|error| format!("公开题面读取失败：{error}"))?;
     let html = bounded_response_text(response).await?;
     metadata_from_nowcoder(&html, requested)
+}
+
+async fn fetch_luogu_problem(
+    client: &Client,
+    requested: &Url,
+) -> Result<PublicProblemMetadata, String> {
+    let problem_id =
+        luogu_problem_id(requested).ok_or_else(|| "当前页面不是可绑定的洛谷单题页".to_string())?;
+    let response = client
+        .get(requested.clone())
+        .header(reqwest::header::ACCEPT, "text/html")
+        .send()
+        .await
+        .map_err(|error| format!("洛谷公开题面读取失败：{error}"))?;
+    let html = bounded_response_text(response).await?;
+    metadata_from_luogu(&html, &problem_id)
+}
+
+fn metadata_from_luogu(html: &str, problem_id: &str) -> Result<PublicProblemMetadata, String> {
+    let values = embedded_json_values(html);
+    let problem = matching_luogu_problem(&values, problem_id)
+        .ok_or_else(|| "洛谷公开页面未暴露可识别的单题信息".to_string())?;
+    let title = string_from_object(problem, &["name", "title"]);
+    let difficulty = problem
+        .get("difficulty")
+        .and_then(Value::as_i64)
+        .and_then(|level| match level {
+            1 => Some("easy"),
+            2 | 3 => Some("medium"),
+            4..=8 => Some("hard"),
+            _ => None,
+        })
+        .map(str::to_string);
+    let content = problem
+        .get("content")
+        .and_then(Value::as_object)
+        .map(luogu_content_to_markdown)
+        .filter(|value| !value.is_empty());
+    let examples = normalize_examples(
+        problem
+            .get("samples")
+            .and_then(Value::as_array)
+            .map(|samples| {
+                samples
+                    .iter()
+                    .filter_map(|sample| {
+                        let values = sample.as_array()?;
+                        let input = values.first()?.as_str()?.to_string();
+                        let output = values.get(1)?.as_str()?.to_string();
+                        Some(PublicProblemExample {
+                            input,
+                            output,
+                            explanation: None,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
+    );
+    let sample_test_case = examples.first().map(|example| example.input.clone());
+    Ok(public_metadata(
+        title,
+        Some(problem_id.to_string()),
+        Some(problem_id.to_string()),
+        difficulty,
+        Vec::new(),
+        content,
+        examples,
+        Vec::new(),
+        sample_test_case,
+    ))
+}
+
+fn luogu_content_to_markdown(content: &Map<String, Value>) -> String {
+    const SECTIONS: &[(&str, &str)] = &[
+        ("background", "题目背景"),
+        ("description", "题目描述"),
+        ("formatI", "输入格式"),
+        ("formatO", "输出格式"),
+        ("hint", "说明/提示"),
+    ];
+    SECTIONS
+        .iter()
+        .filter_map(|(key, label)| {
+            content
+                .get(*key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("## {label}\n\n{value}"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn metadata_from_nowcoder(html: &str, requested: &Url) -> Result<PublicProblemMetadata, String> {
@@ -1203,6 +1398,19 @@ fn nowcoder_problem_id(url: &Url) -> Option<String> {
     None
 }
 
+fn luogu_problem_id(url: &Url) -> Option<String> {
+    let segments: Vec<_> = url
+        .path_segments()?
+        .filter(|value| !value.is_empty())
+        .collect();
+    let index = segments.iter().position(|segment| *segment == "problem")?;
+    let pid = segments.get(index + 1)?.to_ascii_uppercase();
+    (pid.len() > 1
+        && pid.starts_with('P')
+        && pid[1..].chars().all(|character| character.is_ascii_digit()))
+    .then_some(pid)
+}
+
 fn normalize_difficulty(value: &str) -> Option<String> {
     let lower = value.trim().to_ascii_lowercase();
     if lower.contains("easy") || value.contains('简') || value == "1" {
@@ -1275,6 +1483,38 @@ fn matching_problem_object<'a>(
     values
         .iter()
         .find_map(|value| matching_problem_object_in_value(value, problem_id))
+}
+
+fn matching_luogu_problem<'a>(
+    values: &'a [Value],
+    problem_id: &str,
+) -> Option<&'a Map<String, Value>> {
+    values
+        .iter()
+        .find_map(|value| matching_luogu_problem_in_value(value, problem_id))
+}
+
+fn matching_luogu_problem_in_value<'a>(
+    value: &'a Value,
+    problem_id: &str,
+) -> Option<&'a Map<String, Value>> {
+    match value {
+        Value::Object(map) => {
+            if map
+                .get("pid")
+                .and_then(Value::as_str)
+                .is_some_and(|pid| pid.eq_ignore_ascii_case(problem_id))
+            {
+                return Some(map);
+            }
+            map.values()
+                .find_map(|value| matching_luogu_problem_in_value(value, problem_id))
+        }
+        Value::Array(items) => items
+            .iter()
+            .find_map(|value| matching_luogu_problem_in_value(value, problem_id)),
+        _ => None,
+    }
 }
 
 fn matching_problem_object_in_value<'a>(
@@ -1794,7 +2034,28 @@ mod tests {
         );
         assert!(validate_batch_range(PlatformSource::Leetcode, 1, 101).is_err());
         assert!(validate_batch_range(PlatformSource::Nowcoder, 1, 51).is_err());
+        assert!(validate_batch_range(PlatformSource::Luogu, 1, 51).is_err());
         assert!(validate_batch_range(PlatformSource::Leetcode, 0, 1).is_err());
+    }
+
+    #[test]
+    fn parses_luogu_pid_and_acm_metadata_from_public_context() {
+        let url = Url::parse("https://www.luogu.com.cn/problem/p1001").unwrap();
+        assert_eq!(luogu_problem_id(&url).as_deref(), Some("P1001"));
+        let html = r#"<script id="lentille-context" type="application/json">{
+          "data": {"problem": {
+            "pid": "P1001", "name": "A+B Problem", "difficulty": 1,
+            "content": {"description": "输入两个整数。", "formatI": "两个整数 a b。", "formatO": "输出它们的和。"},
+            "samples": [["20 30\n", "50\n"]]
+          }}
+        }</script>"#;
+        let metadata = metadata_from_luogu(html, "P1001").unwrap();
+        assert_eq!(metadata.title.as_deref(), Some("A+B Problem"));
+        assert_eq!(metadata.external_id.as_deref(), Some("P1001"));
+        assert_eq!(metadata.difficulty.as_deref(), Some("easy"));
+        assert!(metadata.content.as_deref().unwrap().contains("输入格式"));
+        assert_eq!(metadata.examples[0].input, "20 30");
+        assert_eq!(metadata.sample_test_case.as_deref(), Some("20 30"));
     }
 
     #[test]
@@ -1864,6 +2125,14 @@ mod tests {
         assert!(!is_allowed_platform_url(
             source,
             &Url::parse("javascript:alert(1)").unwrap()
+        ));
+        assert!(is_allowed_platform_url(
+            PlatformSource::Luogu,
+            &Url::parse("https://www.luogu.com.cn/problem/P1000").unwrap()
+        ));
+        assert!(!is_allowed_platform_url(
+            PlatformSource::Luogu,
+            &Url::parse("https://luogu.com.cn.evil.example/problem/P1000").unwrap()
         ));
     }
 

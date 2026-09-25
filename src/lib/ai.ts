@@ -211,6 +211,17 @@ export function buildHintPrompt(input: {
 }): string {
   const intent = input.intent ?? legacyIntent(input.level);
   const language = normalizeHintLanguage(input.language ?? input.attempt?.language);
+  const isStdinProblem = input.problem.algorithmMode === 'stdin';
+  const problemModeGuidance = isStdinProblem
+    ? [
+      '题型模式：完整程序题（ACM / 标准输入输出）。这是独立可提交的程序，不存在平台代写的函数签名或隐藏入口。',
+      '必须严格依据题面设计标准输入解析和标准输出：读取全部必要数据，按题目要求处理多组数据或 EOF，输出只能包含题目要求的结果，不要输出提示语、调试日志或额外文字。',
+      '涉及代码时优先给出能嵌入当前完整程序的局部实现，并说明应放在输入解析、核心计算或输出位置；不要把答案改写成 LeetCode 风格的 class Solution / 独立函数签名。',
+      '题面没有明确输入格式、输出格式或多组数据规则时，必须指出缺失信息并说明假设，不能臆造评测约定。',
+    ].join('\n')
+    : [
+      '题型模式：函数题。遵循题面给出的平台函数签名，样例入口由应用生成；不要擅自改成标准输入输出程序。',
+    ].join('\n');
   const noteContext = input.notes?.slice(0, 3).map((note) => `- ${clip(note.title, 120)}: ${clip(note.content, 350)}`).join('\n') ?? '无';
   const previousGuidance = recentGuidance(input.previousGuidance);
   const runFeedback = clip(input.recentRunError, 3_000) || '尚无运行反馈。';
@@ -229,11 +240,14 @@ export function buildHintPrompt(input: {
     '你是 Proofline 中的算法代码教练。始终使用简体中文，像坐在用户旁边结对编程一样具体，目标是帮助用户亲手把代码写出来。',
     `本轮请求：${INTENT_LABELS[intent]}。强制规则：${INTENT_RULES[intent]}`,
     answerFormat,
+    problemModeGuidance,
     '先逐行阅读当前代码并保留已经正确的部分。禁止泛泛复述整套算法；必须落到变量、函数、循环、分支或返回值，并给出可以实际输入编辑器的代码。',
     hasPracticeAnalysis
       ? '这次输出会直接保存为知识库笔记，不要反问用户，也不要输出完整代码；请把分析写成可长期回看的复习材料。'
       : intent === 'complete'
-      ? `完整代码必须与题目的平台函数签名或标准输入输出约定一致，并使用 ${language}。若题面确实缺失签名，只能明确说明采用的假设，不能伪造约束。`
+      ? isStdinProblem
+        ? `完整代码必须是使用 ${language} 的独立可运行程序，包含必要的入口、标准输入解析、核心逻辑和标准输出；不能只给函数体或平台函数签名。`
+        : `完整代码必须与题目的平台函数签名或标准输入输出约定一致，并使用 ${language}。若题面确实缺失签名，只能明确说明采用的假设，不能伪造约束。`
       : intent === 'algorithm-logic'
         ? '本轮不要输出完整代码，也不要把多个片段拼成变相完整答案。可以给少量伪代码或关键代码骨架，但重点必须是解释每一步为什么这么写，让用户能据此自己补全实现。'
         : intent === 'explain'

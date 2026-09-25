@@ -25,6 +25,10 @@ vi.mock('../lib/localMonaco', () => ({
     onChange?: (value: string) => void;
     options?: {
       fontSize?: number;
+      tabSize?: number;
+      indentSize?: number;
+      insertSpaces?: boolean;
+      detectIndentation?: boolean;
       stickyScroll?: { enabled?: boolean; maxLineCount?: number; defaultModel?: string };
       tabCompletion?: string;
       quickSuggestions?: { other?: boolean; comments?: boolean; strings?: boolean };
@@ -44,6 +48,10 @@ vi.mock('../lib/localMonaco', () => ({
         ref={editorRef}
         aria-label="代码编辑器 Mock"
         data-font-size={String(options?.fontSize ?? '')}
+        data-tab-size={String(options?.tabSize ?? '')}
+        data-indent-size={String(options?.indentSize ?? '')}
+        data-insert-spaces={String(options?.insertSpaces ?? '')}
+        data-detect-indentation={String(options?.detectIndentation ?? '')}
         data-sticky-scroll={String(options?.stickyScroll?.enabled ?? false)}
         data-sticky-max-lines={String(options?.stickyScroll?.maxLineCount ?? '')}
         data-sticky-model={String(options?.stickyScroll?.defaultModel ?? '')}
@@ -178,6 +186,34 @@ const helper = (value: number): number => value * 2;`.split('\n');
     expect(await screen.findByRole('heading', { name: /300\. 最长递增子序列/ })).toBeVisible();
   });
 
+  it('完整程序题默认提供标准输入输出入口，并渲染 Markdown 题面', async () => {
+    useAppStore.setState((state) => ({
+      problems: [
+        ...state.problems,
+        algorithmProblem({
+          id: 'luogu-p1001',
+          title: 'A+B Problem',
+          externalId: 'P1001',
+          source: 'luogu',
+          algorithmMode: 'stdin',
+          content: '## 输入\n\n读取两个整数并输出它们的和。',
+          examples: [{ input: '1 2', output: '3' }],
+        }),
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/luogu-p1001']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: /P1001\. A\+B Problem/ })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '输入' })).toBeVisible();
+    const editor = await screen.findByLabelText('代码编辑器 Mock') as HTMLTextAreaElement;
+    expect(editor.value).toContain('int main');
+  });
+
   it('没有开始计时时也会保存非第一题的代码草稿', async () => {
     const draftCode = 'int lengthOfLIS(vector<int>& nums) { return 7; }';
     const first = render(
@@ -204,6 +240,24 @@ const helper = (value: number): number => value * 2;`.split('\n');
       </MemoryRouter>,
     );
 
+    expect(await screen.findByLabelText('代码编辑器 Mock')).toHaveValue(draftCode);
+  });
+
+  it('刚输入代码后立即切题也会先保存旧题草稿', async () => {
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    const editor = await screen.findByLabelText('代码编辑器 Mock') as HTMLTextAreaElement;
+    const draftCode = 'int twoSumDraft = 42;';
+    fireEvent.change(editor, { target: { value: draftCode } });
+    fireEvent.click(screen.getByRole('button', { name: '下一题' }));
+    expect(await screen.findByRole('heading', { name: /300\. 最长递增子序列/ })).toBeVisible();
+
+    await waitFor(() => expect(useAppStore.getState().attempts.find((item) => item.problemId === 'algo-two-sum')?.code).toBe(draftCode));
+    fireEvent.click(screen.getByRole('button', { name: '上一题' }));
     expect(await screen.findByLabelText('代码编辑器 Mock')).toHaveValue(draftCode);
   });
 
@@ -545,6 +599,10 @@ const helper = (value: number): number => value * 2;`.split('\n');
     expect(editor).toHaveAttribute('data-sticky-scroll', 'true');
     expect(editor).toHaveAttribute('data-sticky-max-lines', '');
     expect(editor).toHaveAttribute('data-sticky-model', '');
+    expect(editor).toHaveAttribute('data-tab-size', '4');
+    expect(editor).toHaveAttribute('data-indent-size', '4');
+    expect(editor).toHaveAttribute('data-insert-spaces', 'true');
+    expect(editor).toHaveAttribute('data-detect-indentation', 'false');
     expect(editor).toHaveAttribute('data-tab-completion', 'on');
     expect(editor).toHaveAttribute('data-quick-suggestions', 'true');
     expect(editor).toHaveAttribute('data-suggest-on-trigger', 'true');
@@ -599,6 +657,86 @@ const helper = (value: number): number => value * 2;`.split('\n');
 
     fireEvent.change(screen.getByRole('combobox', { name: '选择题库题目' }), { target: { value: 'legacy-algo' } });
     expect(await screen.findByRole('heading', { name: /旧版无 kind 题/ })).toBeVisible();
+  });
+
+  it('完整程序题在做题页拥有独立的题型入口和导航列表', async () => {
+    useAppStore.setState((state) => ({
+      problems: [
+        algorithmProblem({ id: 'algo-function-only', title: '函数题', externalId: '1' }),
+        algorithmProblem({ id: 'algo-stdin-one', title: '标准输入题一', externalId: '1001', algorithmMode: 'stdin' }),
+        algorithmProblem({ id: 'algo-stdin-two', title: '标准输入题二', externalId: '1002', algorithmMode: 'stdin' }),
+      ],
+      settings: { ...state.settings, lastSolveProblemId: 'algo-stdin-one' } as typeof state.settings,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-stdin-one']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: /1001\. 标准输入题一/ })).toBeVisible();
+    expect(screen.getByText('完整程序题 · 手动录入 · 中等')).toBeInTheDocument();
+    const modePicker = screen.getByRole('combobox', { name: '切换题型' });
+    expect(modePicker).toHaveValue('stdin');
+    expect([...modePicker.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+      '函数题（1）',
+      '完整程序题（2）',
+    ]);
+    const picker = screen.getByRole('combobox', { name: '选择题库题目' });
+    expect([...picker.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+      '○ 未练习 · 1001. 标准输入题一',
+      '○ 未练习 · 1002. 标准输入题二',
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: '下一题' }));
+    expect(await screen.findByRole('heading', { name: /1002\. 标准输入题二/ })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '上一题' }));
+    expect(await screen.findByRole('heading', { name: /1001\. 标准输入题一/ })).toBeVisible();
+
+    fireEvent.change(modePicker, { target: { value: 'function' } });
+    expect(await screen.findByRole('heading', { name: /1\. 函数题/ })).toBeVisible();
+    expect(screen.getByRole('combobox', { name: '选择题库题目' })).toHaveValue('algo-function-only');
+  });
+
+  it('切换题型时恢复各自最近停留的题目位置', async () => {
+    useAppStore.setState((state) => ({
+      problems: [
+        algorithmProblem({ id: 'algo-function-one', title: '函数题一', externalId: '1' }),
+        algorithmProblem({ id: 'algo-function-two', title: '函数题二', externalId: '2' }),
+        algorithmProblem({ id: 'algo-stdin-one', title: '完整题一', externalId: '1001', algorithmMode: 'stdin' }),
+        algorithmProblem({ id: 'algo-stdin-two', title: '完整题二', externalId: '1002', algorithmMode: 'stdin' }),
+      ],
+      settings: { ...state.settings, lastSolveProblemId: 'algo-stdin-one', lastSolveProblemByMode: undefined } as typeof state.settings,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/solve/algo-stdin-one']}>
+        <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: /1001\. 完整题一/ })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '下一题' }));
+    expect(await screen.findByRole('heading', { name: /1002\. 完整题二/ })).toBeVisible();
+
+    const stdinEditor = await screen.findByLabelText('代码编辑器 Mock') as HTMLTextAreaElement;
+    const stdinDraft = '#include <bits/stdc++.h>\nint main() { return 42; }';
+    fireEvent.change(stdinEditor, { target: { value: stdinDraft } });
+    await waitFor(() => expect(useAppStore.getState().attempts.find((item) => item.problemId === 'algo-stdin-two')?.code).toBe(stdinDraft));
+
+    const modePicker = screen.getByRole('combobox', { name: '切换题型' });
+    fireEvent.change(modePicker, { target: { value: 'function' } });
+    expect(await screen.findByRole('heading', { name: /1\. 函数题一/ })).toBeVisible();
+    fireEvent.change(screen.getByRole('combobox', { name: '选择题库题目' }), { target: { value: 'algo-function-two' } });
+    expect(await screen.findByRole('heading', { name: /2\. 函数题二/ })).toBeVisible();
+
+    fireEvent.change(screen.getByRole('combobox', { name: '切换题型' }), { target: { value: 'stdin' } });
+    expect(await screen.findByRole('heading', { name: /1002\. 完整题二/ })).toBeVisible();
+    expect(await screen.findByLabelText('代码编辑器 Mock')).toHaveValue(stdinDraft);
+    fireEvent.change(screen.getByRole('combobox', { name: '切换题型' }), { target: { value: 'function' } });
+    expect(await screen.findByRole('heading', { name: /2\. 函数题二/ })).toBeVisible();
+    expect(useAppStore.getState().settings.lastSolveProblemByMode).toEqual({ function: 'algo-function-two', stdin: 'algo-stdin-two' });
   });
 
   it('运行结果显示在代码编辑器下方的可隐藏终端，做题页不再显示思路笔记入口', async () => {

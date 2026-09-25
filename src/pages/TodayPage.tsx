@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowRight, CalendarClock, Check, Clock3, Play, RotateCcw, Target } from 'lucide-react';
+import { ArrowRight, CalendarClock, Check, Clock3, Languages, Play, RotateCcw, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatDuration, todayKey, useStoreView } from '../app/storeAdapter';
 import { EmptyState, Metric, PageHeader, ProgressBar, SectionHeader } from '../components/PagePrimitives';
@@ -25,6 +25,9 @@ export function TodayPage() {
   const secondsToday = todayAttempts.reduce((sum, item) => sum + item.durationSeconds, 0);
   const tasks = (plan?.taskProblemIds ?? []).map((id) => store.problems.find((item) => item.id === id)).filter(Boolean);
   const progress = plan?.targetProblems ? ((plan.completedProblemIds?.length ?? 0) / plan.targetProblems) * 100 : 0;
+  const targetVocabularyWords = plan?.targetVocabularyWords ?? store.settings.dailyTargetVocabularyWords ?? 10;
+  const completedVocabularyWords = plan?.completedVocabularyWordIds.length ?? 0;
+  const dueVocabularyWords = store.vocabularyProgress.filter((item) => item.state !== 'new' && item.dueAt <= Date.now()).length;
 
   const generatePlan = async () => {
     if (!store.generateDailyPlan) {
@@ -40,21 +43,23 @@ export function TodayPage() {
       <PageHeader
         eyebrow={new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}
         title="今天，稳稳推进。"
-        description="先清理到期复习，再处理计划中的新题。每次尝试都会沉淀成你的解题记忆。"
+        description="先清理到期复习，再推进题目和单词目标。每次回忆都会留下下次复习时间。"
         actions={
           <>
             <button className="button" type="button" onClick={() => navigate('/plan')}><CalendarClock size={16} />调整计划</button>
             <button className="button buttonPrimary" type="button" onClick={() => navigate(tasks[0] ? learningRoute(tasks[0]) : '/problems')}><Play size={16} />开始学习</button>
+            <button className="button" type="button" onClick={() => navigate('/vocabulary')}><Languages size={16} />刷词</button>
           </>
         }
       />
 
       {message && <div className={styles.notice}><Check size={17} />{message}</div>}
 
-      <div className={styles.metrics}>
+      <div className={`${styles.metrics} ${styles.todayMetrics}`}>
         <Metric label="算法完成" value={`${algorithmToday} 题`} detail={`目标 ${plan?.targetAlgorithmProblems ?? store.settings.dailyTargetProblems ?? 3} 题`} tone="accent" />
         <Metric label="面试练习" value={`${interviewToday} 题`} detail={`目标 ${plan?.targetInterviewQuestions ?? store.settings.dailyTargetInterviewQuestions ?? 2} 题`} tone="info" />
-        <Metric label="到期复习" value={`${dueMistakes.length} 题`} detail={dueMistakes.length ? '建议优先完成' : '今日复习已清空'} tone={dueMistakes.length ? 'danger' : 'default'} />
+        <Metric label="今日新词" value={`${completedVocabularyWords}/${targetVocabularyWords}`} detail="到期复习不占目标" tone="accent" />
+        <Metric label="到期单词" value={`${dueVocabularyWords} 个`} detail={dueVocabularyWords ? '先复习再学新词' : '当前已清空'} tone={dueVocabularyWords ? 'danger' : 'default'} />
         <Metric label="专注时间" value={formatDuration(secondsToday)} detail={`目标 ${plan?.targetMinutes ?? store.settings.dailyTargetMinutes ?? 60} 分钟`} />
       </div>
 

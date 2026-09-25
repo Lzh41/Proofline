@@ -1,7 +1,11 @@
-export type PlatformSource = 'leetcode-cn' | 'leetcode' | 'nowcoder';
+import type { VocabularyDifficulty, VocabularyProgress, VocabularyReview, VocabularyWord } from './lib/vocabulary';
+
+export type PlatformSource = 'leetcode-cn' | 'leetcode' | 'nowcoder' | 'luogu';
 export type PlatformBatchItemStatus = 'fetched' | 'paid-only' | 'not-found' | 'failed' | 'cancelled';
 export type ProblemSource = PlatformSource | 'manual' | 'screenshot';
 export type ProblemKind = 'algorithm' | 'interview';
+/** 算法题的判题入口：函数题由应用生成入口，完整题由代码自行读写标准输入。 */
+export type AlgorithmMode = 'function' | 'stdin';
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'unknown';
 export type ProblemStatus = 'todo' | 'attempted' | 'solved' | 'unknown';
 export type AttemptResult = 'sample-passed' | 'sample-failed' | 'accepted' | 'wrong-answer' | 'timeout' | 'aborted' | 'unfinished' | 'mastered' | 'uncertain' | 'unknown';
@@ -58,6 +62,7 @@ export interface PlatformBatchImportRequest {
   source: PlatformSource;
   startId: number;
   endId: number;
+  algorithmMode?: AlgorithmMode;
 }
 
 export interface PlatformBatchFetchItem {
@@ -109,6 +114,7 @@ export interface Attachment {
 export interface Problem {
   id: string;
   kind: ProblemKind;
+  algorithmMode?: AlgorithmMode;
   title: string;
   source: ProblemSource;
   sourceUrl?: string;
@@ -227,11 +233,15 @@ export interface DailyPlan {
   targetProblems: number;
   targetAlgorithmProblems: number;
   targetInterviewQuestions: number;
+  targetVocabularyWords: number;
   taskProblemIds: string[];
+  taskVocabularyWordIds: string[];
   reviewMistakeIds: string[];
   completedProblemIds: string[];
+  completedVocabularyWordIds: string[];
   focusTags: string[];
   difficultyRatio: { easy: number; medium: number; hard: number };
+  vocabularyDifficulty: VocabularyDifficulty | 'all';
   createdAt: number;
   updatedAt: number;
 }
@@ -269,10 +279,13 @@ export interface AppSettings {
   dailyTargetMinutes: number;
   dailyTargetProblems: number;
   dailyTargetInterviewQuestions: number;
+  dailyTargetVocabularyWords: number;
   interviewCatalogVersion: number;
   /** 浏览器缓存仅保存内置面试题的稳定 ID，启动时从打包目录还原正文。 */
   browserCatalogCompact?: boolean;
   lastSolveProblemId?: string;
+  /** 做题页按题型分别记住最近打开的题目，避免切换题型后回到第一题。 */
+  lastSolveProblemByMode?: Partial<Record<'function' | 'stdin', string>>;
   solveProblemAreaHeight?: number;
   solveProblemTextWidth?: number;
   solveWorkbenchCodeWidth?: number;
@@ -303,6 +316,9 @@ export interface AppDataSnapshot {
   knowledgeNotes: KnowledgeNote[];
   codeTemplates: CodeTemplate[];
   dailyPlans: DailyPlan[];
+  vocabularyWords: VocabularyWord[];
+  vocabularyProgress: VocabularyProgress[];
+  vocabularyReviews: VocabularyReview[];
   aiGenerations: AiGeneration[];
   settings: AppSettings;
   updatedAt: number;
@@ -334,8 +350,10 @@ export interface PlanOptions {
   targetAlgorithmProblems?: number;
   targetInterviewQuestions?: number;
   targetMinutes?: number;
+  targetVocabularyWords?: number;
   now?: number;
   completedProblemIds?: string[];
+  vocabularyDifficulty?: VocabularyDifficulty | 'all';
 }
 
 export interface RunCodeRequest {

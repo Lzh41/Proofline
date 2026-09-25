@@ -576,7 +576,7 @@ pub fn delete_all_user_data(
     state: State<'_, AppState>,
     include_backups: bool,
 ) -> Result<(), String> {
-    for source in ["leetcode-cn", "leetcode", "nowcoder"] {
+    for source in ["leetcode-cn", "leetcode", "nowcoder", "luogu"] {
         if let Some(window) = app.get_webview_window(&format!("platform-{source}")) {
             let _ = window.close();
         }

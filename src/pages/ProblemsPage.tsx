@@ -1,14 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
 import { FileImage, FilePlus2, Play, Plus, Search, Square, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import type { Problem } from '../types';
+import type { AlgorithmMode, Problem } from '../types';
 import { difficultyLabel, sourceLabel, useStoreView } from '../app/storeAdapter';
 import { EmptyState, PageHeader } from '../components/PagePrimitives';
 import { isOcrCancelled, OCR_MAX_FILE_BYTES, recognizeProblemImage, type OfflineOcrTask } from '../lib/ocr';
 import { inferProblemFromUrl } from '../lib/platform';
 import styles from './Pages.module.css';
 
-const INITIAL_FORM = { title: '', sourceUrl: '', externalId: '', difficulty: 'unknown', tags: '', content: '' };
+const INITIAL_FORM = { title: '', sourceUrl: '', externalId: '', difficulty: 'unknown', tags: '', content: '', algorithmMode: 'function' as AlgorithmMode };
 
 export function ProblemsPage() {
   const store = useStoreView();
@@ -17,6 +17,7 @@ export function ProblemsPage() {
   const [source, setSource] = useState('all');
   const [difficulty, setDifficulty] = useState('all');
   const [status, setStatus] = useState('all');
+  const [activeMode, setActiveMode] = useState<AlgorithmMode>('function');
   const [form, setForm] = useState(INITIAL_FORM);
   const [message, setMessage] = useState('');
   const [ocrBusy, setOcrBusy] = useState(false);
@@ -25,7 +26,7 @@ export function ProblemsPage() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const query = searchParams.get('q') ?? '';
 
-  const filtered = useMemo(() => {
+  const allFiltered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return store.problems.filter((problem) => problem.kind === 'algorithm').filter((problem) => {
       const matchesKeyword = !keyword || [problem.title, problem.externalId, ...problem.tags].some((value) => value?.toLowerCase().includes(keyword));
@@ -36,13 +37,23 @@ export function ProblemsPage() {
     });
   }, [difficulty, query, source, status, store.problems]);
 
+  const functionProblems = useMemo(() => allFiltered.filter((problem) => (problem.algorithmMode ?? 'function') === 'function'), [allFiltered]);
+  const stdinProblems = useMemo(() => allFiltered.filter((problem) => problem.algorithmMode === 'stdin'), [allFiltered]);
+  const filtered = activeMode === 'stdin' ? stdinProblems : functionProblems;
+
+  const openDialog = (mode: AlgorithmMode = activeMode) => {
+    setActiveMode(mode);
+    setForm((value) => ({ ...value, algorithmMode: mode }));
+    dialogRef.current?.showModal();
+  };
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const now = Date.now();
     const rawUrl = form.sourceUrl.trim();
     let detectedSource: Problem['source'] = 'manual';
     if (rawUrl) {
-      const officialSource = (['leetcode-cn', 'leetcode', 'nowcoder'] as const).find((candidate) => {
+      const officialSource = (['leetcode-cn', 'leetcode', 'nowcoder', 'luogu'] as const).find((candidate) => {
         try { inferProblemFromUrl(candidate, rawUrl); return true; } catch { return false; }
       });
       if (officialSource) detectedSource = officialSource;
@@ -61,6 +72,7 @@ export function ProblemsPage() {
       difficulty: form.difficulty as Problem['difficulty'],
       tags: form.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
       content: form.content.trim(),
+      algorithmMode: form.algorithmMode,
       constraints: [],
       examples: [],
       attachments: [],
@@ -73,10 +85,19 @@ export function ProblemsPage() {
       setMessage('题库服务尚未初始化，请重新启动应用。');
       return;
     }
-    await create(draft);
+    const saved = await create(draft);
+    if (saved?.id && detectedSource !== 'manual') {
+      try {
+        await store.refreshProblemMetadata?.(saved.id);
+        setMessage('题目已保存，并已从官网同步公开题面与样例。');
+      } catch {
+        setMessage('题目已保存；官网题面暂时未同步成功，可稍后点击“补齐样例”。');
+      }
+    } else {
+      setMessage('题目已保存到本地题库。');
+    }
     setForm(INITIAL_FORM);
     dialogRef.current?.close();
-    setMessage('题目已保存到本地题库。');
   };
 
   const recognizeImage = async (file?: File) => {
@@ -113,15 +134,24 @@ export function ProblemsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="个人题库" title="每道题，都留下一条可复用的路。" description="这里保存的是你建立的学习卡，而不是平台题库镜像。按标题、题号、标签和状态快速回到需要练习的地方。" actions={<button className="button buttonPrimary" type="button" onClick={() => dialogRef.current?.showModal()}><Plus size={16} />建立学习卡</button>} />
+      <PageHeader eyebrow="算法题训练" title="函数题与完整程序题，分开练。" description="函数题只写解题函数；完整程序题按 PAT / ACM 习惯自行处理标准输入和标准输出。题面、难度与样例仍从官网同步。" actions={<button className="button buttonPrimary" type="button" onClick={() => openDialog(activeMode)}><Plus size={16} />建立学习卡</button>} />
       {message && <div className={styles.notice}>{message}</div>}
-      <div className={styles.filters}>
+      <div className={styles.modeTabs} role="tablist" aria-label="算法题类型">
+        <button className={`button ${activeMode === 'function' ? 'buttonPrimary' : ''}`} type="button" role="tab" aria-selected={activeMode === 'function'} onClick={() => setActiveMode('function')}>函数题 <span className={styles.modeCount}>{functionProblems.length}</span></button>
+        <button className={`button ${activeMode === 'stdin' ? 'buttonPrimary' : ''}`} type="button" role="tab" aria-selected={activeMode === 'stdin'} onClick={() => setActiveMode('stdin')}>完整程序题 <span className={styles.modeCount}>{stdinProblems.length}</span></button>
+      </div>
+      <div className={`${styles.filters} ${styles.problemFilters}`}>
         <label className="field"><span className="srOnly">搜索题目</span><div style={{ position: 'relative' }}><Search size={15} style={{ position: 'absolute', left: 11, top: 12, color: 'var(--muted)' }} /><input className="input" style={{ paddingLeft: 34 }} value={query} onChange={(event) => setSearchParams(event.target.value ? { q: event.target.value } : {})} placeholder="标题、标签或题号" /></div></label>
-        <label className="field"><span className="srOnly">来源</span><select className="select" value={source} onChange={(event) => setSource(event.target.value)}><option value="all">全部来源</option><option value="leetcode-cn">力扣</option><option value="leetcode">LeetCode</option><option value="nowcoder">牛客</option><option value="manual">手动录入</option></select></label>
+        <label className="field"><span className="srOnly">来源</span><select className="select" value={source} onChange={(event) => setSource(event.target.value)}><option value="all">全部来源</option><option value="leetcode-cn">力扣</option><option value="leetcode">LeetCode</option><option value="nowcoder">牛客</option><option value="luogu">洛谷</option><option value="manual">手动录入</option></select></label>
         <label className="field"><span className="srOnly">难度</span><select className="select" value={difficulty} onChange={(event) => setDifficulty(event.target.value)}><option value="all">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option><option value="unknown">未标注</option></select></label>
         <label className="field"><span className="srOnly">状态</span><select className="select" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">全部状态</option><option value="todo">待练习</option><option value="attempted">练习中</option><option value="solved">已通过</option><option value="unknown">未确认</option></select></label>
       </div>
 
+      <section className={styles.problemModule} aria-labelledby={`${activeMode}-module-title`}>
+        <div className={styles.problemModuleHead}>
+          <div><span className={styles.kicker}>{activeMode === 'stdin' ? 'PAT / ACM 训练模式' : '平台函数题'}</span><h2 id={`${activeMode}-module-title`}>{activeMode === 'stdin' ? '完整程序题' : '函数题'} <small>{filtered.length} 道</small></h2></div>
+          <button className="button" type="button" onClick={() => openDialog(activeMode)}><Plus size={14} />新增</button>
+        </div>
       <div className={styles.tableWrap}>
         {filtered.length ? (
           <table className={styles.table}>
@@ -136,8 +166,9 @@ export function ProblemsPage() {
               </tr>
             ))}</tbody>
           </table>
-        ) : <EmptyState title={store.problems.some((problem) => problem.kind === 'algorithm') ? '没有匹配的题目' : '题库还是空的'} message={store.problems.some((problem) => problem.kind === 'algorithm') ? '调整筛选条件，或换一个关键词。' : '这里仅收纳算法题；企业面试题请到“面试题”页面练习。'} action={<button className="button buttonAccent" type="button" onClick={() => dialogRef.current?.showModal()}><FilePlus2 size={15} />建立学习卡</button>} />}
+        ) : <EmptyState title={activeMode === 'stdin' ? '还没有完整程序题' : '没有匹配的函数题'} message={activeMode === 'stdin' ? '可从官方平台导入题面，或粘贴官网链接建立一张完整程序题。' : '调整筛选条件，或换一个关键词。'} action={<button className="button buttonAccent" type="button" onClick={() => openDialog(activeMode)}><FilePlus2 size={15} />建立学习卡</button>} />}
       </div>
+      </section>
 
       <dialog className={styles.dialog} ref={dialogRef}>
         <div className={styles.dialogHead}><h2>建立学习卡</h2><button className="iconButton" type="button" aria-label="关闭" onClick={() => dialogRef.current?.close()}><X size={17} /></button></div>
@@ -145,6 +176,7 @@ export function ProblemsPage() {
           <label className={`field ${styles.formFull}`}><span>题目标题</span><input className="input" required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
           <label className="field"><span>题号</span><input className="input" value={form.externalId} onChange={(event) => setForm({ ...form, externalId: event.target.value })} /></label>
           <label className="field"><span>难度</span><select className="select" value={form.difficulty} onChange={(event) => setForm({ ...form, difficulty: event.target.value })}><option value="unknown">未标注</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option></select></label>
+          <label className={`field ${styles.formFull}`}><span>题型</span><select className="select" value={form.algorithmMode} onChange={(event) => { const mode = event.target.value as AlgorithmMode; setForm({ ...form, algorithmMode: mode }); setActiveMode(mode); }}><option value="function">函数题：只写解题函数</option><option value="stdin">完整程序题：自行处理标准输入输出</option></select></label>
           <label className={`field ${styles.formFull}`}><span>单题链接</span><input className="input" type="url" value={form.sourceUrl} onChange={(event) => setForm({ ...form, sourceUrl: event.target.value })} placeholder="https://..." /></label>
           <label className={`field ${styles.formFull}`}><span>标签</span><input className="input" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} placeholder="数组，双指针，滑动窗口" /></label>
           <label className={`field ${styles.formFull}`}><span>题目内容</span><textarea className="textarea" value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} /></label>

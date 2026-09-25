@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildHintPrompt, coachIntentLevel } from '../lib/ai';
 import { createBackupManifest, parseExport, serializeExport } from '../lib/backup';
-import { isAllowedPlatformUrl } from '../lib/platform';
+import { inferProblemFromUrl, isAllowedPlatformUrl } from '../lib/platform';
 import { calculateStatistics } from '../lib/statistics';
 import { attempt, mistake, problem, snapshot } from './fixtures';
 
@@ -10,6 +10,15 @@ describe('业务安全与统计', () => {
     expect(isAllowedPlatformUrl('leetcode-cn', 'https://leetcode.cn/problems/two-sum/')).toBe(true);
     expect(isAllowedPlatformUrl('leetcode-cn', 'http://leetcode.cn/problems/two-sum/')).toBe(false);
     expect(isAllowedPlatformUrl('leetcode-cn', 'https://leetcode.cn.evil.example/problems/two-sum/')).toBe(false);
+    expect(isAllowedPlatformUrl('luogu', 'https://www.luogu.com.cn/problem/P1001')).toBe(true);
+    expect(isAllowedPlatformUrl('luogu', 'https://luogu.com.cn.evil.example/problem/P1001')).toBe(false);
+  });
+
+  it('洛谷单题链接默认进入完整程序题模式', () => {
+    const imported = inferProblemFromUrl('luogu', 'https://www.luogu.com.cn/problem/P1001');
+    expect(imported.externalId).toBe('P1001');
+    expect(imported.platformSlug).toBe('P1001');
+    expect(imported.algorithmMode).toBe('stdin');
   });
 
   it('连续代码教练会结合当前代码和运行反馈给出局部实现', () => {
@@ -89,6 +98,40 @@ describe('业务安全与统计', () => {
     expect(prompt).toContain('## 关键逻辑');
     expect(prompt).toContain('## 复杂度');
     expect(prompt).toContain('## 边界检查');
+  });
+
+  it('ACM 完整程序题的 AI 提示明确标准输入输出契约', () => {
+    const prompt = buildHintPrompt({
+      intent: 'complete',
+      problem: problem({
+        algorithmMode: 'stdin',
+        title: '统计每组数据中的最大值',
+        content: '第一行输入组数 T，随后每组输入 n 个整数，输出每组最大值。',
+        examples: [{ input: '2\\n3 1 4 2\\n2 8 5', output: '4\\n8' }],
+      }),
+      language: 'cpp',
+    });
+
+    expect(prompt).toContain('完整程序题（ACM / 标准输入输出）');
+    expect(prompt).toContain('标准输入解析和标准输出');
+    expect(prompt).toContain('独立可运行程序');
+    expect(prompt).toContain('不能只给函数体或平台函数签名');
+    expect(prompt).toContain('多组数据或 EOF');
+    expect(prompt).toContain('不要把答案改写成 LeetCode 风格的 class Solution');
+  });
+
+  it('ACM 题的局部提示要求落在完整程序的输入、计算或输出位置', () => {
+    const prompt = buildHintPrompt({
+      intent: 'next-code',
+      problem: problem({ algorithmMode: 'stdin' }),
+      code: '#include <bits/stdc++.h>\\nusing namespace std;\\nint main() {\\n  // 待补充\\n}',
+      recentRunError: '样例 1 输出格式不匹配',
+    });
+
+    expect(prompt).toContain('能嵌入当前完整程序的局部实现');
+    expect(prompt).toContain('输入解析、核心计算或输出位置');
+    expect(prompt).toContain('不要把答案改写成 LeetCode 风格的 class Solution');
+    expect(prompt).toContain('样例 1 输出格式不匹配');
   });
 
   it('后续提示承接最近教练对话并截断过早内容', () => {

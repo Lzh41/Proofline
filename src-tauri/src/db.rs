@@ -12,9 +12,16 @@ use tauri::State;
 const INITIAL_MIGRATION: &str = include_str!("../migrations/001_initial.sql");
 const INTERVIEW_WORKBENCH_MIGRATION: &str =
     include_str!("../migrations/002_interview_workbench.sql");
+const PLATFORM_SOURCES_MIGRATION: &str = include_str!("../migrations/003_platform_sources.sql");
+const VOCABULARY_MIGRATION: &str = include_str!("../migrations/004_vocabulary.sql");
+const VOCABULARY_DIRECTIONS_MIGRATION: &str =
+    include_str!("../migrations/005_vocabulary_directions.sql");
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "initial", INITIAL_MIGRATION),
     (2, "interview_workbench", INTERVIEW_WORKBENCH_MIGRATION),
+    (3, "platform_sources", PLATFORM_SOURCES_MIGRATION),
+    (4, "vocabulary", VOCABULARY_MIGRATION),
+    (5, "vocabulary_directions", VOCABULARY_DIRECTIONS_MIGRATION),
 ];
 
 pub fn open_database(path: &Path) -> Result<Connection, String> {
@@ -57,6 +64,13 @@ pub fn apply_migrations(path: &Path) -> Result<(), String> {
         if applied {
             continue;
         }
+        // Migration 3 rebuilds tables whose source CHECK constraint predates Luogu.
+        // SQLite only allows toggling foreign-key enforcement outside a transaction.
+        if version == 3 || version == 5 {
+            connection
+                .execute_batch("PRAGMA foreign_keys = OFF;")
+                .map_err(|error| error.to_string())?;
+        }
         let transaction = connection
             .transaction()
             .map_err(|error| error.to_string())?;
@@ -70,6 +84,11 @@ pub fn apply_migrations(path: &Path) -> Result<(), String> {
             )
             .map_err(|error| error.to_string())?;
         transaction.commit().map_err(|error| error.to_string())?;
+        if version == 3 || version == 5 {
+            connection
+                .execute_batch("PRAGMA foreign_keys = ON;")
+                .map_err(|error| error.to_string())?;
+        }
     }
     Ok(())
 }
@@ -123,6 +142,9 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
              DELETE FROM platform_results;
              DELETE FROM thought_events;
              DELETE FROM ai_generations;
+             DELETE FROM vocabulary_reviews;
+             DELETE FROM vocabulary_progress;
+             DELETE FROM vocabulary_words;
              DELETE FROM mistakes;
              DELETE FROM attempts;
              DELETE FROM samples;
@@ -394,16 +416,104 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
             .map_err(|error| error.to_string())?;
     }
 
+    for word in array_field(snapshot, "vocabularyWords") {
+        transaction
+            .execute(
+                "INSERT INTO vocabulary_words(id, word, phonetic, part_of_speech, level,
+                difficulty, meaning_zh, definition_en, example_en, example_zh,
+                 word_family_json, memory_tip, tags_json, source, exam_tags_json)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                params![
+                    required_string(word, "id")?,
+                    value_or(word, "word", ""),
+                    optional_string(word, "phonetic"),
+                    value_or(word, "partOfSpeech", ""),
+                    value_or(word, "level", "B1"),
+                    value_or(word, "difficulty", "intermediate"),
+                    value_or(word, "meaning", ""),
+                    value_or(word, "definitionEn", ""),
+                    value_or(word, "example", ""),
+                    value_or(word, "exampleTranslation", ""),
+                    json_field(word, "family", Value::Array(vec![])),
+                    value_or(word, "mnemonic", ""),
+                    json_field(word, "tags", Value::Array(vec![])),
+                    value_or(word, "source", ""),
+                    json_field(word, "examTags", Value::Array(vec![])),
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    let vocabulary_word_ids: HashSet<String> = array_field(snapshot, "vocabularyWords")
+        .iter()
+        .filter_map(|item| string_value(item, "id"))
+        .collect();
+    for progress in array_field(snapshot, "vocabularyProgress") {
+        let word_id = required_string(progress, "wordId")?;
+        if !vocabulary_word_ids.contains(&word_id) {
+            continue;
+        }
+        transaction
+            .execute(
+                "INSERT INTO vocabulary_progress(word_id, status, repetitions, interval_days,
+                 ease_factor, lapses, streak, last_rating, due_at, last_reviewed_at)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    word_id,
+                    value_or(progress, "state", "new"),
+                    integer_value(progress, "repetitions", 0),
+                    integer_value(progress, "intervalDays", 0),
+                    progress.get("easeFactor").and_then(Value::as_f64).unwrap_or(2.5),
+                    integer_value(progress, "lapses", 0),
+                    integer_value(progress, "streak", 0),
+                    optional_string(progress, "lastRating"),
+                    integer_value(progress, "dueAt", now_millis()),
+                    optional_integer(progress, "lastReviewedAt"),
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    for review in array_field(snapshot, "vocabularyReviews") {
+        let word_id = required_string(review, "wordId")?;
+        if !vocabulary_word_ids.contains(&word_id) {
+            continue;
+        }
+        transaction
+            .execute(
+                "INSERT INTO vocabulary_reviews(id, word_id, reviewed_at, direction, rating,
+                 response, correct, duration_ms)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    required_string(review, "id")?,
+                    word_id,
+                    integer_value(review, "reviewedAt", now_millis()),
+                    value_or(review, "direction", "word-to-meaning"),
+                    value_or(review, "rating", "again"),
+                    value_or(review, "response", ""),
+                    bool_integer(review, "correct"),
+                    optional_integer(review, "durationMs"),
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
     for plan in array_field(snapshot, "dailyPlans") {
         let id = required_string(plan, "id")?;
         let target_problems = integer_value(plan, "targetProblems", 3);
+        let vocabulary_difficulty = optional_string(plan, "vocabularyDifficulty")
+            .filter(|value| matches!(value.as_str(),
+                "beginner" | "intermediate" | "advanced"
+                | "cet4" | "cet6" | "toefl" | "ielts" | "postgrad" | "sat"));
         transaction
             .execute(
                 "INSERT INTO daily_plans(id, plan_date, target_minutes, target_problems,
                  target_algorithm_problems, target_interview_questions, focus_tags_json,
                  difficulty_ratio_json, task_problem_ids_json, review_mistake_ids_json,
-                 completed_problem_ids_json, created_at, updated_at)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 completed_problem_ids_json, target_vocabulary_words,
+                 task_vocabulary_word_ids_json, completed_vocabulary_word_ids_json,
+                 vocabulary_difficulty, created_at, updated_at)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
                 params![
                     id,
                     value_or(plan, "date", "1970-01-01"),
@@ -416,6 +526,10 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
                     json_field(plan, "taskProblemIds", Value::Array(vec![])),
                     json_field(plan, "reviewMistakeIds", Value::Array(vec![])),
                     json_field(plan, "completedProblemIds", Value::Array(vec![])),
+                    integer_value(plan, "targetVocabularyWords", 10),
+                    json_field(plan, "taskVocabularyWordIds", Value::Array(vec![])),
+                    json_field(plan, "completedVocabularyWordIds", Value::Array(vec![])),
+                    vocabulary_difficulty,
                     integer_value(plan, "createdAt", now_millis()),
                     integer_value(plan, "updatedAt", now_millis()),
                 ],
@@ -628,6 +742,9 @@ fn validate_snapshot_shape(snapshot: &Value) -> Result<(), String> {
         "codeTemplates",
         "dailyPlans",
         "aiGenerations",
+        "vocabularyWords",
+        "vocabularyProgress",
+        "vocabularyReviews",
     ];
 
     let object = snapshot
@@ -820,7 +937,7 @@ mod tests {
 
         apply_migrations(&path).unwrap();
 
-        assert_eq!(migration_versions(&path), vec![1, 2]);
+        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5]);
         assert!(table_columns(&path, "problems").contains(&"kind".to_string()));
         assert!(table_columns(&path, "problems").contains(&"interview_json".to_string()));
         assert!(table_columns(&path, "attempts").contains(&"mode".to_string()));
@@ -936,7 +1053,7 @@ mod tests {
         apply_migrations(&path).unwrap();
         apply_migrations(&path).unwrap();
 
-        assert_eq!(migration_versions(&path), vec![1, 2]);
+        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5]);
         assert_eq!(
             table_columns(&path, "problems")
                 .iter()
@@ -944,6 +1061,48 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn platform_sources_migration_accepts_luogu_rows() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("xiti.sqlite");
+        apply_migrations(&path).unwrap();
+        let connection = open_database(&path).unwrap();
+        connection
+            .execute(
+                "INSERT INTO problems(id, source, title, created_at, updated_at)
+                 VALUES('luogu-p1000', 'luogu', '超级玛丽游戏', 1, 1)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO platform_sessions(source, profile_directory)
+                 VALUES('luogu', 'platforms/luogu')",
+                [],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn vocabulary_migration_creates_schedule_and_daily_target_columns() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("xiti.sqlite");
+
+        apply_migrations(&path).unwrap();
+
+        assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5]);
+        assert!(table_columns(&path, "daily_plans").contains(&"target_vocabulary_words".to_string()));
+        let connection = open_database(&path).unwrap();
+        let table_count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'vocabulary_%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(table_count, 3);
     }
 
     #[test]
@@ -1218,7 +1377,28 @@ mod tests {
                 "tags": ["哈希表"], "relatedProblemIds": ["p1"], "relatedMistakeIds": [],
                 "createdAt": 1, "updatedAt": 2
             }],
-            "codeTemplates": [], "dailyPlans": [], "aiGenerations": [], "settings": {}
+            "codeTemplates": [], "dailyPlans": [{
+                "id": "plan1", "date": "2026-09-24", "targetVocabularyWords": 8,
+                "taskVocabularyWordIds": ["v1"], "completedVocabularyWordIds": [],
+                "vocabularyDifficulty": "all", "createdAt": 1, "updatedAt": 2
+            }], "aiGenerations": [], "settings": {},
+            "vocabularyWords": [{
+                "id": "v1", "word": "retain", "level": "B2", "difficulty": "intermediate",
+                "meaning": "保留", "definitionEn": "to keep", "example": "Retain the note.",
+                "exampleTranslation": "保留这条笔记。", "family": ["retention"], "tags": ["study"],
+                "mnemonic": "retain the note",
+                "source": "Proofline 内置词库（自编例句）"
+            }],
+            "vocabularyProgress": [{
+                "wordId": "v1", "state": "review", "repetitions": 2,
+                "intervalDays": 3, "easeFactor": 2.5, "lapses": 0, "streak": 2,
+                "lastRating": "good", "dueAt": 86400000, "lastReviewedAt": 1
+            }],
+            "vocabularyReviews": [{
+                "id": "vr1", "wordId": "v1", "reviewedAt": 1,
+                "direction": "word-to-meaning", "rating": "good", "response": "保留",
+                "correct": true, "durationMs": 2500
+            }]
         });
         save_snapshot(&path, &snapshot).unwrap();
         assert_eq!(load_snapshot(&path).unwrap(), Some(snapshot));
@@ -1231,7 +1411,19 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert!(table_count >= 15);
+        assert!(table_count >= 18);
+        let vocabulary_rows: i64 = connection
+            .query_row("SELECT count(*) FROM vocabulary_reviews", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(vocabulary_rows, 1);
+        let vocabulary_state: String = connection
+            .query_row("SELECT status FROM vocabulary_progress WHERE word_id = 'v1'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(vocabulary_state, "review");
+        let vocabulary_difficulty: Option<String> = connection
+            .query_row("SELECT vocabulary_difficulty FROM daily_plans WHERE id = 'plan1'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(vocabulary_difficulty, None);
         let fts_matches: i64 = connection
             .query_row(
                 "SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH '哈希表'",

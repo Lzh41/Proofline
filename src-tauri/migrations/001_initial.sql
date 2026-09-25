@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS app_state (
 
 CREATE TABLE IF NOT EXISTS problems (
   id TEXT PRIMARY KEY,
-  source TEXT NOT NULL CHECK (source IN ('leetcode-cn', 'leetcode', 'nowcoder', 'manual', 'screenshot')),
+  source TEXT NOT NULL CHECK (source IN ('leetcode-cn', 'leetcode', 'nowcoder', 'luogu', 'manual', 'screenshot')),
   external_id TEXT,
   platform_slug TEXT,
   source_url TEXT,
@@ -230,7 +230,7 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 CREATE TABLE IF NOT EXISTS platform_sessions (
-  source TEXT PRIMARY KEY CHECK (source IN ('leetcode-cn', 'leetcode', 'nowcoder')),
+  source TEXT PRIMARY KEY CHECK (source IN ('leetcode-cn', 'leetcode', 'nowcoder', 'luogu')),
   last_url TEXT,
   profile_directory TEXT NOT NULL,
   last_opened_at INTEGER,

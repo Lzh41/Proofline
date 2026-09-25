@@ -15,6 +15,7 @@ import { SolvePage } from './pages/SolvePage';
 import { TodayPage } from './pages/TodayPage';
 import { InterviewsPage } from './pages/InterviewsPage';
 import { InterviewPracticePage } from './pages/InterviewPracticePage';
+import { VocabularyPage } from './pages/VocabularyPage';
 
 function ApplicationRoutes() {
   const store = useStoreView();
@@ -39,6 +40,7 @@ function ApplicationRoutes() {
         <Route path="/solve" element={<SolvePage />} />
         <Route path="/solve/:id" element={<SolvePage />} />
         <Route path="/review" element={<MistakesPage />} />
+        <Route path="/vocabulary" element={<VocabularyPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/knowledge/:id" element={<KnowledgePage />} />
         <Route path="/plan" element={<PlanPage />} />

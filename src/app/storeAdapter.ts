@@ -20,6 +20,7 @@ import type {
   ThoughtEvent,
   FinishInterviewInput,
 } from '../types';
+import type { VocabularyGrade, VocabularyProgress, VocabularyReview, VocabularyReviewDirection, VocabularyWord } from '../lib/vocabulary';
 import type {
   AiCoachIntent,
   InterviewCoachIntent,
@@ -36,8 +37,10 @@ export interface AppSettingsView {
   dailyTargetMinutes?: number;
   dailyTargetProblems?: number;
   dailyTargetInterviewQuestions?: number;
+  dailyTargetVocabularyWords?: number;
   interviewCatalogVersion?: number;
   lastSolveProblemId?: string;
+  lastSolveProblemByMode?: Partial<Record<'function' | 'stdin', string>>;
   solveProblemAreaHeight?: number;
   solveProblemTextWidth?: number;
   solveWorkbenchCodeWidth?: number;
@@ -74,6 +77,9 @@ export interface AppStoreView {
   mistakes: Mistake[];
   knowledgeNotes: KnowledgeNote[];
   dailyPlans: DailyPlan[];
+  vocabularyWords: VocabularyWord[];
+  vocabularyProgress: VocabularyProgress[];
+  vocabularyReviews: VocabularyReview[];
   thoughtEvents: ThoughtEvent[];
   aiGenerations: AiGeneration[];
   settings: AppSettingsView;
@@ -98,7 +104,8 @@ export interface AppStoreView {
   updateKnowledgeNote?: (id: string, patch: Partial<KnowledgeNote>) => Promise<void> | void;
   deleteKnowledgeNote?: (id: string) => Promise<void> | void;
   savePlan?: (plan: Partial<DailyPlan>) => Promise<void> | void;
-  generateDailyPlan?: (options?: Record<string, unknown>) => Promise<void> | void;
+  generateDailyPlan?: (options?: Record<string, unknown>) => Promise<DailyPlan> | DailyPlan;
+  recordVocabularyReview?: (input: { wordId: string; direction: VocabularyReviewDirection; rating: VocabularyGrade; response: string; correct: boolean; durationMs?: number }) => Promise<void> | void;
   updateSettings?: (patch: Partial<AppSettingsView>) => Promise<void> | void;
   restoreInterviewCatalog?: () => Promise<number | void> | number | void;
   openPlatform?: (source: PlatformSource) => Promise<void> | void;
@@ -141,6 +148,9 @@ export function useStoreView(): AppStoreView {
       mistakes: raw.mistakes ?? EMPTY_ARRAY,
       knowledgeNotes: raw.knowledgeNotes ?? EMPTY_ARRAY,
       dailyPlans: raw.dailyPlans ?? EMPTY_ARRAY,
+      vocabularyWords: raw.vocabularyWords ?? EMPTY_ARRAY,
+      vocabularyProgress: raw.vocabularyProgress ?? EMPTY_ARRAY,
+      vocabularyReviews: raw.vocabularyReviews ?? EMPTY_ARRAY,
       thoughtEvents: raw.thoughtEvents ?? EMPTY_ARRAY,
       aiGenerations: raw.aiGenerations ?? EMPTY_ARRAY,
       settings: raw.settings ?? EMPTY_SETTINGS,
@@ -171,6 +181,7 @@ export function sourceLabel(source?: string): string {
     'leetcode-cn': '力扣',
     leetcode: 'LeetCode',
     nowcoder: '牛客',
+    luogu: '洛谷',
     manual: '手动录入',
     screenshot: '截图识别',
   };

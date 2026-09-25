@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../app/storeAdapter', () => ({
-  sourceLabel: (source: string) => ({ 'leetcode-cn': '力扣', leetcode: 'LeetCode', nowcoder: '牛客' }[source] ?? source),
+  sourceLabel: (source: string) => ({ 'leetcode-cn': '力扣', leetcode: 'LeetCode', nowcoder: '牛客', luogu: '洛谷' }[source] ?? source),
   useStoreView: () => ({
     problems: [],
     attempts: [],
@@ -69,5 +69,37 @@ describe('平台批量导入', () => {
 
     expect(await screen.findByText('当前平台单次最多导入 50 道题，请缩小范围。')).toBeInTheDocument();
     expect(mocks.importPlatformProblems).not.toHaveBeenCalled();
+  });
+
+  it('完整程序题可以把多个平台批次按顺序连续导入', async () => {
+    render(<PlatformsPage />);
+
+    fireEvent.change(screen.getByLabelText('题型'), { target: { value: 'stdin' } });
+    fireEvent.change(screen.getByLabelText('平台'), { target: { value: 'leetcode-cn' } });
+    fireEvent.click(screen.getByRole('button', { name: '添加平台批次' }));
+    fireEvent.change(screen.getByLabelText('平台 2'), { target: { value: 'nowcoder' } });
+    fireEvent.click(screen.getByRole('button', { name: '开始导入' }));
+
+    await waitFor(() => expect(mocks.importPlatformProblems).toHaveBeenCalledTimes(2));
+    expect(mocks.importPlatformProblems.mock.calls[0][0]).toMatchObject({
+      source: 'leetcode-cn', startId: 1, endId: 10, algorithmMode: 'stdin',
+    });
+    expect(mocks.importPlatformProblems.mock.calls[1][0]).toMatchObject({
+      source: 'nowcoder', startId: 1, endId: 10, algorithmMode: 'stdin',
+    });
+  });
+
+  it('洛谷批次自动按完整程序题导入', async () => {
+    render(<PlatformsPage />);
+
+    fireEvent.change(screen.getByLabelText('平台'), { target: { value: 'luogu' } });
+    fireEvent.change(screen.getByLabelText('起始题号'), { target: { value: '1000' } });
+    fireEvent.change(screen.getByLabelText('结束题号'), { target: { value: '1002' } });
+    fireEvent.click(screen.getByRole('button', { name: '开始导入' }));
+
+    await waitFor(() => expect(mocks.importPlatformProblems).toHaveBeenCalledWith(
+      { source: 'luogu', startId: 1000, endId: 1002, algorithmMode: 'stdin' },
+      expect.any(Function),
+    ));
   });
 });

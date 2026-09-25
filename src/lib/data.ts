@@ -1,4 +1,6 @@
 import type { AppDataSnapshot, AppSettings, AppTheme, EditorFontSize } from '../types';
+import { VOCABULARY_CATALOG_FULL } from '../data/vocabularyCatalog';
+import { isVocabularyDifficulty, type VocabularyWord } from './vocabulary';
 
 export const EDITOR_FONT_SIZES: EditorFontSize[] = [14, 16, 18, 20, 22];
 
@@ -11,8 +13,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dailyTargetMinutes: 60,
   dailyTargetProblems: 3,
   dailyTargetInterviewQuestions: 2,
+  dailyTargetVocabularyWords: 10,
   interviewCatalogVersion: 0,
   lastSolveProblemId: undefined,
+  lastSolveProblemByMode: undefined,
   privacyConfirmed: false,
   theme: 'dark',
 };
@@ -41,6 +45,9 @@ export function createEmptySnapshot(now = Date.now()): AppDataSnapshot {
     knowledgeNotes: [],
     codeTemplates: [],
     dailyPlans: [],
+    vocabularyWords: [...VOCABULARY_CATALOG_FULL],
+    vocabularyProgress: [],
+    vocabularyReviews: [],
     aiGenerations: [],
     settings: { ...DEFAULT_SETTINGS },
     updatedAt: now,
@@ -68,7 +75,11 @@ function normalizeProblems(value: unknown, schemaVersion: SnapshotSchemaVersion)
     if (kind !== 'algorithm' && kind !== 'interview') {
       throw new TypeError(`problems[${index}].kind 未知：${String(kind)}`);
     }
-    return { ...problem, kind };
+    const algorithmMode = problem.algorithmMode ?? 'function';
+    if (algorithmMode !== 'function' && algorithmMode !== 'stdin') {
+      throw new TypeError(`problems[${index}].algorithmMode 未知：${String(algorithmMode)}`);
+    }
+    return { ...problem, kind, algorithmMode };
   });
 }
 
@@ -95,8 +106,22 @@ function normalizePlans(value: unknown): AppDataSnapshot['dailyPlans'] {
       targetProblems: targetAlgorithmProblems + targetInterviewQuestions,
       targetAlgorithmProblems,
       targetInterviewQuestions,
+      targetVocabularyWords: Number.isFinite(plan.targetVocabularyWords)
+        ? Math.max(0, Math.min(100, Math.floor(plan.targetVocabularyWords)))
+        : 10,
+      taskVocabularyWordIds: Array.isArray(plan.taskVocabularyWordIds) ? plan.taskVocabularyWordIds : [],
+      completedVocabularyWordIds: Array.isArray(plan.completedVocabularyWordIds) ? plan.completedVocabularyWordIds : [],
+      vocabularyDifficulty: isVocabularyDifficulty(plan.vocabularyDifficulty) ? plan.vocabularyDifficulty : 'all',
     };
   });
+}
+
+function normalizeVocabularyWords(value: unknown): VocabularyWord[] {
+  const catalog = new Map(VOCABULARY_CATALOG_FULL.map((word) => [word.id, word]));
+  arrayValue<VocabularyWord>(value, 'vocabularyWords').forEach((word) => {
+    if (!catalog.has(word.id)) catalog.set(word.id, word);
+  });
+  return [...catalog.values()];
 }
 
 export function normalizeSnapshot(value: unknown): AppDataSnapshot {
@@ -109,11 +134,24 @@ export function normalizeSnapshot(value: unknown): AppDataSnapshot {
   const raw = rawObject as Partial<AppDataSnapshot>;
   const rawSettings = raw.settings === undefined ? {} : objectValue(raw.settings, 'settings');
   const settings = { ...DEFAULT_SETTINGS, ...rawSettings } as AppSettings;
+  settings.dailyTargetVocabularyWords = Number.isFinite(settings.dailyTargetVocabularyWords)
+    ? Math.max(0, Math.min(100, Math.floor(settings.dailyTargetVocabularyWords)))
+    : DEFAULT_SETTINGS.dailyTargetVocabularyWords;
   settings.theme = normalizeTheme(settings.theme);
   settings.editorFontSize = normalizeEditorFontSize(settings.editorFontSize);
   settings.lastSolveProblemId = typeof settings.lastSolveProblemId === 'string' && settings.lastSolveProblemId.trim()
     ? settings.lastSolveProblemId
     : undefined;
+  const rawLastSolveProblemByMode = settings.lastSolveProblemByMode;
+  if (rawLastSolveProblemByMode && typeof rawLastSolveProblemByMode === 'object' && !Array.isArray(rawLastSolveProblemByMode)) {
+    const byMode = rawLastSolveProblemByMode as Partial<Record<'function' | 'stdin', unknown>>;
+    settings.lastSolveProblemByMode = {
+      ...(typeof byMode.function === 'string' && byMode.function.trim() ? { function: byMode.function } : {}),
+      ...(typeof byMode.stdin === 'string' && byMode.stdin.trim() ? { stdin: byMode.stdin } : {}),
+    };
+  } else {
+    settings.lastSolveProblemByMode = undefined;
+  }
   settings.solveProblemAreaHeight = normalizeLayoutDimension(settings.solveProblemAreaHeight, 150, 720);
   settings.solveProblemTextWidth = normalizeLayoutDimension(settings.solveProblemTextWidth, 220, 1600);
   settings.solveWorkbenchCodeWidth = normalizeLayoutDimension(settings.solveWorkbenchCodeWidth, 300, 1800);
@@ -128,6 +166,9 @@ export function normalizeSnapshot(value: unknown): AppDataSnapshot {
     knowledgeNotes: arrayValue(raw.knowledgeNotes, 'knowledgeNotes'),
     codeTemplates: arrayValue(raw.codeTemplates, 'codeTemplates'),
     dailyPlans: normalizePlans(raw.dailyPlans),
+    vocabularyWords: normalizeVocabularyWords(raw.vocabularyWords),
+    vocabularyProgress: arrayValue<AppDataSnapshot['vocabularyProgress'][number]>(raw.vocabularyProgress, 'vocabularyProgress'),
+    vocabularyReviews: arrayValue<AppDataSnapshot['vocabularyReviews'][number]>(raw.vocabularyReviews, 'vocabularyReviews'),
     aiGenerations: arrayValue(raw.aiGenerations, 'aiGenerations'),
     settings,
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),

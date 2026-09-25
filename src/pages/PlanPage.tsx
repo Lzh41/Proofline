@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { CalendarCheck2, Check, RefreshCw, Save } from 'lucide-react';
+import { CalendarCheck2, Check, Languages, RefreshCw, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { DailyPlan } from '../types';
+import { VOCABULARY_DIFFICULTY_OPTIONS, type VocabularyDifficulty, type VocabularyWord } from '../lib/vocabulary';
 import { todayKey, useStoreView } from '../app/storeAdapter';
 import { EmptyState, PageHeader, ProgressBar, SectionHeader } from '../components/PagePrimitives';
 import { learningRoute } from '../lib/interviews';
@@ -15,25 +16,30 @@ export function PlanPage() {
   const [targetMinutes, setTargetMinutes] = useState(String(current?.targetMinutes ?? store.settings.dailyTargetMinutes ?? 60));
   const [targetAlgorithmProblems, setTargetAlgorithmProblems] = useState(String(current?.targetAlgorithmProblems ?? store.settings.dailyTargetProblems ?? 3));
   const [targetInterviewQuestions, setTargetInterviewQuestions] = useState(String(current?.targetInterviewQuestions ?? store.settings.dailyTargetInterviewQuestions ?? 2));
+  const [targetVocabularyWords, setTargetVocabularyWords] = useState(String(current?.targetVocabularyWords ?? store.settings.dailyTargetVocabularyWords ?? 10));
+  const [vocabularyDifficulty, setVocabularyDifficulty] = useState<VocabularyDifficulty | 'all'>(current?.vocabularyDifficulty ?? 'all');
   const [targetError, setTargetError] = useState('');
   const [focusTags, setFocusTags] = useState((current?.focusTags ?? []).join('，'));
   const [ratio, setRatio] = useState(current?.difficultyRatio ?? { easy: 30, medium: 50, hard: 20 });
   const [message, setMessage] = useState('');
 
   const tasks = useMemo(() => (current?.taskProblemIds ?? []).map((id) => store.problems.find((problem) => problem.id === id)).filter(Boolean), [current?.taskProblemIds, store.problems]);
+  const vocabularyTasks = useMemo(() => (current?.taskVocabularyWordIds ?? []).map((id) => store.vocabularyWords.find((word) => word.id === id)).filter((word): word is VocabularyWord => word !== undefined), [current?.taskVocabularyWordIds, store.vocabularyWords]);
   const totalRatio = ratio.easy + ratio.medium + ratio.hard;
   const parsedTargets = {
     minutes: Number(targetMinutes),
     algorithm: Number(targetAlgorithmProblems),
     interview: Number(targetInterviewQuestions),
+    vocabulary: Number(targetVocabularyWords),
   };
   const targetProblems = parsedTargets.algorithm + parsedTargets.interview;
 
   const validateTargets = () => {
     const valid = Number.isInteger(parsedTargets.minutes) && parsedTargets.minutes >= 10 && parsedTargets.minutes <= 480
       && Number.isInteger(parsedTargets.algorithm) && parsedTargets.algorithm >= 0 && parsedTargets.algorithm <= 30
-      && Number.isInteger(parsedTargets.interview) && parsedTargets.interview >= 0 && parsedTargets.interview <= 30;
-    setTargetError(valid ? '' : '请输入有效的整数目标：时长 10-480 分钟，题目目标 0-30。');
+      && Number.isInteger(parsedTargets.interview) && parsedTargets.interview >= 0 && parsedTargets.interview <= 30
+      && Number.isInteger(parsedTargets.vocabulary) && parsedTargets.vocabulary >= 0 && parsedTargets.vocabulary <= 100;
+    setTargetError(valid ? '' : '请输入有效的整数目标：时长 10-480 分钟，题目目标 0-30，新词目标 0-100。');
     return valid;
   };
 
@@ -50,16 +56,21 @@ export function PlanPage() {
       targetProblems,
       targetAlgorithmProblems: parsedTargets.algorithm,
       targetInterviewQuestions: parsedTargets.interview,
+      targetVocabularyWords: parsedTargets.vocabulary,
+      vocabularyDifficulty,
       focusTags: focusTags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean),
       difficultyRatio: ratio,
       taskProblemIds: current?.taskProblemIds ?? [],
       completedProblemIds: current?.completedProblemIds ?? [],
+      taskVocabularyWordIds: current?.taskVocabularyWordIds ?? [],
+      completedVocabularyWordIds: current?.completedVocabularyWordIds ?? [],
     };
     await store.savePlan?.(plan);
     await store.updateSettings?.({
       dailyTargetMinutes: parsedTargets.minutes,
       dailyTargetProblems: parsedTargets.algorithm,
       dailyTargetInterviewQuestions: parsedTargets.interview,
+      dailyTargetVocabularyWords: parsedTargets.vocabulary,
     });
     setMessage('每日目标已保存。');
   };
@@ -71,8 +82,8 @@ export function PlanPage() {
     }
     if (!validateTargets()) return;
     await save();
-    await store.generateDailyPlan?.({ date, targetMinutes: parsedTargets.minutes, targetAlgorithmProblems: parsedTargets.algorithm, targetInterviewQuestions: parsedTargets.interview, focusTags: focusTags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean), difficultyRatio: ratio });
-    setMessage('已优先安排到期复习，并按薄弱标签补齐新题。');
+    await store.generateDailyPlan?.({ date, targetMinutes: parsedTargets.minutes, targetAlgorithmProblems: parsedTargets.algorithm, targetInterviewQuestions: parsedTargets.interview, targetVocabularyWords: parsedTargets.vocabulary, vocabularyDifficulty, focusTags: focusTags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean), difficultyRatio: ratio });
+    setMessage('今日词汇与题目任务已生成；到期单词复习不会占用新词目标。');
   };
 
   return (
@@ -86,6 +97,8 @@ export function PlanPage() {
             <label className="field"><span>学习时长（分钟）</span><input className="input" type="number" min={10} max={480} value={targetMinutes} onChange={(event) => { setTargetMinutes(event.target.value); setTargetError(''); }} /></label>
             <label className="field"><span>算法题目标</span><input className="input" type="number" min={0} max={30} value={targetAlgorithmProblems} onChange={(event) => { setTargetAlgorithmProblems(event.target.value); setTargetError(''); }} /></label>
             <label className="field"><span>面试题目标</span><input className="input" type="number" min={0} max={30} value={targetInterviewQuestions} onChange={(event) => { setTargetInterviewQuestions(event.target.value); setTargetError(''); }} /></label>
+            <label className="field"><span>每日新词目标</span><input className="input" type="number" min={0} max={100} value={targetVocabularyWords} onChange={(event) => { setTargetVocabularyWords(event.target.value); setTargetError(''); }} /></label>
+            <label className="field"><span>词汇方向</span><select className="select" value={vocabularyDifficulty} onChange={(event) => setVocabularyDifficulty(event.target.value as VocabularyDifficulty | 'all')}><option value="all">全部难度</option>{VOCABULARY_DIFFICULTY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label className={`field ${styles.formFull}`}><span>关注专题</span><input className="input" value={focusTags} onChange={(event) => setFocusTags(event.target.value)} placeholder="动态规划，二分查找，图" /></label>
             <div className={styles.formFull}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 12, fontWeight: 700 }}><span>难度比例</span><span style={{ color: totalRatio === 100 ? 'var(--accent-deep)' : 'var(--danger)' }}>合计 {totalRatio}%</span></div>
@@ -111,6 +124,14 @@ export function PlanPage() {
         <SectionHeader title="今日任务单" meta={`${current?.completedProblemIds.length ?? 0}/${current?.targetProblems ?? targetProblems}`} />
         {tasks.map((problem, index) => problem && <div className={styles.row} key={problem.id}><div className={styles.rowMain}><strong>{String(index + 1).padStart(2, '0')} · {problem.title}</strong><p>{problem.kind === 'interview' ? '面试题' : '算法题'} · {problem.tags.slice(0, 3).join(' / ') || '综合训练'}</p></div><div className={styles.rowActions}>{current?.completedProblemIds.includes(problem.id) ? <span className={`${styles.badge} ${styles.badgeAccent}`}><Check size={12} />完成</span> : <button className="button" type="button" onClick={() => navigate(learningRoute(problem))}>开始</button>}</div></div>)}
         {!tasks.length && <EmptyState title="任务单还未生成" message="保存目标后生成任务；题库数量不足时会保留已有题目并提示补充。" action={<button className="button buttonAccent" type="button" onClick={generate}>生成任务</button>} />}
+      </section>
+      <section className={styles.section}>
+        <SectionHeader title="今日新词" meta={`${current?.completedVocabularyWordIds.length ?? 0}/${current?.targetVocabularyWords ?? parsedTargets.vocabulary} 已完成`} action={<button className="button buttonPrimary" type="button" onClick={() => navigate('/vocabulary')}><Languages size={15} />开始刷词</button>} />
+        {vocabularyTasks.map((word) => {
+          const completed = current?.completedVocabularyWordIds.includes(word.id) ?? false;
+          return <div className={styles.row} key={word.id}><div className={styles.rowMain}><strong>{word.word}<span className={styles.vocabularyPlanMeta}> · {word.level} · {word.meaning}</span></strong><p>{word.example}</p></div><div className={styles.rowActions}>{completed ? <span className={`${styles.badge} ${styles.badgeAccent}`}><Check size={12} />完成</span> : <button className="button" type="button" onClick={() => navigate(`/vocabulary?word=${encodeURIComponent(word.id)}`)}>学习</button>}</div></div>;
+        })}
+        {!vocabularyTasks.length && <EmptyState compact title="还没有今日新词" message="设定每日数量和难度后生成今日任务；到期复习会在刷词时优先出现。" action={<button className="button" type="button" onClick={() => navigate('/vocabulary')}>浏览词库</button>} />}
       </section>
     </>
   );

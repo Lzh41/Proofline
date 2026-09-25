@@ -38,6 +38,7 @@ import { DebugSession } from '../lib/debugSession';
 import { isAllowedPlatformUrl, isSafeExternalUrl } from '../lib/platform';
 import { EDITOR_FONT_SIZES } from '../lib/data';
 import { normalizeProblemExamples } from '../lib/problemExamples';
+import { renderMarkdown } from '../lib/markdown';
 import { formatProblemSampleResult, outputsEqual } from '../lib/problemRunner';
 import type { AiGeneration, Attempt, DebugCommand, DebugEvent, EditorFontSize, Problem, ProblemExample, ProblemSampleRunResult } from '../types';
 import { difficultyLabel, formatDuration, sourceLabel, useStoreView } from '../app/storeAdapter';
@@ -270,6 +271,50 @@ function conversationContext(turns: AiCoachTurn[], intent: AiCoachIntent): strin
 
 const DEFAULT_CODE = '';
 
+function stdinTemplateForLanguage(language: string): string {
+  switch (language.toLowerCase()) {
+    case 'python':
+      return `import sys
+
+
+def main() -> None:
+    tokens = sys.stdin.read().split()
+    # 根据题面输入格式解析 tokens，并输出结果
+
+
+if __name__ == '__main__':
+    main()
+`;
+    case 'javascript':
+      return `'use strict';
+
+const fs = require('fs');
+const tokens = fs.readFileSync(0, 'utf8').trim().split(/\\s+/).filter(Boolean);
+
+// 根据题面输入格式解析 tokens，并输出结果
+`;
+    case 'typescript':
+      return `import * as fs from 'node:fs';
+
+const tokens = fs.readFileSync(0, 'utf8').trim().split(/\\s+/).filter(Boolean);
+
+// 根据题面输入格式解析 tokens，并输出结果
+`;
+    default:
+      return `#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    // 根据题面输入格式读取数据，并输出结果
+    return 0;
+}
+`;
+  }
+}
+
 const LANGUAGE_ALIASES: Record<string, string[]> = {
   cpp: ['cpp', 'cpp17', 'c++', 'c++17'],
   python: ['python', 'python3', 'python 3', 'py'],
@@ -356,7 +401,7 @@ export function visibleStickyScopes(lines: string[], language: string, firstVisi
     .slice(-5);
 }
 
-const PLATFORM_SOURCES = new Set<Problem['source']>(['leetcode-cn', 'leetcode', 'nowcoder']);
+const PLATFORM_SOURCES = new Set<Problem['source']>(['leetcode-cn', 'leetcode', 'nowcoder', 'luogu']);
 
 function editableExamples(examples: readonly ProblemExample[]): ProblemExample[] {
   return examples.length
@@ -377,6 +422,12 @@ export function findProblemCodeSnippet(problem: Problem | undefined, language: s
   })?.code;
 }
 
+function editorTemplateForProblem(problem: Problem | undefined, language: string): string {
+  return problem?.algorithmMode === 'stdin'
+    ? stdinTemplateForLanguage(language)
+    : findProblemCodeSnippet(problem, language) ?? DEFAULT_CODE;
+}
+
 function normalizedEditorCode(value: string): string {
   return value.replace(/\s+/g, '');
 }
@@ -387,6 +438,7 @@ function isForeignOfficialTemplate(
   language: string,
   allProblems: readonly Problem[],
 ): boolean {
+  if (problem?.algorithmMode === 'stdin') return false;
   if (!problem || !attempt?.code.trim() || attempt.endedAt || attempt.result !== 'unfinished') return false;
   const currentTemplate = findProblemCodeSnippet(problem, language);
   if (!currentTemplate || normalizedEditorCode(attempt.code) === normalizedEditorCode(currentTemplate)) return false;
@@ -404,7 +456,7 @@ function initialEditorCode(
   allProblems: readonly Problem[] = [],
 ): string {
   if (attempt?.code.trim() && !isForeignOfficialTemplate(problem, attempt, language, allProblems)) return attempt.code;
-  return findProblemCodeSnippet(problem, language) ?? DEFAULT_CODE;
+  return editorTemplateForProblem(problem, language);
 }
 
 function isAlgorithmProblem(problem: Problem): boolean {
@@ -448,6 +500,8 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     fontFamily: 'JetBrains Mono, Consolas, monospace',
     tabSize: 4,
     insertSpaces: true,
+    detectIndentation: false,
+    indentSize: 4,
     scrollBeyondLastLine: false,
     // ── 布局：保留 automaticLayout 以支持分栏拖动，但关闭不必要的布局触发 ──
     automaticLayout: true,
@@ -559,7 +613,18 @@ export function SolvePage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const store = useStoreView();
-  const algorithmProblems = useMemo(() => store.problems.filter(isAlgorithmProblem), [store.problems]);
+  const allAlgorithmProblems = useMemo(() => store.problems.filter(isAlgorithmProblem), [store.problems]);
+  const requestedProblem = useMemo(
+    () => id
+      ? allAlgorithmProblems.find((item) => item.id === id)
+      : allAlgorithmProblems.find((item) => item.id === store.settings.lastSolveProblemId) ?? allAlgorithmProblems[0],
+    [allAlgorithmProblems, id, store.settings.lastSolveProblemId],
+  );
+  const activeAlgorithmMode = requestedProblem?.algorithmMode ?? 'function';
+  const algorithmProblems = useMemo(
+    () => allAlgorithmProblems.filter((item) => (item.algorithmMode ?? 'function') === activeAlgorithmMode),
+    [activeAlgorithmMode, allAlgorithmProblems],
+  );
   const practicedProblemIds = useMemo(
     () => new Set(store.attempts
       .filter((item) => item.mode === 'code' && (item.result === 'sample-passed' || item.result === 'accepted'))
@@ -568,10 +633,10 @@ export function SolvePage() {
   );
   const problem = useMemo(
     () => {
-      if (id) return algorithmProblems.find((item) => item.id === id);
-      return algorithmProblems.find((item) => item.id === store.settings.lastSolveProblemId) ?? algorithmProblems[0];
+      if (requestedProblem && (requestedProblem.algorithmMode ?? 'function') === activeAlgorithmMode) return requestedProblem;
+      return algorithmProblems[0];
     },
-    [algorithmProblems, id, store.settings.lastSolveProblemId],
+    [activeAlgorithmMode, algorithmProblems, requestedProblem],
   );
   const currentProblemIndex = useMemo(
     () => problem ? algorithmProblems.findIndex((item) => item.id === problem.id) : -1,
@@ -579,6 +644,23 @@ export function SolvePage() {
   );
   const previousProblem = currentProblemIndex > 0 ? algorithmProblems[currentProblemIndex - 1] : undefined;
   const nextProblem = currentProblemIndex >= 0 && currentProblemIndex < algorithmProblems.length - 1 ? algorithmProblems[currentProblemIndex + 1] : undefined;
+  const functionProblems = useMemo(
+    () => allAlgorithmProblems.filter((item) => (item.algorithmMode ?? 'function') === 'function'),
+    [allAlgorithmProblems],
+  );
+  const stdinProblems = useMemo(
+    () => allAlgorithmProblems.filter((item) => item.algorithmMode === 'stdin'),
+    [allAlgorithmProblems],
+  );
+  const switchSolveMode = (mode: 'function' | 'stdin') => {
+    const candidates = mode === 'stdin' ? stdinProblems : functionProblems;
+    const rememberedId = store.settings.lastSolveProblemByMode?.[mode];
+    const target = candidates.find((item) => item.id === rememberedId)
+      // 兼容升级前只有全局 lastSolveProblemId 的旧数据。
+      ?? candidates.find((item) => item.id === store.settings.lastSolveProblemId)
+      ?? candidates[0];
+    if (target) navigate(`/solve/${target.id}`);
+  };
   const attempt = useMemo(() => store.attempts.filter((item) => item.problemId === problem?.id).sort((a, b) => b.startedAt - a.startedAt)[0], [problem?.id, store.attempts]);
   // 编辑器文本由 Monaco 非受控维护，这里只保留“最近一次已知代码”的 ref，
   // 用户输入不再同步 React 状态，避免每次输入/删除停顿后整页重渲染造成卡顿。
@@ -597,7 +679,9 @@ export function SolvePage() {
   const [aiError, setAiError] = useState('');
   const [busyCoach, setBusyCoach] = useState(false);
   const [message, setMessage] = useState('');
-  const [runResult, setRunResult] = useState('还没有运行样例。点击上方“运行全部样例”，应用会自动补齐测试入口。');
+  const [runResult, setRunResult] = useState(problem?.algorithmMode === 'stdin'
+    ? '还没有运行样例。点击上方“运行全部样例”，程序会按标准输入输出执行。'
+    : '还没有运行样例。点击上方“运行全部样例”，应用会自动补齐测试入口。');
   const [runPassed, setRunPassed] = useState<boolean | null>(null);
   const [runningCode, setRunningCode] = useState(false);
   const [sampleRunItems, setSampleRunItems] = useState<SampleRunItem[]>([]);
@@ -623,7 +707,7 @@ export function SolvePage() {
   const runningCodeRef = useRef(false);
   const draftAttemptIdRef = useRef<string | undefined>(attempt?.id);
   const draftCreatePromiseRef = useRef<Promise<Attempt | void> | null>(null);
-  const draftPersistRef = useRef<() => Promise<void>>(async () => undefined);
+  const draftPersistRef = useRef<(allowStaleOwner?: boolean) => Promise<void>>(async () => undefined);
   const languageRef = useRef(language);
   const secondsRef = useRef(seconds);
   const requestGenerationRef = useRef(0);
@@ -642,6 +726,14 @@ export function SolvePage() {
   const editorTheme = editorThemeFor(resolvedTheme);
   const editorFontSize = store.settings.editorFontSize ?? 16;
   const aiConfigured = Boolean(store.requestAiHint && store.settings.hasAiCredential && store.settings.aiModel?.trim());
+  // 题目路由切换时，Monaco 可能晚于恢复 effect 挂载。首帧直接按新题计算默认代码，
+  // 避免异步挂载期间短暂复用上一题的编辑器内容。
+  const editorRenderLanguage = loadedProblemIdRef.current === problem?.id
+    ? language
+    : attempt?.language ?? store.settings.defaultLanguage ?? language;
+  const editorDefaultCode = loadedProblemIdRef.current === problem?.id
+    ? codeRef.current
+    : initialEditorCode(problem, attempt, editorRenderLanguage, algorithmProblems);
 
   const flushLayoutSave = useCallback(() => {
     window.clearTimeout(layoutSaveTimerRef.current);
@@ -780,32 +872,37 @@ export function SolvePage() {
     if (!problem?.id || !store.updateAttempt) return;
     const capturedCodeProblemId = codeProblemIdRef.current;
     const capturedProblemId = problem.id;
+    const capturedAttemptId = attempt?.id;
+    const capturedLanguage = language;
     // 切换题目瞬间 code 可能还是上一题的代码：只有代码确实属于当前题目时才允许自动建草稿，
     // 否则会把上一题的签名误存进新题的 attempt（历史错位数据的来源）。
-    const codeBelongsToProblem = capturedCodeProblemId === problem.id;
-    const persistDraft = async () => {
+    const codeBelongsToProblem = () => capturedCodeProblemId === problem.id
+      && (loadedProblemIdRef.current === undefined || loadedProblemIdRef.current === problem.id);
+    const persistDraft = async (allowStaleOwner = false) => {
       const latestCode = codeRef.current;
-      const latestLanguage = languageRef.current;
-      const latestTemplateCode = findProblemCodeSnippet(problem, latestLanguage) ?? DEFAULT_CODE;
-      const shouldCreateDraft = !attempt?.id && latestCode.trim() && latestCode !== latestTemplateCode && codeBelongsToProblem;
+      const latestLanguage = allowStaleOwner ? capturedLanguage : languageRef.current;
+      const latestTemplateCode = editorTemplateForProblem(problem, latestLanguage);
+      const shouldCreateDraft = !capturedAttemptId && latestCode.trim() && latestCode !== latestTemplateCode && codeBelongsToProblem();
       if (!attempt?.id && !shouldCreateDraft) return;
       // effect cleanup 发生在题目切换的 render 之后，此时 draftAttemptIdRef 可能已经指向新题。
       // 只允许仍属于当前题目的闭包落盘，杜绝上一题代码写入新题记录。
-      if (!codeBelongsToProblem
+      if (!allowStaleOwner && (!codeBelongsToProblem()
         || capturedCodeProblemId !== capturedProblemId
         || currentProblemIdRef.current !== capturedProblemId
-        || codeProblemIdRef.current !== capturedCodeProblemId) return;
-      let targetAttemptId = draftAttemptIdRef.current;
+        || codeProblemIdRef.current !== capturedCodeProblemId)) return;
+      let targetAttemptId = allowStaleOwner ? capturedAttemptId : draftAttemptIdRef.current;
       if (!targetAttemptId) {
         if (!store.startAttempt) return;
-        if (!draftCreatePromiseRef.current) draftCreatePromiseRef.current = Promise.resolve(store.startAttempt(problem.id, latestLanguage));
-        const started = await draftCreatePromiseRef.current;
-        draftCreatePromiseRef.current = null;
-        if (!started?.id || currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId) return;
+        if (!allowStaleOwner && !draftCreatePromiseRef.current) draftCreatePromiseRef.current = Promise.resolve(store.startAttempt(problem.id, latestLanguage));
+        const started = allowStaleOwner
+          ? await store.startAttempt(problem.id, latestLanguage)
+          : await draftCreatePromiseRef.current;
+        if (!allowStaleOwner) draftCreatePromiseRef.current = null;
+        if (!started?.id || (!allowStaleOwner && (currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId))) return;
         targetAttemptId = started.id;
-        draftAttemptIdRef.current = started.id;
+        if (!allowStaleOwner) draftAttemptIdRef.current = started.id;
       }
-      if (currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId) return;
+      if (!allowStaleOwner && (currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId)) return;
       await store.updateAttempt?.(targetAttemptId, { code: latestCode, language: latestLanguage, durationSeconds: secondsRef.current });
     };
     draftPersistRef.current = persistDraft;
@@ -816,13 +913,11 @@ export function SolvePage() {
     }, DRAFT_SAVE_DELAY);
     // 用户输入路径（updateEditorCode）会直接重置该定时器；这里只负责
     // 题目/语言/练习记录变化时的重新排期，避免每次输入都写库造成卡顿。
-    return () => window.clearTimeout(saveTimer.current);
+    return () => {
+      window.clearTimeout(saveTimer.current);
+      void persistDraft(true);
+    };
   }, [attempt?.id, language, problem, store.startAttempt, store.updateAttempt]);
-
-  useEffect(() => () => {
-    window.clearTimeout(saveTimer.current);
-    void draftPersistRef.current();
-  }, []);
 
   useEffect(() => {
     if (!problem?.id) return;
@@ -859,7 +954,9 @@ export function SolvePage() {
     requestGenerationRef.current += 1;
     draftAttemptIdRef.current = attempt?.id;
     draftCreatePromiseRef.current = null;
-    setRunResult('还没有运行样例。点击上方“运行全部样例”，应用会自动补齐测试入口。');
+    setRunResult(problem?.algorithmMode === 'stdin'
+      ? '还没有运行样例。点击上方“运行全部样例”，程序会按标准输入输出执行。'
+      : '还没有运行样例。点击上方“运行全部样例”，应用会自动补齐测试入口。');
     setRunPassed(null);
     setSampleRunItems([]);
     runningCodeRef.current = false;
@@ -880,9 +977,16 @@ export function SolvePage() {
   }, []);
 
   useEffect(() => {
-    if (!problem?.id || store.settings.lastSolveProblemId === problem.id) return;
-    void store.updateSettings?.({ lastSolveProblemId: problem.id });
-  }, [problem?.id, store.settings.lastSolveProblemId, store.updateSettings]);
+    if (!problem?.id) return;
+    const mode = problem.algorithmMode === 'stdin' ? 'stdin' : 'function';
+    const lastSolveProblemByMode = store.settings.lastSolveProblemByMode ?? {};
+    const patch: Partial<typeof store.settings> = {};
+    if (store.settings.lastSolveProblemId !== problem.id) patch.lastSolveProblemId = problem.id;
+    if (lastSolveProblemByMode[mode] !== problem.id) {
+      patch.lastSolveProblemByMode = { ...lastSolveProblemByMode, [mode]: problem.id };
+    }
+    if (Object.keys(patch).length) void store.updateSettings?.(patch);
+  }, [problem?.algorithmMode, problem?.id, store.settings.lastSolveProblemByMode, store.settings.lastSolveProblemId, store.updateSettings]);
 
   useEffect(() => {
     if (!busyCoach) return;
@@ -1474,7 +1578,16 @@ export function SolvePage() {
           <div className={styles.solveProblemHeader}>
             <div className={styles.solveProblemIdentity}>
               <div className={styles.solveProblemMeta}>
-                <span className={styles.solveSectionLabel}><BookOpenCheck size={14} />{sourceLabel(problem.source)} · {difficultyLabel(problem.difficulty)}</span>
+                <select
+                  className={`select ${styles.solveModeSelect}`}
+                  aria-label="切换题型"
+                  value={activeAlgorithmMode}
+                  onChange={(event) => switchSolveMode(event.target.value as 'function' | 'stdin')}
+                >
+                  <option value="function" disabled={functionProblems.length === 0}>函数题（{functionProblems.length}）</option>
+                  <option value="stdin" disabled={stdinProblems.length === 0}>完整程序题（{stdinProblems.length}）</option>
+                </select>
+                <span className={styles.solveSectionLabel}><BookOpenCheck size={14} />{activeAlgorithmMode === 'stdin' ? '完整程序题' : '函数题'} · {sourceLabel(problem.source)} · {difficultyLabel(problem.difficulty)}</span>
                 <div className={styles.tags}>{problem.tags.map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div>
               </div>
               <h1 title={problem.title}>{problemDisplayTitle(problem)}</h1>
@@ -1498,8 +1611,8 @@ export function SolvePage() {
               )}
               {problem.sourceUrl && (
                 <button className="button" type="button" onClick={() => {
-                  const safe = ['leetcode-cn', 'leetcode', 'nowcoder'].includes(problem.source)
-                    ? isAllowedPlatformUrl(problem.source as 'leetcode-cn' | 'leetcode' | 'nowcoder', problem.sourceUrl ?? '')
+                  const safe = ['leetcode-cn', 'leetcode', 'nowcoder', 'luogu'].includes(problem.source)
+                    ? isAllowedPlatformUrl(problem.source as 'leetcode-cn' | 'leetcode' | 'nowcoder' | 'luogu', problem.sourceUrl ?? '')
                     : isSafeExternalUrl(problem.sourceUrl ?? '');
                   if (!safe) { setMessage('链接未通过 HTTPS 或官方域名校验，已拒绝打开。'); return; }
                   window.open(problem.sourceUrl, '_blank', 'noopener,noreferrer');
@@ -1519,7 +1632,14 @@ export function SolvePage() {
             </div>
           </div>
           <div className={styles.solveProblemBody} key={problem.id} style={resizeStyle}>
-            <div className={styles.problemText}>{problem.content || '当前学习卡只保存了题目链接。可打开官方题面阅读，并在下方直接编写解题函数。'}</div>
+            <div
+              className={styles.problemText}
+              dangerouslySetInnerHTML={{
+                __html: renderMarkdown(problem.content || (problem.algorithmMode === 'stdin'
+                  ? '当前学习卡只保存了题目链接。可打开官方题面阅读，并在下方完整编写程序。'
+                  : '当前学习卡只保存了题目链接。可打开官方题面阅读，并在下方直接编写解题函数。')),
+              }}
+            />
             <div
               className={styles.problemBodyResizeHandle}
               role="separator"
@@ -1586,19 +1706,19 @@ export function SolvePage() {
             <div className={styles.solveToolbar}>
               <div className={styles.codeWorkbenchTitle}>
                 <Code2 size={16} />
-                <div><strong>代码编辑器</strong><span>只写解题函数，样例入口由应用生成</span></div>
+                <div><strong>代码编辑器</strong><span>{problem.algorithmMode === 'stdin' ? '完整程序：自行读取标准输入并输出标准结果' : '只写解题函数，样例入口由应用生成'}</span></div>
               </div>
               <div className={styles.buttonRow}>
                 <div className={styles.timer}><Clock3 size={15} />{formatDuration(seconds)}</div>
                 <select className="select" value={language} onChange={(event) => {
                   const nextLanguage = event.target.value;
-                  const currentSnippet = findProblemCodeSnippet(problem, language);
+                  const currentSnippet = editorTemplateForProblem(problem, language);
                   const currentCode = codeRef.current;
                   const editorIsPristine = !currentCode.trim() || currentCode === DEFAULT_CODE || currentCode === currentSnippet;
                   setLanguage(nextLanguage);
                   if (editorIsPristine) {
                     codeProblemIdRef.current = problem?.id;
-                    updateEditorCode(findProblemCodeSnippet(problem, nextLanguage) ?? DEFAULT_CODE, true);
+                    updateEditorCode(editorTemplateForProblem(problem, nextLanguage), true);
                   }
                 }} aria-label="编程语言">
                   <option value="cpp">C++17</option>
@@ -1625,7 +1745,7 @@ export function SolvePage() {
 
             <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
               <CodeEditorSurface
-                defaultCode={codeRef.current}
+                defaultCode={editorDefaultCode}
                 language={language}
                 theme={editorTheme}
                 fontSize={editorFontSize}
@@ -1942,7 +2062,10 @@ export function SolvePage() {
         </div>
         <div className={styles.problemReaderBody}>
           <article className={styles.problemReaderScroll} aria-label="完整题目内容">
-            <div className={styles.problemReaderText}>{problem.content || '当前学习卡只保存了题目链接。'}</div>
+            <div
+              className={styles.problemReaderText}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(problem.content || '当前学习卡只保存了题目链接。') }}
+            />
           </article>
           <aside className={styles.problemReaderExamples} aria-label="题目样例">
             <div className={styles.problemReaderExamplesList}>

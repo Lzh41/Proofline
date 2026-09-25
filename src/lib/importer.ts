@@ -4,19 +4,19 @@ import { normalizeText, uniqueStrings } from './ids';
 
 function problemKey(problem: Problem): string {
   // 平台题号比页面查询参数和尾斜杠更稳定，优先用于批量同步去重。
-  if ((problem.source === 'leetcode-cn' || problem.source === 'leetcode' || problem.source === 'nowcoder') && problem.externalId) {
-    return `external:${problem.kind}:${problem.source}:${normalizeText(problem.externalId)}`;
+  if ((problem.source === 'leetcode-cn' || problem.source === 'leetcode' || problem.source === 'nowcoder' || problem.source === 'luogu') && problem.externalId) {
+    return `external:${problem.kind}:${problem.source}:${problem.algorithmMode ?? 'function'}:${normalizeText(problem.externalId)}`;
   }
   if (problem.sourceUrl) {
     try {
       const url = new URL(problem.sourceUrl);
       url.hash = '';
       url.search = '';
-      return `url:${problem.kind}:${url.toString().replace(/\/$/, '')}`;
+      return `url:${problem.kind}:${problem.algorithmMode ?? 'function'}:${url.toString().replace(/\/$/, '')}`;
     } catch { /* use remaining identities */ }
   }
-  if (problem.externalId) return `external:${problem.kind}:${problem.source}:${normalizeText(problem.externalId)}`;
-  return `title:${problem.kind}:${problem.source}:${normalizeText(problem.title)}`;
+  if (problem.externalId) return `external:${problem.kind}:${problem.source}:${problem.algorithmMode ?? 'function'}:${normalizeText(problem.externalId)}`;
+  return `title:${problem.kind}:${problem.source}:${problem.algorithmMode ?? 'function'}:${normalizeText(problem.title)}`;
 }
 
 function mergeProblem(existing: Problem, incoming: Problem): Problem {
@@ -25,6 +25,7 @@ function mergeProblem(existing: Problem, incoming: Problem): Problem {
   return {
     ...incoming,
     ...existing,
+    algorithmMode: existing.algorithmMode ?? incoming.algorithmMode ?? 'function',
     title: existing.title || incoming.title,
     content: existing.content || incoming.content,
     difficulty: existing.difficulty === 'unknown' ? incoming.difficulty : existing.difficulty,
@@ -95,6 +96,15 @@ export function importSnapshot(currentInput: AppDataSnapshot, incomingInput: unk
   const templates = mergeById(current.codeTemplates, incoming.codeTemplates);
   const plans = mergeById(current.dailyPlans, incoming.dailyPlans);
   const generations = mergeById(current.aiGenerations, incoming.aiGenerations);
+  const vocabularyWords = mergeById(current.vocabularyWords, incoming.vocabularyWords);
+  const vocabularyReviews = mergeById(current.vocabularyReviews, incoming.vocabularyReviews);
+  const vocabularyProgressByWord = new Map(current.vocabularyProgress.map((item) => [item.wordId, item]));
+  incoming.vocabularyProgress.forEach((item) => {
+    const currentProgress = vocabularyProgressByWord.get(item.wordId);
+    if (!currentProgress || (item.lastReviewedAt ?? 0) > (currentProgress.lastReviewedAt ?? 0)) {
+      vocabularyProgressByWord.set(item.wordId, item);
+    }
+  });
   const snapshot: AppDataSnapshot = {
     ...current,
     problems: [...problemMap.values()],
@@ -105,11 +115,14 @@ export function importSnapshot(currentInput: AppDataSnapshot, incomingInput: unk
     knowledgeNotes: notes.values,
     codeTemplates: templates.values,
     dailyPlans: plans.values,
+    vocabularyWords: vocabularyWords.values,
+    vocabularyProgress: [...vocabularyProgressByWord.values()],
+    vocabularyReviews: vocabularyReviews.values,
     aiGenerations: generations.values,
     settings: { ...incoming.settings, ...current.settings, hasAiCredential: current.settings.hasAiCredential },
     updatedAt: Date.now(),
   };
-  const entities = { problems: [problemAdded, problemUpdated, problemSkipped], attempts: [attempts.added, attempts.updated, attempts.skipped], thoughts: [thoughts.added, thoughts.updated, thoughts.skipped], results: [results.added, results.updated, results.skipped], mistakes: [mistakes.added, mistakes.updated, mistakes.skipped], notes: [notes.added, notes.updated, notes.skipped], templates: [templates.added, templates.updated, templates.skipped], plans: [plans.added, plans.updated, plans.skipped], generations: [generations.added, generations.updated, generations.skipped] };
+  const entities = { problems: [problemAdded, problemUpdated, problemSkipped], attempts: [attempts.added, attempts.updated, attempts.skipped], thoughts: [thoughts.added, thoughts.updated, thoughts.skipped], results: [results.added, results.updated, results.skipped], mistakes: [mistakes.added, mistakes.updated, mistakes.skipped], notes: [notes.added, notes.updated, notes.skipped], templates: [templates.added, templates.updated, templates.skipped], plans: [plans.added, plans.updated, plans.skipped], generations: [generations.added, generations.updated, generations.skipped], vocabularyWords: [vocabularyWords.added, vocabularyWords.updated, vocabularyWords.skipped], vocabularyProgress: [incoming.vocabularyProgress.length, 0, Math.max(0, current.vocabularyProgress.length - incoming.vocabularyProgress.length)], vocabularyReviews: [vocabularyReviews.added, vocabularyReviews.updated, vocabularyReviews.skipped] };
   return {
     snapshot,
     added: Object.fromEntries(Object.entries(entities).map(([key, value]) => [key, value[0]])),

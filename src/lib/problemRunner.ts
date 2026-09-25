@@ -49,7 +49,9 @@ export async function runProblemSample(request: ProblemSampleRunRequest): Promis
     return failure('这道题还没有可运行的样例，请先补充样例输入和预期输出。', sampleIndex, expectedOutput);
   }
   if (!request.code.trim()) {
-    return failure('代码还是空的。请先写出题目要求的解题函数，再运行样例。', sampleIndex, expectedOutput);
+    return failure(request.problem.algorithmMode === 'stdin'
+      ? '代码还是空的。请先完整写出程序，再运行样例。'
+      : '代码还是空的。请先写出题目要求的解题函数，再运行样例。', sampleIndex, expectedOutput);
   }
 
   if (CPP_LANGUAGES.has(language)) {
@@ -65,11 +67,11 @@ export async function runProblemSample(request: ProblemSampleRunRequest): Promis
       try { return buildJavaScriptFunctionHarness(source, input).source; }
       catch (error) { harnessProblem = error; return null; }
     })();
-    if (canBuildFunction && (!usesJavaScriptStandardInput(source) || hasJavaScriptFunctionSignature(source))) {
+    if (request.problem.algorithmMode !== 'stdin' && canBuildFunction && (!usesJavaScriptStandardInput(source) || hasJavaScriptFunctionSignature(source))) {
       source = canBuildFunction;
       generatedEntryPoint = true;
       mode = 'function';
-    } else if (!canBuildFunction && !usesJavaScriptStandardInput(source)) {
+    } else if (request.problem.algorithmMode !== 'stdin' && !canBuildFunction && !usesJavaScriptStandardInput(source)) {
       const detail = errorMessage(harnessProblem);
       return failure(`没有识别到可测试的 JavaScript/TypeScript 解题函数，也没有明确的标准输入入口。${detail ? `（${detail}）` : ''}`, sampleIndex, expectedOutput, true, 'function');
     }
@@ -86,11 +88,11 @@ export async function runProblemSample(request: ProblemSampleRunRequest): Promis
       try { return buildPythonFunctionHarness(source, input).source; }
       catch (error) { harnessProblem = error; return null; }
     })();
-    if (canBuildFunction && (!usesPythonStandardInput(source) || hasPythonFunctionSignature(source))) {
+    if (request.problem.algorithmMode !== 'stdin' && canBuildFunction && (!usesPythonStandardInput(source) || hasPythonFunctionSignature(source))) {
       source = canBuildFunction;
       generatedEntryPoint = true;
       mode = 'function';
-    } else if (!canBuildFunction && !usesPythonStandardInput(source)) {
+    } else if (request.problem.algorithmMode !== 'stdin' && !canBuildFunction && !usesPythonStandardInput(source)) {
       const detail = errorMessage(harnessProblem);
       return failure(`没有识别到可测试的 Python 解题函数，也没有明确的标准输入入口。${detail ? `（${detail}）` : ''}`, sampleIndex, expectedOutput, true, 'function');
     }
@@ -406,7 +408,7 @@ async function runCppProblemSample(
   let mode: ProblemSampleRunResult['mode'] = 'stdin';
   let standardInput = input;
 
-  if (!hasCppMain(request.code)) {
+  if (request.problem.algorithmMode !== 'stdin' && !hasCppMain(request.code)) {
     try {
       const wrapped = buildCppFunctionHarness(request.code, input);
       source = wrapped.source;

@@ -53,6 +53,13 @@ describe('英语词库', () => {
     }
   });
 
+  it('公开词库的音标不为空且不会直接重复单词答案', () => {
+    expect(PUBLIC_VOCABULARY_STATS.withPhonetic).toBe(3791);
+    expect(PUBLIC_VOCABULARY_RECORDS.every((word) => word.sources.includes('ipaDict'))).toBe(true);
+    expect(PUBLIC_VOCABULARY_RECORDS.every((word) => word.phonetic.startsWith('/') && word.phonetic.endsWith('/'))).toBe(true);
+    expect(PUBLIC_VOCABULARY_RECORDS.some((word) => word.word.toLocaleLowerCase('en-US') === word.phonetic.toLocaleLowerCase('en-US'))).toBe(false);
+  });
+
   it('重新排程时保留已完成和待学词，并在排除预留词后补足每日目标', () => {
     const catalog = VOCABULARY_CATALOG.slice(0, 10);
     const completed = catalog[0];

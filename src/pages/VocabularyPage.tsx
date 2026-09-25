@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, RotateCcw, Sparkles } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { todayKey, useStoreView } from '../app/storeAdapter';
-import { EmptyState, Metric, PageHeader, ProgressBar, SectionHeader } from '../components/PagePrimitives';
+import { EmptyState, ProgressBar, SectionHeader } from '../components/PagePrimitives';
 import {
   difficultyLabel,
   filterVocabularyWords,
@@ -19,7 +19,7 @@ import styles from './Pages.module.css';
 
 type PageMode = 'practice' | 'library';
 type WordStatusFilter = 'all' | 'new' | 'learning' | 'mastered';
-type SessionCard = { word: VocabularyWord; direction: VocabularyReviewDirection };
+type SessionCard = { word: VocabularyWord; direction: VocabularyReviewDirection; retry?: boolean };
 
 const GRADES: Array<{ value: VocabularyGrade; label: string; detail: string; points: number }> = [
   { value: 'again', label: '忘了', detail: '10 分钟后再见', points: 0 },
@@ -46,6 +46,7 @@ export function VocabularyPage() {
   const [sessionPoints, setSessionPoints] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const wrongSpellingContinueRef = useRef<HTMLButtonElement | null>(null);
 
   const progressByWordId = useMemo(
     () => Object.fromEntries(store.vocabularyProgress.map((item) => [item.wordId, item])),
@@ -57,7 +58,6 @@ export function VocabularyPage() {
     [difficulty, progressByWordId, store.vocabularyWords],
   );
   const dueCount = store.vocabularyProgress.filter((item) => item.state !== 'new' && item.dueAt <= Date.now()).length;
-  const masteredCount = store.vocabularyProgress.filter((item) => item.state === 'mastered').length;
   const reviewsToday = store.vocabularyReviews.filter((item) => todayKey(new Date(item.reviewedAt)) === today).length;
   const targetWords = plan?.targetVocabularyWords ?? store.settings.dailyTargetVocabularyWords ?? 10;
   const completedNewWords = plan?.completedVocabularyWordIds.length ?? 0;
@@ -181,6 +181,57 @@ export function VocabularyPage() {
     }
   };
 
+  const submitSpellingAnswer = async () => {
+    if (!activeWord || nextCard.direction !== 'meaning-to-word' || !store.recordVocabularyReview || busy) return;
+    const correct = isVocabularySpellingCorrect(answerDraft, activeWord.word);
+    setBusy(true);
+    try {
+      await store.recordVocabularyReview({
+        wordId: activeWord.id,
+        direction: nextCard.direction,
+        rating: correct ? 'good' : 'again',
+        response: answerDraft,
+        correct,
+        durationMs: Math.max(0, Date.now() - cardStartedAt),
+      });
+      if (correct) {
+        setSessionPoints((points) => points + (GRADES.find((item) => item.value === 'good')?.points ?? 0));
+        setQueueIndex((index) => index + 1);
+        setRevealed(false);
+        setAnswerDraft('');
+        setCardStartedAt(Date.now());
+        setMessage('回答正确，继续下一词。');
+        return;
+      }
+
+      if (!nextCard.retry) {
+        setQueue((items) => [...items, { word: activeWord, direction: nextCard.direction, retry: true }]);
+      }
+      setRevealed(true);
+      setMessage(nextCard.retry ? '这次仍未拼对，先看答案；继续后会按队列进行。' : '这次未拼对，标准答案已显示，并已安排到本轮末尾再做。');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const continueAfterSpellingMistake = () => {
+    setQueueIndex((index) => index + 1);
+    setRevealed(false);
+    setAnswerDraft('');
+    setCardStartedAt(Date.now());
+    setMessage('继续下一词。');
+  };
+
+  const wrongSpellingFeedbackVisible = revealed
+    && nextCard?.direction === 'meaning-to-word'
+    && !spellingMatches;
+
+  useEffect(() => {
+    if (wrongSpellingFeedbackVisible && !busy) wrongSpellingContinueRef.current?.focus();
+  }, [busy, wrongSpellingFeedbackVisible]);
+
   const practiceWord = (word: VocabularyWord) => {
     setQueue([{ word, direction: 'meaning-to-word' }]);
     setQueueIndex(0);
@@ -197,12 +248,6 @@ export function VocabularyPage() {
 
   return (
     <div className={styles.vocabularyPage}>
-      <PageHeader
-        eyebrow="英语词汇 · 间隔回忆"
-        title="先刷词，再看统计。"
-        actions={<button className="button buttonPrimary" type="button" disabled={busy} onClick={() => { void startSession(); }}><Sparkles size={16} />开始今日刷词</button>}
-      />
-
       {message && <div className={styles.notice}><CircleHelp size={16} />{message}</div>}
 
       <div className={styles.vocabularyToolbar}>
@@ -217,6 +262,7 @@ export function VocabularyPage() {
             </button>
           ))}
         </div>
+        <button className="button buttonPrimary" type="button" disabled={busy} onClick={() => { void startSession(); }}><Sparkles size={16} />开始刷词</button>
       </div>
 
       {mode === 'practice' && (
@@ -225,34 +271,51 @@ export function VocabularyPage() {
             <SectionHeader title={activeWord ? `本轮 ${queueIndex + 1} / ${queue.length}` : completedSession ? '本轮完成' : '今日安排'} meta={activeWord ? activeIsNew ? '新词' : '到期复习' : `${dueWords.length} 个到期`} />
             {activeWord ? (
               <div className={styles.vocabularySession}>
-                <div className={styles.vocabularySessionRail}>
-                  <span>{nextCard.direction === 'meaning-to-word' ? '释义 → 拼写' : '单词 → 释义'}</span>
-                  <span>{activeWord.level} · {difficultyLabel(activeWord.difficulty)}</span>
-                </div>
-                <div className={styles.vocabularyPrompt}>
-                  <span>{nextCard.direction === 'meaning-to-word' ? '试着回忆这个英文单词' : '先想出中文释义，再揭晓'}</span>
-                  <strong>{nextCard.direction === 'meaning-to-word' ? activeWord.meaning : activeWord.word}</strong>
-                  <small>{activeWord.partOfSpeech}{activeWord.phonetic ? ` · ${activeWord.phonetic}` : ''}</small>
-                </div>
-                {nextCard.direction === 'meaning-to-word' && <label className={styles.vocabularyAnswerField}><span>拼写回忆</span><input className="input" autoFocus={!revealed} autoComplete="off" autoCapitalize="none" value={answerDraft} onChange={(event) => setAnswerDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') setRevealed(true); }} placeholder="输入单词" disabled={revealed} /></label>}
-                {!revealed ? (
-                  <button className="button buttonAccent" type="button" onClick={() => setRevealed(true)}><Check size={15} />显示答案</button>
-                ) : (
-                  <div className={styles.vocabularyAnswer}>
-                    <div className={styles.vocabularyAnswerHead}><strong>{activeWord.word}</strong><span>{activeWord.phonetic}</span><span>{activeWord.meaning}</span></div>
-                    {activeWord.definitionEn && <p>{activeWord.definitionEn}</p>}
-                    {activeWord.example && <blockquote><strong>{activeWord.example}</strong>{activeWord.exampleTranslation && <span>{activeWord.exampleTranslation}</span>}</blockquote>}
-                    {(activeWord.collocations.length > 0 || activeWord.family.length > 0) && <div className={styles.vocabularyAnswerColumns}>
-                      {activeWord.collocations.length > 0 && <div><small>常见搭配</small><p>{activeWord.collocations.join(' · ')}</p></div>}
-                      {activeWord.family.length > 0 && <div><small>词族联想</small><p>{activeWord.family.join(' / ')}</p></div>}
-                    </div>}
-                    {activeWord.mnemonic && <p className={styles.vocabularyMnemonic}><Sparkles size={14} />{activeWord.mnemonic}</p>}
-                    {!spellingMatches && <p className={styles.vocabularyMismatch} role="status">拼写未匹配，本次只能按“忘了”安排复习。</p>}
-                    <div className={styles.vocabularyGradeRow}>
-                      {GRADES.map((grade) => <button className={grade.value === 'again' ? styles.vocabularyGradeAgain : ''} key={grade.value} type="button" disabled={busy || (!spellingMatches && grade.value !== 'again')} onClick={() => { void submitGrade(grade.value); }}><strong>{grade.label}</strong><small>{grade.detail}</small></button>)}
-                    </div>
+                <div className={styles.vocabularySessionCard}>
+                  <div className={styles.vocabularySessionRail}>
+                    <span>{nextCard.direction === 'meaning-to-word' ? '释义 → 拼写' : '单词 → 释义'}</span>
+                    <span>{activeWord.level} · {difficultyLabel(activeWord.difficulty)}{nextCard.retry ? ' · 重做' : ''}</span>
                   </div>
-                )}
+                  <div className={styles.vocabularyPrompt}>
+                    <span>{nextCard.direction === 'meaning-to-word' ? '试着回忆这个英文单词' : '先想出中文释义，再揭晓'}</span>
+                    <strong>{nextCard.direction === 'meaning-to-word' ? activeWord.meaning : activeWord.word}</strong>
+                    <small>{activeWord.partOfSpeech}{nextCard.direction === 'word-to-meaning' && activeWord.phonetic ? ` · ${activeWord.phonetic}` : ''}</small>
+                  </div>
+                  {!revealed && nextCard.direction === 'meaning-to-word' && (
+                    <div className={styles.vocabularySpellingEntry}>
+                      <label className={styles.vocabularyAnswerField}>
+                        <span>拼写回忆</span>
+                        <input className="input" autoFocus autoComplete="off" autoCapitalize="none" value={answerDraft} onChange={(event) => setAnswerDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void submitSpellingAnswer(); } }} placeholder="输入英文单词后按 Enter" disabled={busy} />
+                      </label>
+                      <button className="button buttonAccent" type="button" disabled={busy} onClick={() => { void submitSpellingAnswer(); }}><Check size={15} />检查答案</button>
+                    </div>
+                  )}
+                  {!revealed && nextCard.direction === 'word-to-meaning' && (
+                    <button className="button buttonAccent" type="button" onClick={() => setRevealed(true)}><Check size={15} />显示答案</button>
+                  )}
+                  {revealed && (
+                    <div className={styles.vocabularyAnswer}>
+                      <div className={styles.vocabularyAnswerSummary}>
+                        <div className={styles.vocabularyAnswerHead}><strong>{activeWord.word}</strong><span>{activeWord.phonetic || '暂无音标'}</span><span>{activeWord.meaning}</span></div>
+                        {nextCard.direction === 'meaning-to-word' && <p className={spellingMatches ? styles.vocabularyCorrect : styles.vocabularyMismatch} role="status">{spellingMatches ? '拼写正确' : <>你输入的是“{answerDraft || '未填写'}”，正确答案是“{activeWord.word}”。</>}</p>}
+                      </div>
+                      {activeWord.definitionEn && <p>{activeWord.definitionEn}</p>}
+                      {activeWord.example && <blockquote><strong>{activeWord.example}</strong>{activeWord.exampleTranslation && <span>{activeWord.exampleTranslation}</span>}</blockquote>}
+                      {(activeWord.collocations.length > 0 || activeWord.family.length > 0) && <div className={styles.vocabularyAnswerColumns}>
+                        {activeWord.collocations.length > 0 && <div><small>常见搭配</small><p>{activeWord.collocations.join(' · ')}</p></div>}
+                        {activeWord.family.length > 0 && <div><small>词族联想</small><p>{activeWord.family.join(' / ')}</p></div>}
+                      </div>}
+                      {activeWord.mnemonic && <p className={styles.vocabularyMnemonic}><Sparkles size={14} />{activeWord.mnemonic}</p>}
+                      {nextCard.direction === 'meaning-to-word' && !spellingMatches ? (
+                        <button ref={wrongSpellingContinueRef} className="button buttonPrimary" type="button" aria-keyshortcuts="Enter" disabled={busy} onClick={continueAfterSpellingMistake}><ArrowRight size={15} />继续，稍后再做</button>
+                      ) : nextCard.direction === 'word-to-meaning' ? (
+                        <div className={styles.vocabularyGradeRow}>
+                          {GRADES.map((grade) => <button className={grade.value === 'again' ? styles.vocabularyGradeAgain : ''} key={grade.value} type="button" disabled={busy} onClick={() => { void submitGrade(grade.value); }}><strong>{grade.label}</strong><small>{grade.detail}</small></button>)}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : completedSession ? (
               <div className={styles.vocabularyComplete}>
@@ -283,13 +346,6 @@ export function VocabularyPage() {
           </aside>
         </div>
       )}
-
-      <div className={`${styles.metrics} ${styles.vocabularyMetrics}`}>
-        <Metric label="词库单词" value={store.vocabularyWords.length} detail="内置词条" tone="info" />
-        <Metric label="今日新词" value={`${completedNewWords}/${targetWords}`} detail="到期复习不占新词名额" tone="accent" />
-        <Metric label="到期复习" value={dueCount} detail={dueCount ? '复习优先' : '当前已清空'} tone={dueCount ? 'danger' : 'default'} />
-        <Metric label="已掌握" value={masteredCount} detail="熟词仍会按期抽查" />
-      </div>
 
       {mode === 'library' && (
         <section className={styles.paperPanel}>

@@ -49,6 +49,27 @@ const ecdict = fs.existsSync(ecdictPath)
     ? JSON.parse(fs.readFileSync(ecdictPath, 'utf8'))
     : readCsv(path.relative(root, ecdictPath)))
   : [];
+const ipaDictUsPath = process.env.PROOFLINE_IPA_DICT_US
+  ?? path.join(root, '.tmp-ipa-en_US.txt');
+const ipaDictUkPath = process.env.PROOFLINE_IPA_DICT_UK
+  ?? path.join(root, '.tmp-ipa-en_UK.txt');
+
+const readIpaDict = (filePath) => {
+  if (!fs.existsSync(filePath)) return new Map();
+  const pronunciations = new Map();
+  for (const line of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+    const separator = line.indexOf('\t');
+    if (separator < 1) continue;
+    const word = line.slice(0, separator).trim().toLocaleLowerCase('en-US');
+    const phonetic = line.slice(separator + 1).trim();
+    if (word && phonetic && !pronunciations.has(word)) pronunciations.set(word, phonetic);
+  }
+  return pronunciations;
+};
+const ipaDict = readIpaDict(ipaDictUsPath);
+for (const [word, phonetic] of readIpaDict(ipaDictUkPath)) {
+  if (!ipaDict.has(word)) ipaDict.set(word, phonetic);
+}
 
 const sourceMeta = {
   ngsl: {
@@ -99,6 +120,17 @@ const sourceMeta = {
     attribution: 'ECDICT by Linwei；请同时阅读 README 的上游来源说明。',
     sha256: '924977C722440298A9CFEDBFACF95C892E900CC0FA7577C34F91C7A68D0E2862',
     redistributionStatus: 'review-required',
+  },
+  ipaDict: {
+    name: 'ipa-dict English pronunciation data',
+    version: '2026-09-25 snapshot',
+    url: 'https://github.com/open-dict-data/ipa-dict',
+    usFileUrl: 'https://raw.githubusercontent.com/open-dict-data/ipa-dict/master/data/en_US.txt',
+    ukFileUrl: 'https://raw.githubusercontent.com/open-dict-data/ipa-dict/master/data/en_UK.txt',
+    license: 'MIT（项目）；英语 US 数据基于 cmudict-ipa（MIT），UK 兜底数据保留上游许可证要求',
+    attribution: 'open-dict-data/ipa-dict；英语美式数据基于 lingz/cmudict-ipa。',
+    usSha256: '2AF6F154A5C363275F052D1F85ACEDEF38ED185CA9745AA4314BE77F6B70DE67',
+    ukSha256: '221394CAEF0CF723B4F2DF81A98AC33191293257B88AED5B1FB89466D3A0DC77',
   },
 };
 
@@ -237,6 +269,14 @@ for (const row of ecdict) {
   if (!record.sources.includes('ecdict')) record.sources.push('ecdict');
 }
 
+// 统一使用 IPA-Dict 的宽式 IPA；美式表缺失的词形由英式表补齐，避免旧式 ASCII 拼读或空值泄露词面。
+for (const record of records.values()) {
+  const phonetic = ipaDict.get(record.word);
+  if (!phonetic) continue;
+  record.phonetic = phonetic;
+  if (!record.sources.includes('ipaDict')) record.sources.push('ipaDict');
+}
+
 const classify = (record) => {
   const rank = record.ngslRank ?? record.ngslSpokenRank;
   if (record.sources.includes('nawl') && rank === undefined) return { level: 'B2', difficulty: 'intermediate' };
@@ -254,12 +294,12 @@ const json = JSON.stringify(ordered, null, 2)
 const header = `/* eslint-disable */\n/**\n * 公开许可词库目录，依据源表自动生成。\n *\n * 这份目录只保留可追溯的词头、英释、词性、音标和原始榜单信息；不把模板句子冒充词典例句。\n * CEFR/学习难度是按榜单位置推导的产品筛选值，不是来源方的官方考试分级。\n * 中文义项需由具有明确授权的双语词典补齐；NAWL 的日文义项仅作为原始字段保留。\n */\nimport type { VocabularyDifficulty, VocabularyLevel, VocabularyPartOfSpeech } from '../lib/vocabulary';\n\nexport type PublicVocabularySourceId = 'ngsl' | 'nawl' | 'ngslSpoken';\n\nexport interface PublicVocabularyRecord {\n  id: string;\n  word: string;\n  definitionEn: string;\n  partOfSpeech: VocabularyPartOfSpeech;\n  phonetic: string;\n  sources: PublicVocabularySourceId[];\n  level: VocabularyLevel;\n  difficulty: Extract<VocabularyDifficulty, 'beginner' | 'intermediate' | 'advanced'>;\n  ngslRank?: number;\n  ngslFrequencyPerMillion?: number;\n  ngslSpokenRank?: number;\n  ngslSpokenFrequencyPerMillion?: number;\n  nawlDefinitionEn?: string;\n  nawlJapaneseMeaning?: string;\n  nawlPartOfSpeech?: string;\n}\n\nexport const PUBLIC_VOCABULARY_LICENSES = ${JSON.stringify(sourceMeta, null, 2)} as const;\n\nexport const PUBLIC_VOCABULARY_RECORDS: readonly PublicVocabularyRecord[] = ${json};\n\nexport const PUBLIC_VOCABULARY_STATS = {\n  recordCount: PUBLIC_VOCABULARY_RECORDS.length,\n  sourceCounts: {\n    ngsl: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ngsl')).length,\n    nawl: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('nawl')).length,\n    ngslSpoken: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ngslSpoken')).length,\n  },\n  withEnglishDefinition: PUBLIC_VOCABULARY_RECORDS.filter((word) => Boolean(word.definitionEn)).length,\n  withWordNetDefinition: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.definitionEn.length > 0).length,\n  withChineseMeaning: 0,\n} as const;\n`;
 const finalHeader = header
   .replace(' * 中文义项需由具有明确授权的双语词典补齐；NAWL 的日文义项仅作为原始字段保留。', ' * 中文义项在提供 ECDICT 审计映射时保留；ECDICT 上游来源链需人工核验，NAWL 的日文义项仅作为原始字段保留。')
-  .replace("export type PublicVocabularySourceId = 'ngsl' | 'nawl' | 'ngslSpoken';", "export type PublicVocabularySourceId = 'ngsl' | 'nawl' | 'ngslSpoken' | 'oewn' | 'ecdict';")
+  .replace("export type PublicVocabularySourceId = 'ngsl' | 'nawl' | 'ngslSpoken';", "export type PublicVocabularySourceId = 'ngsl' | 'nawl' | 'ngslSpoken' | 'oewn' | 'ecdict' | 'ipaDict';")
   .replace("  nawlPartOfSpeech?: string;\n", "  nawlPartOfSpeech?: string;\n  meaningZh?: string;\n  ecdictDefinition?: string;\n  ecdictPos?: string;\n  ecdictTags?: string[];\n")
   .replace("  ecdictTags?: string[];\n", "  ecdictTags?: string[];\n  examTags?: Array<'cet4' | 'cet6' | 'toefl' | 'ielts' | 'postgrad' | 'sat'>;\n")
   .replace("  withChineseMeaning: 0,", "  withChineseMeaning: PUBLIC_VOCABULARY_RECORDS.filter((word) => Boolean(word.meaningZh)).length,")
   .replace("  withWordNetDefinition: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.definitionEn.length > 0).length,\n", "  withWordNetDefinition: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('oewn')).length,\n  withPhonetic: PUBLIC_VOCABULARY_RECORDS.filter((word) => Boolean(word.phonetic)).length,\n  withExamTags: PUBLIC_VOCABULARY_RECORDS.filter((word) => (word.examTags?.length ?? 0) > 0).length,\n")
   .replace("  ngslSpokenFrequencyPerMillion?: number;\n", "  ngslSpokenFrequencyPerMillion?: number;\n  ngslSpokenDefinitionEn?: string;\n")
-  .replace("    ngslSpoken: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ngslSpoken')).length,\n", "    ngslSpoken: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ngslSpoken')).length,\n    oewn: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('oewn')).length,\n    ecdict: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ecdict')).length,\n");
+  .replace("    ngslSpoken: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ngslSpoken')).length,\n", "    ngslSpoken: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ngslSpoken')).length,\n    oewn: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('oewn')).length,\n    ecdict: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ecdict')).length,\n    ipaDict: PUBLIC_VOCABULARY_RECORDS.filter((word) => word.sources.includes('ipaDict')).length,\n");
 fs.writeFileSync(outputFile, finalHeader, 'utf8');
-console.log(JSON.stringify({ outputFile, recordCount: ordered.length, withEnglishDefinition: ordered.filter((record) => record.definitionEn).length, withChineseMeaning: ordered.filter((record) => record.meaningZh).length, sourceCounts: Object.fromEntries(['ngsl', 'nawl', 'ngslSpoken', 'oewn', 'ecdict'].map((source) => [source, ordered.filter((record) => record.sources.includes(source)).length])) }, null, 2));
+console.log(JSON.stringify({ outputFile, recordCount: ordered.length, withEnglishDefinition: ordered.filter((record) => record.definitionEn).length, withChineseMeaning: ordered.filter((record) => record.meaningZh).length, withPhonetic: ordered.filter((record) => record.phonetic).length, sourceCounts: Object.fromEntries(['ngsl', 'nawl', 'ngslSpoken', 'oewn', 'ecdict', 'ipaDict'].map((source) => [source, ordered.filter((record) => record.sources.includes(source)).length])) }, null, 2));

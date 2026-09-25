@@ -4919,6 +4919,15 @@
   padding: 10px 0 0;
 }
 
+.vocabularySessionCard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+}
+
 .vocabularySessionRail {
   display: flex;
   align-items: center;
@@ -4932,7 +4941,7 @@
 .vocabularySessionRail span:first-child { color: var(--info); font-weight: 800; }
 
 .vocabularyPrompt {
-  min-height: 132px;
+  min-height: 112px;
   display: grid;
   align-content: center;
   gap: 8px;
@@ -4961,10 +4970,10 @@
 .vocabularyAnswerField { display: grid; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 750; }
 .vocabularyAnswerField :global(.input) {
   width: 100%;
-  min-height: 70px;
-  padding: 13px 16px;
+  min-height: 82px;
+  padding: 15px 18px;
   font-family: var(--font-reading);
-  font-size: 24px;
+  font-size: 26px;
   line-height: 1.3;
   letter-spacing: .02em;
 }
@@ -4973,6 +4982,9 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+
+.vocabularySpellingEntry { display: grid; gap: 9px; }
+.vocabularySpellingEntry > .button { justify-self: start; }
 
 .vocabularyAnswer {
   display: grid;
@@ -4983,11 +4995,21 @@
   background: var(--surface-elevated);
 }
 
+.vocabularyAnswerSummary {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
 .vocabularyAnswerHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px 12px; }
 .vocabularyAnswerHead strong { color: var(--accent); font-family: var(--font-reading); font-size: 23px; }
 .vocabularyAnswerHead span { color: var(--muted); font-size: 10px; }
 .vocabularyAnswerHead span:last-child { color: var(--ink); font-size: 13px; font-weight: 750; }
 .vocabularyAnswer > p { margin: 0; color: var(--body); font-size: 11px; line-height: 1.65; }
+.vocabularyCorrect,
+.vocabularyMismatch { margin: 0; font-size: 12px; line-height: 1.5; }
+.vocabularyCorrect { color: var(--success); }
 
 .vocabularyAnswer blockquote {
   display: grid;
@@ -5013,7 +5035,7 @@
 .vocabularyMnemonic svg { flex: 0 0 auto; margin-top: 1px; }
 
 .vocabularyGradeRow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 3px; }
-.vocabularyMismatch { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.5; }
+.vocabularyMismatch { color: var(--danger); }
 
 .vocabularyGradeRow button {
   min-width: 0;
@@ -5126,6 +5148,7 @@
   .vocabularyMetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .vocabularyToolbar { align-items: stretch; flex-direction: column; }
   .vocabularyToolbar .modeTabs { width: 100%; }
+  .vocabularyToolbar > .button { width: 100%; justify-content: center; }
   .vocabularyDifficulty { width: 100%; }
   .vocabularyDifficulty button { min-width: 0; flex: 1 1 0; padding-inline: 5px; }
   .vocabularyAside { grid-template-columns: 1fr; }
@@ -5142,8 +5165,9 @@
   .vocabularyAnswerColumns { grid-template-columns: 1fr; }
   .vocabularyGradeRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .vocabularyGradeRow button { min-height: 54px; }
-  .vocabularyPrompt { min-height: 170px; padding-inline: 18px; }
-  .vocabularyAnswerField :global(.input) { min-height: 62px; padding-inline: 14px; font-size: 22px; }
+  .vocabularyPrompt { min-height: 118px; padding-inline: 15px; }
+  .vocabularySessionCard { padding: 9px; }
+  .vocabularyAnswerField :global(.input) { min-height: 76px; padding-inline: 14px; font-size: 22px; }
   .vocabularyAnswer { padding: 12px; }
   .vocabularyWordDetail footer { align-items: flex-start; flex-direction: column; }
 }

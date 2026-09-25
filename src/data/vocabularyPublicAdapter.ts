@@ -18,6 +18,7 @@ const SOURCE_LABELS: Record<string, string> = {
   ngslSpoken: 'NGSL-S 1.2',
   oewn: 'Open English Wordnet 2025',
   ecdict: 'ECDICT',
+  ipaDict: 'ipa-dict IPA',
 };
 
 function sourceLabel(record: PublicVocabularyRecord): string {

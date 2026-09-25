@@ -463,7 +463,10 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
                     value_or(progress, "state", "new"),
                     integer_value(progress, "repetitions", 0),
                     integer_value(progress, "intervalDays", 0),
-                    progress.get("easeFactor").and_then(Value::as_f64).unwrap_or(2.5),
+                    progress
+                        .get("easeFactor")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(2.5),
                     integer_value(progress, "lapses", 0),
                     integer_value(progress, "streak", 0),
                     optional_string(progress, "lastRating"),
@@ -501,10 +504,20 @@ fn sync_structured_tables(transaction: &Transaction<'_>, snapshot: &Value) -> Re
     for plan in array_field(snapshot, "dailyPlans") {
         let id = required_string(plan, "id")?;
         let target_problems = integer_value(plan, "targetProblems", 3);
-        let vocabulary_difficulty = optional_string(plan, "vocabularyDifficulty")
-            .filter(|value| matches!(value.as_str(),
-                "beginner" | "intermediate" | "advanced"
-                | "cet4" | "cet6" | "toefl" | "ielts" | "postgrad" | "sat"));
+        let vocabulary_difficulty = optional_string(plan, "vocabularyDifficulty").filter(|value| {
+            matches!(
+                value.as_str(),
+                "beginner"
+                    | "intermediate"
+                    | "advanced"
+                    | "cet4"
+                    | "cet6"
+                    | "toefl"
+                    | "ielts"
+                    | "postgrad"
+                    | "sat"
+            )
+        });
         transaction
             .execute(
                 "INSERT INTO daily_plans(id, plan_date, target_minutes, target_problems,
@@ -1093,7 +1106,9 @@ mod tests {
         apply_migrations(&path).unwrap();
 
         assert_eq!(migration_versions(&path), vec![1, 2, 3, 4, 5]);
-        assert!(table_columns(&path, "daily_plans").contains(&"target_vocabulary_words".to_string()));
+        assert!(
+            table_columns(&path, "daily_plans").contains(&"target_vocabulary_words".to_string())
+        );
         let connection = open_database(&path).unwrap();
         let table_count: i64 = connection
             .query_row(
@@ -1413,15 +1428,25 @@ mod tests {
             .unwrap();
         assert!(table_count >= 18);
         let vocabulary_rows: i64 = connection
-            .query_row("SELECT count(*) FROM vocabulary_reviews", [], |row| row.get(0))
+            .query_row("SELECT count(*) FROM vocabulary_reviews", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(vocabulary_rows, 1);
         let vocabulary_state: String = connection
-            .query_row("SELECT status FROM vocabulary_progress WHERE word_id = 'v1'", [], |row| row.get(0))
+            .query_row(
+                "SELECT status FROM vocabulary_progress WHERE word_id = 'v1'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(vocabulary_state, "review");
         let vocabulary_difficulty: Option<String> = connection
-            .query_row("SELECT vocabulary_difficulty FROM daily_plans WHERE id = 'plan1'", [], |row| row.get(0))
+            .query_row(
+                "SELECT vocabulary_difficulty FROM daily_plans WHERE id = 'plan1'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(vocabulary_difficulty, None);
         let fts_matches: i64 = connection

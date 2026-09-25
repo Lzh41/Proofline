@@ -39,9 +39,9 @@ const diceSimilarity = (left: string, right: string) => {
   return (2 * shared) / Math.max(1, leftBigrams.size + rightBigrams.size);
 };
 
-const commonEdgeLength = (left: string, right: string, fromEnd = false) => {
-  const a = Array.from(normalize(left));
-  const b = Array.from(normalize(right));
+const commonEdgeLength = (left: readonly string[], right: readonly string[], fromEnd = false) => {
+  const a = left;
+  const b = right;
   let length = 0;
   while (length < a.length && length < b.length) {
     const ai = fromEnd ? a.length - 1 - length : length;
@@ -229,12 +229,18 @@ describe('工程岗位面试题目录', () => {
     }
 
     const items = ENGINEERING_INTERVIEW_CATALOG;
+    const normalizedAnswers = items.map((item) => Array.from(normalize(item.referenceAnswer)));
+    const edgeViolations: string[] = [];
     for (let left = 0; left < items.length; left += 1) {
       for (let right = left + 1; right < items.length; right += 1) {
-        expect(commonEdgeLength(items[left].referenceAnswer, items[right].referenceAnswer), `${items[left].id} 与 ${items[right].id} 共享长前缀`).toBeLessThan(20);
-        expect(commonEdgeLength(items[left].referenceAnswer, items[right].referenceAnswer, true), `${items[left].id} 与 ${items[right].id} 共享长后缀`).toBeLessThan(20);
+        const prefixLength = commonEdgeLength(normalizedAnswers[left], normalizedAnswers[right]);
+        if (prefixLength >= 20) edgeViolations.push(`${items[left].id} / ${items[right].id} 共享 ${prefixLength} 个字符的长前缀`);
+
+        const suffixLength = commonEdgeLength(normalizedAnswers[left], normalizedAnswers[right], true);
+        if (suffixLength >= 20) edgeViolations.push(`${items[left].id} / ${items[right].id} 共享 ${suffixLength} 个字符的长后缀`);
       }
     }
+    expect(edgeViolations).toEqual([]);
   }, 20_000);
 
   it('任何内容都不包含未完成标记或省略写法', () => {

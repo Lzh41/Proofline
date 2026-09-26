@@ -24,6 +24,8 @@ import type {
   GithubToolInspection,
   GithubToolInstallPlan,
   GithubToolPrepareResult,
+  GithubToolDownloadProgress,
+  GithubToolDownloadState,
 } from '../types';
 import type { VocabularyGrade, VocabularyProgress, VocabularyReview, VocabularyReviewDirection, VocabularyScope, VocabularySessionState, VocabularyWord } from '../lib/vocabulary';
 import type {
@@ -153,6 +155,7 @@ export interface AppStoreView {
   closeWebWorkspace?: (workspace: WebWorkspace) => Promise<void>;
   clearWebWorkspaceProfile?: (workspace: WebWorkspace) => Promise<void>;
   localTools: LocalTool[];
+  githubToolDownload?: GithubToolDownloadState | null;
   createLocalTool?: (input: Partial<LocalTool>) => Promise<LocalTool>;
   updateLocalTool?: (id: string, patch: Partial<LocalTool>) => Promise<void>;
   deleteLocalTool?: (id: string) => Promise<void>;
@@ -161,7 +164,8 @@ export interface AppStoreView {
   stopLocalTool?: (tool: LocalTool) => Promise<void>;
   inspectGithubTool?: (repositoryUrl: string) => Promise<GithubToolInspection>;
   requestGithubToolPlan?: (request: { inspection: GithubToolInspection; userMessage?: string; onChunk?: (chunk: string) => void }) => Promise<GithubToolInstallPlan>;
-  prepareGithubTool?: (request: { repositoryUrl: string; installerPath?: string; installerArgs?: string[]; launcherPath?: string; launcherArgs?: string[]; workingDirectory?: string }) => Promise<GithubToolPrepareResult>;
+  prepareGithubTool?: (request: { repositoryUrl: string; installerPath?: string; installerArgs?: string[]; launcherPath?: string; launcherArgs?: string[]; workingDirectory?: string; onProgress?: (progress: GithubToolDownloadProgress) => void }) => Promise<GithubToolPrepareResult>;
+  clearGithubToolDownload?: () => void;
 }
 
 const EMPTY_ARRAY: never[] = [];

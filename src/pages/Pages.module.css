@@ -1176,7 +1176,7 @@
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: var(--solve-problem-row, clamp(300px, 42dvh, 380px)) 8px minmax(0, 1fr);
+  grid-template-rows: var(--solve-problem-row, clamp(280px, 38dvh, 350px)) 8px minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
 }
@@ -3825,7 +3825,9 @@
 
 .modeTabs .button {
   min-width: 132px;
+  min-height: 42px;
   justify-content: center;
+  font-size: 13px;
 }
 
 .modeCount {
@@ -3850,7 +3852,7 @@
   margin: 5px 0 0;
   color: var(--ink);
   font-family: var(--font-reading);
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1.15;
 }
 
@@ -4521,7 +4523,10 @@
 
 .problemFilters > * { min-width: 0; }
 .problemFilters .input,
-.problemFilters .select { min-height: 38px; }
+.problemFilters .select {
+  min-height: 42px;
+  font-size: 14px;
+}
 
 .modeTabs {
   width: fit-content;
@@ -4538,13 +4543,13 @@
 
 .modeTabs .button {
   min-width: 0;
-  min-height: 35px;
+  min-height: 42px;
   padding-inline: 13px;
   border-color: transparent;
   border-radius: 5px;
   background: transparent;
   box-shadow: none;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .modeTabs .button:hover:not(:disabled) {
@@ -4588,13 +4593,15 @@
 
 .problemModuleHead {
   align-items: center;
+  justify-content: space-between;
+  gap: 24px;
   margin: 0;
   padding: 14px 16px 13px;
   border-bottom: 1px solid var(--line);
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 58%);
 }
 
-.problemModuleHead h2 { font-size: 20px; }
+.problemModuleHead h2 { font-size: 22px; }
 .problemModuleHead > :global(.button) { min-height: 34px; }
 .problemModule .tableWrap { border-top: 0; }
 
@@ -4609,6 +4616,8 @@
 .problemModule .table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--subtle-fill) 48%, transparent); }
 .problemModule .table tbody tr:hover { background: var(--hover-fill); }
 .problemModule .table td { height: 58px; }
+.problemModule .table { font-size: 13px; }
+.problemModule .table thead th { font-size: 12px; }
 .problemModule .table td:last-child { width: 54px; text-align: right; }
 .problemModule .tableTitle { min-width: 260px; }
 
@@ -4912,7 +4921,7 @@
   grid-template-columns: minmax(0, 1.55fr) minmax(235px, .62fr);
   align-items: stretch;
   gap: 30px;
-  min-height: clamp(520px, calc(100vh - 284px), 760px);
+  min-height: clamp(520px, calc(100vh - 250px), 800px);
 }
 
 .vocabularyPracticeLayout > .paperPanel {
@@ -5211,8 +5220,11 @@
 .vocabularyWordDetail footer > small { color: var(--quiet); }
 .vocabularyPlanMeta { color: var(--muted); font-weight: 500; font-size: 11px; }
 
+@media (min-width: 1151px) and (max-width: 1280px) {
+  .todayMetrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
 @media (max-width: 1280px) {
-  .todayMetrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .vocabularyPracticeLayout { grid-template-columns: minmax(0, 1.35fr) minmax(220px, .65fr); gap: 22px; }
 }
 
@@ -5257,4 +5269,33 @@
   .vocabularyRoundPreviewTag { grid-column: 3; grid-row: 1 / span 2; }
   .vocabularyRoundPreviewFooter { align-items: stretch; flex-direction: column; }
   .vocabularyRoundPreviewFooter > :global(.button) { justify-content: center; }
+}
+
+/* 桌面工作区放宽后，统一给主要内容块留出更多可读空间；不改变既有列结构。 */
+@media (min-width: 921px) {
+  .paperPanel { padding: 24px 26px; }
+
+  .accentPanel { padding: 28px; }
+
+  .metric {
+    min-height: 132px;
+    padding: 20px 10px 16px 18px;
+  }
+
+  .row {
+    min-height: 84px;
+    padding-top: 15px;
+    padding-bottom: 15px;
+  }
+
+  .problemModule .table td {
+    height: 64px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .platform {
+    min-height: 228px;
+    padding: 22px;
+  }
 }

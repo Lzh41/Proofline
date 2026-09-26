@@ -12,7 +12,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ eyebrow, title, description, actions }: PageHeaderProps) {
   return (
-    <header className={styles.pageHeader}>
+    <header className={clsx(styles.pageHeader, actions && styles.pageHeaderWithActions)}>
       <div>
         <p className={styles.eyebrow}>{eyebrow}</p>
         <h1>{title}</h1>

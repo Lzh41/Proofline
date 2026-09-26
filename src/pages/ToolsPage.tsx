@@ -3,7 +3,7 @@ import { Bot, Edit3, ExternalLink, FileCog, Globe2, HardDriveDownload, Pause, Pl
 import { open } from '@tauri-apps/plugin-dialog';
 import { PageHeader, SectionHeader, EmptyState } from '../components/PagePrimitives';
 import { useStoreView } from '../app/storeAdapter';
-import type { GithubToolInstallPlan, GithubToolInspection, LocalTool, WebWorkspace } from '../types';
+import type { GithubToolDownloadProgress, GithubToolInstallPlan, GithubToolInspection, LocalTool, WebWorkspace } from '../types';
 import styles from './ToolsPage.module.css';
 
 type ToolDraft = {
@@ -51,6 +51,30 @@ function workspaceForTool(tool: LocalTool, workspaces: WebWorkspace[]): WebWorks
   return tool.workspaceId ? workspaces.find((item) => item.id === tool.workspaceId) : undefined;
 }
 
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value < 1024) return `${Math.max(0, Math.round(value))} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let amount = value / 1024;
+  let index = 0;
+  while (amount >= 1024 && index < units.length - 1) {
+    amount /= 1024;
+    index += 1;
+  }
+  return `${amount.toFixed(amount >= 10 ? 0 : 1)} ${units[index]}`;
+}
+
+function downloadProgressPercent(progress: GithubToolDownloadProgress | null): number | null {
+  if (!progress?.total || progress.total <= 0) return null;
+  return Math.min(100, Math.max(0, (progress.received / progress.total) * 100));
+}
+
+function downloadPhaseLabel(progress: GithubToolDownloadProgress | null): string {
+  if (!progress) return '准备下载';
+  if (progress.event === 'failed') return '下载失败，正在准备切换源';
+  if (progress.event === 'done') return progress.phase === 'asset' ? '发布套件下载完成' : '源码下载完成';
+  return progress.phase === 'asset' ? '正在下载发布套件' : '正在下载仓库源码';
+}
+
 export function ToolsPage() {
   const store = useStoreView();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -74,6 +98,9 @@ export function ToolsPage() {
   }, [store.initialized]);
 
   const runningCount = useMemo(() => store.localTools.filter((tool) => tool.status === 'running').length, [store.localTools]);
+  const downloadTask = store.githubToolDownload;
+  const downloadProgress = downloadTask?.progress ?? null;
+  const downloadPercent = downloadProgressPercent(downloadProgress);
 
   const choosePath = async (kind: 'installer' | 'launcher') => {
     const picked = await open({ multiple: false, directory: false, filters: [{ name: '脚本或程序', extensions: ['ps1', 'cmd', 'bat', 'exe'] }] });
@@ -163,7 +190,7 @@ export function ToolsPage() {
       ? `下载后会按下面的候选路径执行安装脚本：\n${githubPlan.installerPath}${githubPlan.installerArgs.length ? `\n参数：${githubPlan.installerArgs.join(' ')}` : ''}`
       : '没有识别到可执行的安装脚本，下载后只会加入管理列表。';
     if (!window.confirm(`确认下载“${githubPlan.name}”吗？\n\n${installSummary}\n\n请确认仓库来源和脚本内容可信。`)) return;
-    setGithubBusy(true); setMessage('正在下载并安全解压仓库源码。');
+    setGithubBusy(true); setMessage('正在下载并安全解压仓库源码；切换页面不会中断。');
     let createdTool: LocalTool | undefined;
     try {
       const prepared = await store.prepareGithubTool({ repositoryUrl: githubPlan.repositoryUrl, installerPath: githubPlan.installerPath, installerArgs: githubPlan.installerArgs, launcherPath: githubPlan.launcherPath, launcherArgs: githubPlan.launcherArgs, workingDirectory: githubPlan.workingDirectory });
@@ -283,6 +310,22 @@ export function ToolsPage() {
       <div className={styles.notice}><ShieldCheck size={18} /><span>Proofline 只执行你明确配置的本地安装/启动脚本，不读取脚本中的密钥；Web UI 的 Cookie 和站点缓存留在该工具自己的 WebView 会话目录。</span></div>
 
       {message && <div className={styles.message} role="status">{message}</div>}
+
+      {downloadTask && <section className={styles.downloadPanel} aria-live="polite" aria-label="GitHub 工具下载进度">
+        <div className={styles.downloadPanelHead}>
+          <div><strong>{downloadTask.active ? 'GitHub 工具正在下载' : downloadTask.error ? 'GitHub 工具下载失败' : 'GitHub 工具下载完成'}</strong><span>{downloadPhaseLabel(downloadProgress)} · {downloadProgress?.source ?? '正在连接下载源'}</span></div>
+          <button className="iconButton" type="button" title="关闭下载状态" aria-label="关闭下载状态" onClick={() => store.clearGithubToolDownload?.()}><X size={15} /></button>
+        </div>
+        <div className={styles.downloadTrack} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={downloadPercent ?? undefined}>
+          <span style={{ width: `${downloadPercent ?? (downloadTask.active ? 18 : 100)}%` }} />
+        </div>
+        <div className={styles.downloadMeta}>
+          <span>{downloadPercent === null ? '正在读取大小' : `${downloadPercent.toFixed(1)}%`}</span>
+          <span>{formatBytes(downloadProgress?.received ?? 0)}{downloadProgress?.total ? ` / ${formatBytes(downloadProgress.total)}` : ''}</span>
+          {downloadProgress?.event === 'progress' && <span>{formatBytes(downloadProgress.bytesPerSecond)}/秒</span>}
+          {downloadTask.error && <span className={styles.downloadError}>{downloadTask.error}</span>}
+        </div>
+      </section>}
 
       <section className={styles.overview} aria-label="工具概览">
         <div><span>已登记工具</span><strong>{store.localTools.length}</strong></div>

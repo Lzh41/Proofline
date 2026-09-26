@@ -108,6 +108,7 @@ pub struct AppState {
     pub paths: AppPaths,
     pub ai_request: Mutex<Option<(Uuid, CancellationToken)>>,
     pub platform_import: Mutex<Option<(Uuid, CancellationToken)>>,
+    pub web_workspace_sidebar_collapsed: Mutex<bool>,
 }
 
 pub fn run() {
@@ -119,6 +120,7 @@ pub fn run() {
             paths,
             ai_request: Mutex::new(None),
             platform_import: Mutex::new(None),
+            web_workspace_sidebar_collapsed: Mutex::new(true),
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -135,6 +137,13 @@ pub fn run() {
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })
             {
                 window.app_handle().exit(0);
+            } else if window.label() == "main"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
+                )
+            {
+                web::resize_web_workspaces(window);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -153,6 +162,8 @@ pub fn run() {
             tools::inspect_github_tool,
             tools::prepare_github_tool,
             web::open_web_workspace,
+            web::activate_web_workspace,
+            web::set_web_workspace_layout,
             web::get_web_workspace_state,
             web::close_web_workspace,
             web::clear_web_workspace_profile,

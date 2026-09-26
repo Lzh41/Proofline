@@ -5,13 +5,14 @@ import {
   BookOpenText,
   Boxes,
   CalendarCheck2,
-  ChevronsLeft,
   Code2,
   BrainCircuit,
+  Download,
   LibraryBig,
   Languages,
   Menu,
   Moon,
+  Globe2,
   Settings,
   Sun,
   Waypoints,
@@ -21,6 +22,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useStoreView } from '../app/storeAdapter';
 import { nextTheme } from '../app/theme';
 import { useResolvedTheme } from '../app/useResolvedTheme';
@@ -42,21 +44,48 @@ const NAVIGATION = [
   { to: '/tools', label: '本地工具', icon: Wrench },
 ] as const;
 
+function downloadPercent(progress: { received: number; total?: number | null } | null | undefined): number | null {
+  if (!progress?.total || progress.total <= 0) return null;
+  return Math.min(100, Math.max(0, (progress.received / progress.total) * 100));
+}
+
 interface AppShellProps {
   children: ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [themeSaving, setThemeSaving] = useState(false);
+  const [activeWebWorkspaceId, setActiveWebWorkspaceId] = useState<string | null>(null);
   const themeSavePending = useRef(false);
   const location = useLocation();
   const store = useStoreView();
   const resolvedTheme = useResolvedTheme(store.settings.theme ?? 'dark');
   const themeActionLabel = resolvedTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题';
 
-  useEffect(() => setMobileOpen(false), [location.pathname]);
+  useEffect(() => {
+    setMobileOpen(false);
+    setCollapsed(true);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke('set_web_workspace_layout', { collapsed }).catch(() => undefined);
+  }, [collapsed]);
+
+  const openWebWorkspaces = (store.webWorkspaces ?? []).filter((workspace) => workspace.status === 'open');
+
+  useEffect(() => {
+    if (openWebWorkspaces.length === 0) {
+      setActiveWebWorkspaceId(null);
+      return;
+    }
+    if (!activeWebWorkspaceId || !openWebWorkspaces.some((workspace) => workspace.id === activeWebWorkspaceId)) {
+      const latest = [...openWebWorkspaces].sort((left, right) => (right.lastOpenedAt ?? 0) - (left.lastOpenedAt ?? 0))[0];
+      setActiveWebWorkspaceId(latest.id);
+    }
+  }, [activeWebWorkspaceId, openWebWorkspaces]);
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -89,17 +118,21 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <>
       <WindowTitlebar />
-      <div className={clsx(styles.shell, collapsed && styles.collapsed)}>
+      <div className={clsx(styles.shell, collapsed && styles.collapsed, !collapsed && styles.navigationOpen)}>
       <button
         className={styles.mobileTrigger}
         type="button"
-        aria-label="打开导航"
-        onClick={() => setMobileOpen(true)}
+        aria-label={collapsed ? '展开导航' : '打开导航'}
+        title={collapsed ? '展开导航' : '打开导航'}
+        onClick={() => {
+          if (collapsed) setCollapsed(false);
+          setMobileOpen(true);
+        }}
       >
         <Menu size={20} />
       </button>
 
-      {mobileOpen && <button className={styles.backdrop} aria-label="关闭导航" onClick={() => setMobileOpen(false)} />}
+      {mobileOpen && <button className={styles.backdrop} aria-label="关闭导航" onClick={() => { setMobileOpen(false); setCollapsed(true); }} />}
 
       <aside className={clsx(styles.sidebar, mobileOpen && styles.sidebarOpen)}>
         <div className={styles.brandRow}>
@@ -110,7 +143,7 @@ export function AppShell({ children }: AppShellProps) {
               <span className={styles.brandSub}>推理训练工作台</span>
             </span>
           </NavLink>
-          <button className={styles.mobileClose} type="button" aria-label="关闭导航" onClick={() => setMobileOpen(false)}>
+          <button className={styles.mobileClose} type="button" aria-label="收起导航" title="收起导航" onClick={() => { setMobileOpen(false); setCollapsed(true); }}>
             <X size={19} />
           </button>
         </div>
@@ -139,38 +172,76 @@ export function AppShell({ children }: AppShellProps) {
             <span><strong>{store.attempts.length}</strong> 次练习已沉淀</span>
           </div>
           <button
-            className={styles.collapseButton}
+            className={styles.themeToggle}
             type="button"
-            onClick={() => setCollapsed((value) => !value)}
-            aria-label={collapsed ? '展开导航' : '收起导航'}
-            title={collapsed ? '展开导航' : '收起导航'}
+            aria-label={themeActionLabel}
+            title={themeActionLabel}
+            aria-busy={themeSaving}
+            disabled={themeSaving || !store.initialized || store.loading}
+            onClick={() => { void toggleTheme(); }}
           >
-            <ChevronsLeft size={18} className={collapsed ? styles.rotated : undefined} />
+            {resolvedTheme === 'dark'
+              ? <Sun size={17} strokeWidth={1.9} aria-hidden="true" />
+              : <Moon size={17} strokeWidth={1.9} aria-hidden="true" />}
+            <span>切换主题</span>
           </button>
         </div>
       </aside>
 
       <section className={styles.workspace}>
         <header className={styles.topbar}>
-          <div className={styles.topbarActions}>
-            <div className={styles.syncState} title="个人数据仅保存在本机">
-              <span className={clsx(styles.statusDot, store.error && styles.statusError)} />
-              {store.error ? '本地服务异常' : store.loading ? '正在整理数据' : '本地已保存'}
+          {store.githubToolDownload?.active && (
+            <div className={styles.downloadIndicator} role="status" aria-label="GitHub 工具下载进行中">
+              <Download size={14} aria-hidden="true" />
+              <span>工具下载中</span>
+              <strong>{downloadPercent(store.githubToolDownload.progress) === null ? '…' : `${downloadPercent(store.githubToolDownload.progress)?.toFixed(0)}%`}</strong>
             </div>
-            <button
-              className={styles.themeToggle}
-              type="button"
-              aria-label={themeActionLabel}
-              title={themeActionLabel}
-              aria-busy={themeSaving}
-              disabled={themeSaving || !store.initialized || store.loading}
-              onClick={() => { void toggleTheme(); }}
-            >
-              {resolvedTheme === 'dark'
-                ? <Sun size={17} strokeWidth={1.9} aria-hidden="true" />
-                : <Moon size={17} strokeWidth={1.9} aria-hidden="true" />}
-            </button>
-          </div>
+          )}
+          {openWebWorkspaces.length > 0 && (
+            <div className={styles.webTabs} role="tablist" aria-label="已打开的 Web 工作台">
+              {openWebWorkspaces.map((workspace) => {
+                const active = workspace.id === activeWebWorkspaceId;
+                return (
+                  <div
+                    className={clsx(styles.webTab, active && styles.webTabActive)}
+                    key={workspace.id}
+                    role="presentation"
+                  >
+                    <button
+                      className={styles.webTabLabel}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      title={`切换到${workspace.name}`}
+                      onClick={() => {
+                        setActiveWebWorkspaceId(workspace.id);
+                        void store.openWebWorkspace?.(workspace);
+                      }}
+                    >
+                      <Globe2 size={14} strokeWidth={1.9} aria-hidden="true" />
+                      <span>{workspace.name}</span>
+                    </button>
+                    <button
+                      className={styles.webTabClose}
+                      type="button"
+                      aria-label={`关闭${workspace.name}`}
+                      title={`关闭${workspace.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        const next = openWebWorkspaces.find((item) => item.id !== workspace.id);
+                        if (active) setActiveWebWorkspaceId(next?.id ?? null);
+                        void store.closeWebWorkspace?.(workspace).then(() => {
+                          if (active && next) void store.openWebWorkspace?.(next);
+                        });
+                      }}
+                    >
+                      <X size={13} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </header>
         <main className={styles.content}>{children}</main>
       </section>

@@ -1,6 +1,15 @@
 .notice { display:flex; gap:10px; align-items:flex-start; margin-bottom:24px; padding:12px 14px; border:1px solid color-mix(in srgb, var(--info) 22%, transparent); border-left:3px solid var(--info); border-radius:0 6px 6px 0; background:var(--info-soft); color:var(--body); font-size:11px; line-height:1.6; }
 .notice svg { flex:0 0 auto; color:var(--info); }
 .message { margin-bottom:22px; padding:11px 13px; border:1px solid var(--accent-border); background:var(--accent-soft); color:var(--accent); font-size:11px; }
+.downloadPanel { display:grid; gap:10px; margin-bottom:22px; padding:14px 16px; border:1px solid var(--accent-border); border-left:3px solid var(--accent); background:var(--accent-soft); }
+.downloadPanelHead { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+.downloadPanelHead > div { min-width:0; display:grid; gap:4px; }
+.downloadPanelHead strong { color:var(--ink); font-size:12px; }
+.downloadPanelHead span { overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.downloadTrack { height:7px; overflow:hidden; border-radius:99px; background:var(--line); }
+.downloadTrack span { display:block; height:100%; border-radius:inherit; background:var(--accent); transition:width 220ms ease; }
+.downloadMeta { display:flex; flex-wrap:wrap; align-items:center; gap:12px; color:var(--muted); font:10px var(--font-code); }
+.downloadError { min-width:0; overflow:hidden; color:var(--danger); text-overflow:ellipsis; white-space:nowrap; }
 .overview { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:38px; }
 .overview > div { display:grid; gap:7px; padding:15px 17px; border:1px solid var(--line); background:var(--surface); }
 .overview span { color:var(--muted); font-size:10px; }
@@ -15,7 +24,7 @@
 .aiInspection strong,.planHead strong { color:var(--ink); font-size:12px; }
 .aiInspection span,.planHead span { color:var(--muted); font-size:10px; }
 .aiOutput { max-height:150px; overflow:auto; margin:0; padding:10px; border:1px solid var(--line); background:var(--surface-elevated); color:var(--muted); font:10px/1.5 var(--font-code); white-space:pre-wrap; }
-.planHead { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.planHead { display:flex; justify-content:space-between; gap:18px; align-items:center; }
 .aiPlan p { margin:0; color:var(--muted); font-size:11px; line-height:1.5; }
 .planGrid { display:grid; grid-template-columns:70px minmax(0,1fr); gap:6px 10px; color:var(--quiet); font-size:10px; align-items:center; }
 .planGrid code { min-width:0; overflow:hidden; color:var(--muted); font:10px var(--font-code); text-overflow:ellipsis; white-space:nowrap; }
@@ -39,7 +48,7 @@
 .toolActions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:16px; }
 .dialogBackdrop { position:fixed; inset:36px 0 0; z-index:40; display:grid; place-items:center; padding:24px; background:rgba(10,10,9,.54); }
 .dialog { width:min(620px,100%); max-height:calc(100vh - 84px); overflow:auto; display:grid; gap:14px; padding:22px; border:1px solid var(--line-strong); background:var(--surface-elevated); box-shadow:0 24px 80px rgba(0,0,0,.3); }
-.dialogHead { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; padding-bottom:8px; border-bottom:1px solid var(--line); }
+.dialogHead { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; padding-bottom:8px; border-bottom:1px solid var(--line); }
 .dialogHead h2 { margin:5px 0 0; color:var(--ink); font-family:var(--font-reading); font-size:20px; font-weight:600; }
 .kicker { color:var(--accent); font-size:10px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }
 .dialog label { display:grid; gap:6px; color:var(--muted); font-size:10px; font-weight:700; }
@@ -47,6 +56,24 @@
 .dialogFoot { display:flex; justify-content:flex-end; gap:8px; padding-top:6px; }
 .mono { font-family:var(--font-code); }
 .emptyState { min-width:0; }
+
+@media (min-width:921px) {
+  .notice { font-size:12px; padding:14px 16px; }
+  .overview { gap:14px; margin-bottom:32px; }
+  .overview > div { min-height:96px; padding:18px 20px; }
+  .overview span { font-size:11px; }
+  .overview strong { font-size:29px; }
+  .section { margin-bottom:32px; }
+  .aiInstaller { gap:16px; padding:20px; }
+  .aiInstallerHead strong { font-size:14px; }
+  .aiInstallerHead p { font-size:12px; }
+  .aiInstallerForm .input { min-height:44px; font-size:14px; }
+  .toolCard { padding:20px; }
+  .toolTitle strong { font-size:15px; }
+  .toolDescription { font-size:12px; }
+  .toolMeta { font-size:11px; }
+}
+
 @media (max-width:700px) {
   .overview { grid-template-columns:1fr; }
   .emptyState > div { flex-wrap:wrap; }

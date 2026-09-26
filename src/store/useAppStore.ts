@@ -28,6 +28,8 @@ import type {
   GithubToolInspection,
   GithubToolInstallPlan,
   GithubToolPrepareResult,
+  GithubToolDownloadProgress,
+  GithubToolDownloadState,
 } from '../types';
 import { INTERVIEW_CATALOG, INTERVIEW_CATALOG_VERSION } from '../data/interviewCatalog';
 import {
@@ -206,6 +208,7 @@ type GithubToolInstallRequest = {
 interface AppStore extends AppDataSnapshot {
   webWorkspaces: WebWorkspace[];
   localTools: LocalTool[];
+  githubToolDownload: GithubToolDownloadState | null;
   initialized: boolean;
   loading: boolean;
   error: string | null;
@@ -288,7 +291,9 @@ interface AppStore extends AppDataSnapshot {
     launcherPath?: string;
     launcherArgs?: string[];
     workingDirectory?: string;
+    onProgress?: (progress: GithubToolDownloadProgress) => void;
   }) => Promise<GithubToolPrepareResult>;
+  clearGithubToolDownload: () => void;
 }
 
 function isTauriRuntime(): boolean {
@@ -641,6 +646,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     ...empty,
     webWorkspaces: empty.webWorkspaces ?? [],
     localTools: empty.localTools ?? [],
+    githubToolDownload: null,
     initialized: false,
     loading: false,
     error: null,
@@ -1781,7 +1787,45 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
     prepareGithubTool: async (request) => {
       if (!isTauriRuntime()) throw new Error('浏览器预览无法下载 GitHub 工具');
-      return invoke<GithubToolPrepareResult>('prepare_github_tool', { request });
+      const { onProgress, ...payload } = request;
+      const startedAt = Date.now();
+      set({
+        githubToolDownload: {
+          repositoryUrl: request.repositoryUrl,
+          progress: null,
+          active: true,
+          startedAt,
+          finishedAt: undefined,
+        },
+      });
+      const onEvent = new Channel<GithubToolDownloadProgress>();
+      onEvent.onmessage = (event) => {
+        onProgress?.(event);
+        set((state) => ({
+          githubToolDownload: {
+            repositoryUrl: request.repositoryUrl,
+            progress: event,
+            active: true,
+            startedAt: state.githubToolDownload?.startedAt ?? startedAt,
+            finishedAt: undefined,
+            error: undefined,
+          },
+        }));
+      };
+      try {
+        const result = await invoke<GithubToolPrepareResult>('prepare_github_tool', { request: payload, onEvent });
+        set((state) => state.githubToolDownload
+          ? { githubToolDownload: { ...state.githubToolDownload, active: false, finishedAt: Date.now(), error: undefined } }
+          : {});
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        set((state) => state.githubToolDownload
+          ? { githubToolDownload: { ...state.githubToolDownload, active: false, finishedAt: Date.now(), error: message } }
+          : {});
+        throw error;
+      }
     },
+    clearGithubToolDownload: () => set({ githubToolDownload: null }),
   };
 });

@@ -108,6 +108,52 @@ export interface GithubToolPrepareResult {
   files: string[];
 }
 
+export type GithubToolDownloadProgress =
+  | {
+      event: 'started';
+      phase: 'source' | 'asset';
+      source: string;
+      attempt: number;
+      received: number;
+      total?: number | null;
+    }
+  | {
+      event: 'progress';
+      phase: 'source' | 'asset';
+      source: string;
+      attempt: number;
+      received: number;
+      total?: number | null;
+      bytesPerSecond: number;
+    }
+  | {
+      event: 'done';
+      phase: 'source' | 'asset';
+      source: string;
+      attempt: number;
+      received: number;
+      total?: number | null;
+    }
+  | {
+      event: 'failed';
+      phase: 'source' | 'asset';
+      source: string;
+      attempt: number;
+      received: number;
+      total?: number | null;
+      error: string;
+    };
+
+/** GitHub 工具下载任务的全局展示状态；页面切换时保留，避免丢失进度。 */
+export interface GithubToolDownloadState {
+  repositoryUrl: string;
+  progress: GithubToolDownloadProgress | null;
+  active: boolean;
+  startedAt: number;
+  finishedAt?: number;
+  error?: string;
+}
+
 export interface InterviewProblemData {
   catalogId?: string;
   catalogVersion?: number;

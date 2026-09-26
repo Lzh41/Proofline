@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     ffi::{OsStr, OsString},
-    io::{Cursor, Read},
+    io::{Cursor, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
     sync::mpsc,
@@ -12,7 +12,7 @@ use std::{
 
 use reqwest::Client;
 use sha2::{Digest, Sha256};
-use tauri::State;
+use tauri::{ipc::Channel, State};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -38,8 +38,11 @@ const PAPERSPINE_MANIFEST_URLS: [(&str, &str); 3] = [
         "https://raw.githubusercontent.com/WUBING2023/PaperSpine/main/website/downloads/manifest.json",
     ),
 ];
-const GITHUB_ARCHIVE_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(300);
+// 单个镜像最多等待两分钟；失败时仍会保留 .part，下一次可从断点续传。
+const GITHUB_ARCHIVE_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(120);
+const GITHUB_MANIFEST_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(20);
 const GITHUB_MAX_RANGE_RESUMES: usize = 3;
+const GITHUB_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 const GITHUB_MAX_README_BYTES: usize = 48 * 1024;
 const GITHUB_MAX_FILE_BYTES: usize = 16 * 1024;
 const GITHUB_MAX_FILES: usize = 500;
@@ -152,6 +155,43 @@ pub struct GithubToolPrepareResult {
     #[serde(default)]
     pub launcher_args: Vec<String>,
     pub files: Vec<String>,
+}
+
+/// GitHub 工具下载过程的可观察进度。事件通过 Tauri Channel 发送，
+/// 不把下载内容或凭据写入事件，前端只用于显示进度和当前下载源。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "event", rename_all = "camelCase")]
+pub enum GithubToolDownloadProgress {
+    Started {
+        phase: String,
+        source: String,
+        attempt: usize,
+        received: u64,
+        total: Option<u64>,
+    },
+    Progress {
+        phase: String,
+        source: String,
+        attempt: usize,
+        received: u64,
+        total: Option<u64>,
+        bytes_per_second: u64,
+    },
+    Done {
+        phase: String,
+        source: String,
+        attempt: usize,
+        received: u64,
+        total: Option<u64>,
+    },
+    Failed {
+        phase: String,
+        source: String,
+        attempt: usize,
+        received: u64,
+        total: Option<u64>,
+        error: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -278,6 +318,7 @@ pub async fn inspect_github_tool(repository_url: String) -> Result<GithubToolIns
 pub async fn prepare_github_tool(
     state: State<'_, crate::AppState>,
     request: GithubToolPrepareRequest,
+    on_event: Channel<GithubToolDownloadProgress>,
 ) -> Result<GithubToolPrepareResult, String> {
     let repository = parse_github_repository(&request.repository_url)?;
     let client = github_client()?;
@@ -287,7 +328,9 @@ pub async fn prepare_github_tool(
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .unwrap_or("main");
-    let archive = download_github_archive(&client, &repository, branch).await?;
+    let download_cache = state.paths.platforms.join("github-downloads");
+    let archive =
+        download_github_archive(&client, &repository, branch, &download_cache, &on_event).await?;
     let paths = state.paths.clone();
     let repository_for_prepare = repository.clone();
     let installer_args = request.installer_args.clone();
@@ -298,7 +341,9 @@ pub async fn prepare_github_tool(
     .await
     .map_err(|error| format!("准备 GitHub 工具任务异常结束：{error}"))??;
     if is_paperspine_repository(&repository) {
-        match prepare_paperspine_assets(&client, &result.source_path).await {
+        match prepare_paperspine_assets(&client, &result.source_path, &download_cache, &on_event)
+            .await
+        {
             Ok(assets) => {
                 result.installer_args = installer_args;
                 result.installer_args.extend(assets.installer_args);
@@ -447,22 +492,71 @@ async fn download_github_archive(
     client: &Client,
     repository: &GithubRepository,
     branch: &str,
+    cache_dir: &Path,
+    on_event: &Channel<GithubToolDownloadProgress>,
 ) -> Result<Vec<u8>, String> {
     let urls = github_archive_urls(repository, branch)?;
     let mut failures = Vec::with_capacity(urls.len());
-    for (source, url) in urls {
+    for (index, (source, url)) in urls.into_iter().enumerate() {
+        let attempt = index + 1;
+        let part_path = download_part_path(cache_dir, &url)?;
+        let resumed_bytes = std::fs::metadata(&part_path)
+            .ok()
+            .filter(|metadata| metadata.is_file())
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        let _ = on_event.send(GithubToolDownloadProgress::Started {
+            phase: "source".to_string(),
+            source: source.clone(),
+            attempt,
+            received: resumed_bytes,
+            total: None,
+        });
         let result = tokio::time::timeout(
             GITHUB_ARCHIVE_ATTEMPT_TIMEOUT,
-            download_github_archive_from_url(client, &url),
+            download_github_archive_from_url(
+                client, &url, &part_path, on_event, "source", &source, attempt,
+            ),
         )
         .await;
         match result {
-            Ok(Ok(archive)) => return Ok(archive),
-            Ok(Err(error)) => failures.push(format!("{source}：{error}")),
-            Err(_) => failures.push(format!(
-                "{source}：超过 {} 秒仍未完成",
-                GITHUB_ARCHIVE_ATTEMPT_TIMEOUT.as_secs()
-            )),
+            Ok(Ok(archive)) => {
+                let received = archive.len() as u64;
+                let _ = on_event.send(GithubToolDownloadProgress::Done {
+                    phase: "source".to_string(),
+                    source,
+                    attempt,
+                    received,
+                    total: Some(received),
+                });
+                return Ok(archive);
+            }
+            Ok(Err(error)) => {
+                let _ = on_event.send(GithubToolDownloadProgress::Failed {
+                    phase: "source".to_string(),
+                    source: source.clone(),
+                    attempt,
+                    received: 0,
+                    total: None,
+                    error: error.clone(),
+                });
+                failures.push(format!("{source}：{error}"));
+            }
+            Err(_) => {
+                let error = format!(
+                    "超过 {} 秒仍未完成",
+                    GITHUB_ARCHIVE_ATTEMPT_TIMEOUT.as_secs()
+                );
+                let _ = on_event.send(GithubToolDownloadProgress::Failed {
+                    phase: "source".to_string(),
+                    source: source.clone(),
+                    attempt,
+                    received: 0,
+                    total: None,
+                    error: error.clone(),
+                });
+                failures.push(format!("{source}：{error}"));
+            }
         }
     }
     Err(format!(
@@ -474,11 +568,26 @@ async fn download_github_archive(
 async fn download_github_archive_from_url(
     client: &Client,
     url: &url::Url,
+    part_path: &Path,
+    on_event: &Channel<GithubToolDownloadProgress>,
+    phase: &str,
+    source: &str,
+    attempt: usize,
 ) -> Result<Vec<u8>, String> {
-    let mut archive = Vec::new();
+    let mut archive = read_download_part(part_path)?;
     let mut expected_total = None;
-    let mut force_range = false;
+    let mut force_range = !archive.is_empty();
     let mut resume_count = 0usize;
+    let started_at = Instant::now();
+    let mut last_progress = Instant::now() - GITHUB_PROGRESS_INTERVAL;
+
+    if archive.len() >= 2
+        && archive.starts_with(b"PK")
+        && zip::ZipArchive::new(Cursor::new(&archive)).is_ok()
+    {
+        let _ = std::fs::remove_file(part_path);
+        return Ok(archive);
+    }
 
     loop {
         let requested_start = force_range.then_some(archive.len() as u64);
@@ -495,6 +604,15 @@ async fn download_github_archive_from_url(
         let status = response.status();
         if let Some(start) = requested_start {
             if status != reqwest::StatusCode::PARTIAL_CONTENT {
+                // 镜像不支持 Range 时清理旧断点，并在同一镜像重新发起一次完整请求。
+                let _ = std::fs::remove_file(part_path);
+                archive.clear();
+                expected_total = None;
+                force_range = false;
+                if resume_count < GITHUB_MAX_RANGE_RESUMES {
+                    resume_count += 1;
+                    continue;
+                }
                 return Err(format!(
                     "续传请求返回 {}，未提供 206 Partial Content",
                     status
@@ -507,6 +625,14 @@ async fn download_github_archive_from_url(
                 .ok_or_else(|| "续传响应缺少 Content-Range".to_string())
                 .and_then(parse_content_range)?;
             if range.0 != start {
+                let _ = std::fs::remove_file(part_path);
+                archive.clear();
+                expected_total = None;
+                force_range = false;
+                if resume_count < GITHUB_MAX_RANGE_RESUMES {
+                    resume_count += 1;
+                    continue;
+                }
                 return Err(format!(
                     "续传响应起点为 {}，与请求的 {} 不一致",
                     range.0, start
@@ -569,6 +695,18 @@ async fn download_github_archive_from_url(
                         return Err("压缩包超过 100 MB".to_string());
                     }
                     archive.extend_from_slice(&chunk);
+                    if last_progress.elapsed() >= GITHUB_PROGRESS_INTERVAL {
+                        let elapsed = started_at.elapsed().as_secs_f64().max(0.001);
+                        let _ = on_event.send(GithubToolDownloadProgress::Progress {
+                            phase: phase.to_string(),
+                            source: source.to_string(),
+                            attempt,
+                            received: archive.len() as u64,
+                            total: expected_total,
+                            bytes_per_second: (archive.len() as f64 / elapsed) as u64,
+                        });
+                        last_progress = Instant::now();
+                    }
                 }
                 Ok(None) => break,
                 Err(error) => {
@@ -577,6 +715,8 @@ async fn download_github_archive_from_url(
                 }
             }
         }
+
+        persist_download_part(part_path, &archive)?;
 
         if let Some(error) = read_error {
             if expected_total == Some(archive.len() as u64) {
@@ -617,10 +757,21 @@ async fn download_github_archive_from_url(
                 continue;
             }
         }
-        if archive.len() >= 2 && archive.starts_with(b"PK") {
-            if zip::ZipArchive::new(Cursor::new(&archive)).is_ok() {
-                break;
-            }
+        if archive.len() >= 2
+            && archive.starts_with(b"PK")
+            && zip::ZipArchive::new(Cursor::new(&archive)).is_ok()
+        {
+            let elapsed = started_at.elapsed().as_secs_f64().max(0.001);
+            let _ = on_event.send(GithubToolDownloadProgress::Progress {
+                phase: phase.to_string(),
+                source: source.to_string(),
+                attempt,
+                received: archive.len() as u64,
+                total: expected_total,
+                bytes_per_second: (archive.len() as f64 / elapsed) as u64,
+            });
+            let _ = std::fs::remove_file(part_path);
+            break;
         }
         // 某些国内代理会在连接正常关闭时只返回前几 MB，既没有传输错误，
         // 也不会给出完整 Content-Length。ZIP 校验失败时再发起 Range 续传，
@@ -648,6 +799,45 @@ fn validate_archive_total(total: u64) -> Result<u64, String> {
         return Err("压缩包超过 100 MB 或大小无效".to_string());
     }
     Ok(total)
+}
+
+fn download_part_path(cache_dir: &Path, url: &url::Url) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(cache_dir)
+        .map_err(|error| format!("无法创建 GitHub 下载缓存目录：{error}"))?;
+    let key = format!("{:x}", Sha256::digest(url.as_str().as_bytes()));
+    Ok(cache_dir.join(format!("{key}.part")))
+}
+
+fn read_download_part(path: &Path) -> Result<Vec<u8>, String> {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return Ok(Vec::new());
+    };
+    if !metadata.is_file() || metadata.len() > GITHUB_MAX_ARCHIVE_BYTES as u64 {
+        let _ = std::fs::remove_file(path);
+        return Ok(Vec::new());
+    }
+    let bytes = std::fs::read(path).map_err(|error| format!("读取下载断点失败：{error}"))?;
+    if bytes.is_empty() {
+        let _ = std::fs::remove_file(path);
+        return Ok(Vec::new());
+    }
+    // ZIP 源码包必须以 PK 开头；不符合时清掉旧缓存，避免把错误响应续传到下一次。
+    if !bytes.starts_with(b"PK") {
+        let _ = std::fs::remove_file(path);
+        return Ok(Vec::new());
+    }
+    Ok(bytes)
+}
+
+fn persist_download_part(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() > GITHUB_MAX_ARCHIVE_BYTES {
+        return Err("下载断点超过 100 MB".to_string());
+    }
+    let mut file =
+        std::fs::File::create(path).map_err(|error| format!("保存下载断点失败：{error}"))?;
+    file.write_all(bytes)
+        .and_then(|_| file.flush())
+        .map_err(|error| format!("写入下载断点失败：{error}"))
 }
 
 fn is_paperspine_repository(repository: &GithubRepository) -> bool {
@@ -679,29 +869,29 @@ fn github_release_asset_urls(download_url: &str) -> Result<Vec<(String, url::Url
 async fn prepare_paperspine_assets(
     client: &Client,
     source_path: &str,
+    cache_dir: &Path,
+    on_event: &Channel<GithubToolDownloadProgress>,
 ) -> Result<PaperSpineAssets, String> {
     let mut manifest = None;
     let mut manifest_failures = Vec::with_capacity(PAPERSPINE_MANIFEST_URLS.len());
     for (source, url) in PAPERSPINE_MANIFEST_URLS {
-        let response = match tokio::time::timeout(
-            GITHUB_ARCHIVE_ATTEMPT_TIMEOUT,
-            client.get(url).send(),
-        )
-        .await
-        {
-            Ok(Ok(response)) => response,
-            Ok(Err(error)) => {
-                manifest_failures.push(format!("{source}：请求失败：{error}"));
-                continue;
-            }
-            Err(_) => {
-                manifest_failures.push(format!(
-                    "{source}：超过 {} 秒仍未完成",
-                    GITHUB_ARCHIVE_ATTEMPT_TIMEOUT.as_secs()
-                ));
-                continue;
-            }
-        };
+        let response =
+            match tokio::time::timeout(GITHUB_MANIFEST_ATTEMPT_TIMEOUT, client.get(url).send())
+                .await
+            {
+                Ok(Ok(response)) => response,
+                Ok(Err(error)) => {
+                    manifest_failures.push(format!("{source}：请求失败：{error}"));
+                    continue;
+                }
+                Err(_) => {
+                    manifest_failures.push(format!(
+                        "{source}：超过 {} 秒仍未完成",
+                        GITHUB_MANIFEST_ATTEMPT_TIMEOUT.as_secs()
+                    ));
+                    continue;
+                }
+            };
         if !response.status().is_success() {
             manifest_failures.push(format!("{source}：返回 {}", response.status()));
             continue;
@@ -713,17 +903,25 @@ async fn prepare_paperspine_assets(
             manifest_failures.push(format!("{source}：超过 256 KB"));
             continue;
         }
-        let bytes = match response.bytes().await {
-            Ok(bytes) if bytes.len() <= 256 * 1024 => bytes,
-            Ok(_) => {
-                manifest_failures.push(format!("{source}：超过 256 KB"));
-                continue;
-            }
-            Err(error) => {
-                manifest_failures.push(format!("{source}：读取失败：{error}"));
-                continue;
-            }
-        };
+        let bytes =
+            match tokio::time::timeout(GITHUB_MANIFEST_ATTEMPT_TIMEOUT, response.bytes()).await {
+                Ok(Ok(bytes)) if bytes.len() <= 256 * 1024 => bytes,
+                Ok(Ok(_)) => {
+                    manifest_failures.push(format!("{source}：超过 256 KB"));
+                    continue;
+                }
+                Ok(Err(error)) => {
+                    manifest_failures.push(format!("{source}：读取失败：{error}"));
+                    continue;
+                }
+                Err(_) => {
+                    manifest_failures.push(format!(
+                        "{source}：读取超过 {} 秒仍未完成",
+                        GITHUB_MANIFEST_ATTEMPT_TIMEOUT.as_secs()
+                    ));
+                    continue;
+                }
+            };
         manifest = Some(bytes);
         break;
     }
@@ -783,23 +981,56 @@ async fn prepare_paperspine_assets(
     let urls = github_release_asset_urls(download_url)?;
     let mut failures = Vec::with_capacity(urls.len());
     let mut bundle = None;
-    for (source, url) in urls {
+    for (index, (source, url)) in urls.into_iter().enumerate() {
+        let attempt = index + 1;
+        let part_path = download_part_path(cache_dir, &url)?;
+        let resumed_bytes = std::fs::metadata(&part_path)
+            .ok()
+            .filter(|metadata| metadata.is_file())
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        let _ = on_event.send(GithubToolDownloadProgress::Started {
+            phase: "asset".to_string(),
+            source: source.clone(),
+            attempt,
+            received: resumed_bytes,
+            total: Some(expected_bytes),
+        });
         let result = tokio::time::timeout(
             GITHUB_ARCHIVE_ATTEMPT_TIMEOUT,
-            download_github_archive_from_url(client, &url),
+            download_github_archive_from_url(
+                client, &url, &part_path, on_event, "asset", &source, attempt,
+            ),
         )
         .await;
         let candidate = match result {
             Ok(Ok(candidate)) => candidate,
             Ok(Err(error)) => {
+                let _ = on_event.send(GithubToolDownloadProgress::Failed {
+                    phase: "asset".to_string(),
+                    source: source.clone(),
+                    attempt,
+                    received: 0,
+                    total: Some(expected_bytes),
+                    error: error.clone(),
+                });
                 failures.push(format!("{source}：{error}"));
                 continue;
             }
             Err(_) => {
-                failures.push(format!(
-                    "{source}：超过 {} 秒仍未完成",
+                let error = format!(
+                    "超过 {} 秒仍未完成",
                     GITHUB_ARCHIVE_ATTEMPT_TIMEOUT.as_secs()
-                ));
+                );
+                let _ = on_event.send(GithubToolDownloadProgress::Failed {
+                    phase: "asset".to_string(),
+                    source: source.clone(),
+                    attempt,
+                    received: 0,
+                    total: Some(expected_bytes),
+                    error: error.clone(),
+                });
+                failures.push(format!("{source}：{error}"));
                 continue;
             }
         };
@@ -813,9 +1044,26 @@ async fn prepare_paperspine_assets(
             continue;
         }
         if !actual_hash.eq_ignore_ascii_case(expected_hash) {
+            let error = "SHA-256 校验不一致".to_string();
+            let _ = on_event.send(GithubToolDownloadProgress::Failed {
+                phase: "asset".to_string(),
+                source: source.clone(),
+                attempt,
+                received: candidate.len() as u64,
+                total: Some(expected_bytes),
+                error: error.clone(),
+            });
             failures.push(format!("{source}：SHA-256 校验不一致"));
             continue;
         }
+        let _ = std::fs::remove_file(&part_path);
+        let _ = on_event.send(GithubToolDownloadProgress::Done {
+            phase: "asset".to_string(),
+            source,
+            attempt,
+            received: candidate.len() as u64,
+            total: Some(expected_bytes),
+        });
         bundle = Some(candidate);
         break;
     }
@@ -1747,7 +1995,7 @@ fn is_descendant_process(pid: u32, ancestor_pid: u32) -> bool {
             OsString::from(script),
         ]);
         hide_window(&mut command);
-        return command.status().is_ok_and(|status| status.success());
+        command.status().is_ok_and(|status| status.success())
     }
     #[cfg(not(windows))]
     {
@@ -1801,7 +2049,7 @@ fn process_is_running(pid: u32) -> Result<bool, String> {
                     .unwrap_or_else(|| "未知".to_string())
             ));
         }
-        return Ok(tasklist_contains_pid(&output.stdout, pid));
+        Ok(tasklist_contains_pid(&output.stdout, pid))
     }
 
     #[cfg(not(windows))]
@@ -2076,5 +2324,19 @@ receipt:
         assert!(parse_content_range("bytes 10-9/20").is_err());
         assert!(parse_content_range("bytes 0-10/10").is_err());
         assert!(parse_content_range("bytes 0-10/20 trailing").is_err());
+    }
+
+    #[test]
+    fn download_parts_round_trip_and_reject_invalid_content() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = url::Url::parse("https://github.com/example/tool/archive/main.zip").unwrap();
+        let path = download_part_path(directory.path(), &url).unwrap();
+        let bytes = b"PK\x03\x04partial";
+        persist_download_part(&path, bytes).unwrap();
+        assert_eq!(read_download_part(&path).unwrap(), bytes);
+
+        fs::write(&path, b"not a zip").unwrap();
+        assert!(read_download_part(&path).unwrap().is_empty());
+        assert!(!path.exists());
     }
 }

@@ -1,17 +1,19 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use tauri::{
-    webview::{NewWindowResponse, WebviewWindow},
-    AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder,
+    webview::{NewWindowResponse, Webview, WebviewWindow},
+    AppHandle, LogicalPosition, LogicalSize, Manager, State, WebviewUrl,
 };
 use url::Url;
 
 use crate::AppState;
 
-const DEFAULT_WIDTH: f64 = 1080.0;
-const DEFAULT_HEIGHT: f64 = 820.0;
-const MIN_WIDTH: f64 = 620.0;
-const MIN_HEIGHT: f64 = 480.0;
+// 主窗口使用无边框布局：顶部 36px 原生标题栏 + 48px 应用顶栏，左侧为导航栏。
+// WebView 作为 child 覆盖主内容区，避免再打开独立原生窗口。
+const MAIN_SIDEBAR_WIDTH: f64 = 236.0;
+const COLLAPSED_SIDEBAR_WIDTH: f64 = 0.0;
+const MAIN_TITLEBAR_HEIGHT: f64 = 36.0;
+const MAIN_TOPBAR_HEIGHT: f64 = 48.0;
 const MAX_TITLE_LENGTH: usize = 120;
 const MAX_WORKSPACE_ID_LENGTH: usize = 96;
 const MAX_ALLOWED_HOSTS: usize = 64;
@@ -62,6 +64,10 @@ fn window_label(workspace_id: &str) -> String {
     format!("web-{workspace_id}")
 }
 
+fn child_label(workspace_id: &str) -> String {
+    format!("web-child-{workspace_id}")
+}
+
 fn profile_directory(state: &AppState, workspace_id: &str) -> PathBuf {
     state
         .paths
@@ -70,8 +76,113 @@ fn profile_directory(state: &AppState, workspace_id: &str) -> PathBuf {
         .join(workspace_id)
 }
 
-fn workspace_window(app: &AppHandle, workspace_id: &str) -> Option<WebviewWindow> {
+fn legacy_workspace_window(app: &AppHandle, workspace_id: &str) -> Option<tauri::WebviewWindow> {
     app.get_webview_window(&window_label(workspace_id))
+}
+
+fn workspace_child<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    workspace_id: &str,
+) -> Option<Webview<R>> {
+    app.get_webview(&child_label(workspace_id))
+}
+
+fn child_bounds<R: tauri::Runtime>(
+    window: &tauri::Window<R>,
+    sidebar_width: f64,
+) -> Result<(LogicalPosition<f64>, LogicalSize<f64>), String> {
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let size = window.inner_size().map_err(|error| error.to_string())?;
+    let width = f64::from(size.width) / scale;
+    let height = f64::from(size.height) / scale;
+    Ok((
+        LogicalPosition::new(sidebar_width, MAIN_TITLEBAR_HEIGHT + MAIN_TOPBAR_HEIGHT),
+        LogicalSize::new(
+            (width - sidebar_width).max(320.0),
+            (height - MAIN_TITLEBAR_HEIGHT - MAIN_TOPBAR_HEIGHT).max(240.0),
+        ),
+    ))
+}
+
+fn hide_other_children<R: tauri::Runtime>(app: &AppHandle<R>, active_label: &str) {
+    for webview in app.webviews().into_values() {
+        if webview.label().starts_with("web-child-") && webview.label() != active_label {
+            let _ = webview.hide();
+        }
+    }
+}
+
+fn activate_child<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    workspace_id: &str,
+) -> Result<Option<WebWorkspaceState>, String> {
+    let Some(webview) = workspace_child(app, workspace_id) else {
+        return Ok(None);
+    };
+    let main = app
+        .get_window("main")
+        .ok_or_else(|| "找不到 Proofline 主窗口".to_string())?;
+    let active_label = child_label(workspace_id);
+    hide_other_children(app, &active_label);
+    let sidebar_collapsed = *app
+        .state::<AppState>()
+        .web_workspace_sidebar_collapsed
+        .lock()
+        .map_err(|_| "读取 Web 工作台布局状态失败".to_string())?;
+    let (position, size) = child_bounds(
+        &main,
+        if sidebar_collapsed {
+            COLLAPSED_SIDEBAR_WIDTH
+        } else {
+            MAIN_SIDEBAR_WIDTH
+        },
+    )?;
+    webview
+        .set_position(position)
+        .and_then(|_| webview.set_size(size))
+        .map_err(|error| error.to_string())?;
+    webview.show().map_err(|error| error.to_string())?;
+    webview.set_focus().map_err(|error| error.to_string())?;
+    state_for_child(workspace_id, &webview).map(Some)
+}
+
+/// 主窗口尺寸变化时同步所有 child WebView 的内容区域。
+pub fn resize_web_workspaces<R: tauri::Runtime>(window: &tauri::Window<R>) {
+    let sidebar_collapsed = window
+        .app_handle()
+        .state::<AppState>()
+        .web_workspace_sidebar_collapsed
+        .lock()
+        .map(|value| *value)
+        .unwrap_or(true);
+    let Ok((position, size)) = child_bounds(
+        window,
+        if sidebar_collapsed {
+            COLLAPSED_SIDEBAR_WIDTH
+        } else {
+            MAIN_SIDEBAR_WIDTH
+        },
+    ) else {
+        return;
+    };
+    for webview in window.app_handle().webviews().into_values() {
+        if webview.label().starts_with("web-child-") {
+            let _ = webview.set_position(position);
+            let _ = webview.set_size(size);
+        }
+    }
+}
+
+#[tauri::command]
+pub fn set_web_workspace_layout(app: AppHandle, collapsed: bool) -> Result<(), String> {
+    *app.state::<AppState>()
+        .web_workspace_sidebar_collapsed
+        .lock()
+        .map_err(|_| "更新 Web 工作台布局状态失败".to_string())? = collapsed;
+    if let Some(window) = app.get_window("main") {
+        resize_web_workspaces(&window);
+    }
+    Ok(())
 }
 
 fn normalized_host(value: &str) -> Result<String, String> {
@@ -219,6 +330,19 @@ fn state_for_window(
     })
 }
 
+fn state_for_child<R: tauri::Runtime>(
+    workspace_id: &str,
+    webview: &Webview<R>,
+) -> Result<WebWorkspaceState, String> {
+    let url = webview.url().map_err(|error| error.to_string())?;
+    Ok(WebWorkspaceState {
+        workspace_id: workspace_id.to_string(),
+        open: true,
+        url: Some(url.to_string()),
+        title: None,
+    })
+}
+
 #[tauri::command]
 pub async fn open_web_workspace(
     app: AppHandle,
@@ -229,36 +353,65 @@ pub async fn open_web_workspace(
     let allowed_hosts = normalize_allowed_hosts(&request.allowed_hosts)?;
     let (initial_url, loopback_origin) = validate_initial_url(&request.url, &allowed_hosts)?;
 
-    if let Some(window) = workspace_window(&app, &workspace_id) {
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())?;
-        return state_for_window(&workspace_id, &window);
+    if let Some(state) = activate_child(&app, &workspace_id)? {
+        return Ok(state);
+    }
+
+    // 兼容升级前创建的独立窗口：关闭旧窗口后在主窗口内重建 child，保留其 profile 目录。
+    if let Some(window) = legacy_workspace_window(&app, &workspace_id) {
+        window.close().map_err(|error| error.to_string())?;
     }
 
     let profile = profile_directory(&state, &workspace_id);
     fs::create_dir_all(&profile).map_err(|error| error.to_string())?;
     let navigation_hosts = allowed_hosts.clone();
     let navigation_loopback = loopback_origin.clone();
+    let main = app
+        .get_window("main")
+        .ok_or_else(|| "找不到 Proofline 主窗口".to_string())?;
+    let sidebar_collapsed = *app
+        .state::<AppState>()
+        .web_workspace_sidebar_collapsed
+        .lock()
+        .map_err(|_| "读取 Web 工作台布局状态失败".to_string())?;
+    let (position, size) = child_bounds(
+        &main,
+        if sidebar_collapsed {
+            COLLAPSED_SIDEBAR_WIDTH
+        } else {
+            MAIN_SIDEBAR_WIDTH
+        },
+    )?;
+    let active_label = child_label(&workspace_id);
     let title = normalized_title(request.title.as_deref(), &workspace_id);
-    let window = WebviewWindowBuilder::new(
-        &app,
-        window_label(&workspace_id),
-        WebviewUrl::External(initial_url),
-    )
-    .title(format!("Proofline · {title}"))
-    .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-    .min_inner_size(MIN_WIDTH, MIN_HEIGHT)
-    .data_directory(profile)
-    .on_navigation(move |url| {
-        is_allowed_navigation(url, &navigation_hosts, navigation_loopback.as_ref())
-    })
-    .on_new_window(|_url, _features| NewWindowResponse::Deny)
-    .build()
-    .map_err(|error| error.to_string())?;
+    let title_script = format!(
+        "document.title = {};",
+        serde_json::to_string(&title).map_err(|error| error.to_string())?
+    );
+    let webview =
+        tauri::webview::WebviewBuilder::new(&active_label, WebviewUrl::External(initial_url))
+            .initialization_script(title_script)
+            .data_directory(profile)
+            .on_navigation(move |url| {
+                is_allowed_navigation(url, &navigation_hosts, navigation_loopback.as_ref())
+            })
+            .on_new_window(|_url, _features| NewWindowResponse::Deny);
+    hide_other_children(&app, &active_label);
+    let webview = main
+        .add_child(webview, position, size)
+        .map_err(|error| error.to_string())?;
+    webview.show().map_err(|error| error.to_string())?;
+    webview.set_focus().map_err(|error| error.to_string())?;
+    state_for_child(&workspace_id, &webview)
+}
 
-    window.show().map_err(|error| error.to_string())?;
-    window.set_focus().map_err(|error| error.to_string())?;
-    state_for_window(&workspace_id, &window)
+#[tauri::command]
+pub fn activate_web_workspace(
+    app: AppHandle,
+    workspace_id: String,
+) -> Result<Option<WebWorkspaceState>, String> {
+    let workspace_id = validate_workspace_id(&workspace_id)?;
+    activate_child(&app, &workspace_id)
 }
 
 #[tauri::command]
@@ -267,7 +420,10 @@ pub fn get_web_workspace_state(
     workspace_id: String,
 ) -> Result<Option<WebWorkspaceState>, String> {
     let workspace_id = validate_workspace_id(&workspace_id)?;
-    workspace_window(&app, &workspace_id)
+    if let Some(webview) = workspace_child(&app, &workspace_id) {
+        return state_for_child(&workspace_id, &webview).map(Some);
+    }
+    legacy_workspace_window(&app, &workspace_id)
         .map(|window| state_for_window(&workspace_id, &window))
         .transpose()
 }
@@ -275,7 +431,10 @@ pub fn get_web_workspace_state(
 #[tauri::command]
 pub fn close_web_workspace(app: AppHandle, workspace_id: String) -> Result<(), String> {
     let workspace_id = validate_workspace_id(&workspace_id)?;
-    if let Some(window) = workspace_window(&app, &workspace_id) {
+    if let Some(webview) = workspace_child(&app, &workspace_id) {
+        webview.close().map_err(|error| error.to_string())?;
+    }
+    if let Some(window) = legacy_workspace_window(&app, &workspace_id) {
         window.close().map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -288,7 +447,10 @@ pub fn clear_web_workspace_profile(
     workspace_id: String,
 ) -> Result<(), String> {
     let workspace_id = validate_workspace_id(&workspace_id)?;
-    if let Some(window) = workspace_window(&app, &workspace_id) {
+    if let Some(webview) = workspace_child(&app, &workspace_id) {
+        webview.close().map_err(|error| error.to_string())?;
+    }
+    if let Some(window) = legacy_workspace_window(&app, &workspace_id) {
         window.close().map_err(|error| error.to_string())?;
     }
     let profile = profile_directory(&state, &workspace_id);

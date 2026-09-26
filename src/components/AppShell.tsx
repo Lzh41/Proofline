@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   BarChart3,
   BookOpenText,
@@ -12,13 +12,13 @@ import {
   Languages,
   Menu,
   Moon,
-  Search,
   Settings,
   Sun,
   Waypoints,
   Target,
   MessagesSquare,
   X,
+  Wrench,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStoreView } from '../app/storeAdapter';
@@ -39,6 +39,7 @@ const NAVIGATION = [
   { to: '/plan', label: '计划', icon: CalendarCheck2 },
   { to: '/analytics', label: '统计', icon: BarChart3 },
   { to: '/settings', label: '设置', icon: Settings },
+  { to: '/tools', label: '本地工具', icon: Wrench },
 ] as const;
 
 interface AppShellProps {
@@ -48,11 +49,9 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [query, setQuery] = useState('');
   const [themeSaving, setThemeSaving] = useState(false);
   const themeSavePending = useRef(false);
   const location = useLocation();
-  const navigate = useNavigate();
   const store = useStoreView();
   const resolvedTheme = useResolvedTheme(store.settings.theme ?? 'dark');
   const themeActionLabel = resolvedTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题';
@@ -62,19 +61,16 @@ export function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        if (location.pathname !== '/problems') return;
+        const problemSearch = document.getElementById('problem-search');
+        if (!problemSearch) return;
         event.preventDefault();
-        document.getElementById('global-search')?.focus();
+        problemSearch.focus();
       }
     };
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
-  }, []);
-
-  const submitSearch = (event: React.FormEvent) => {
-    event.preventDefault();
-    const trimmed = query.trim();
-    navigate(trimmed ? `/problems?q=${encodeURIComponent(trimmed)}` : '/problems');
-  };
+  }, [location.pathname]);
 
   const toggleTheme = async () => {
     if (themeSavePending.current || !store.updateSettings || !store.initialized || store.loading) return;
@@ -156,17 +152,6 @@ export function AppShell({ children }: AppShellProps) {
 
       <section className={styles.workspace}>
         <header className={styles.topbar}>
-          <form className={styles.search} onSubmit={submitSearch}>
-            <Search size={17} aria-hidden="true" />
-            <input
-              id="global-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索题目、标签或题号"
-              aria-label="全局搜索"
-            />
-            <kbd>Ctrl K</kbd>
-          </form>
           <div className={styles.topbarActions}>
             <div className={styles.syncState} title="个人数据仅保存在本机">
               <span className={clsx(styles.statusDot, store.error && styles.statusError)} />

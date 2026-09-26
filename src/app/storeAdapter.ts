@@ -19,6 +19,11 @@ import type {
   RunCodeResult,
   ThoughtEvent,
   FinishInterviewInput,
+  WebWorkspace,
+  LocalTool,
+  GithubToolInspection,
+  GithubToolInstallPlan,
+  GithubToolPrepareResult,
 } from '../types';
 import type { VocabularyGrade, VocabularyProgress, VocabularyReview, VocabularyReviewDirection, VocabularyScope, VocabularySessionState, VocabularyWord } from '../lib/vocabulary';
 import type {
@@ -138,6 +143,25 @@ export interface AppStoreView {
   runProblemSample?: (request: ProblemSampleRunRequest) => Promise<ProblemSampleRunResult>;
   pickRandomReviewProblem?: (kind: 'algorithm' | 'interview') => Problem | null;
   recordReview?: (problemId: string, kind: 'algorithm' | 'interview') => Promise<void>;
+  webWorkspaces: WebWorkspace[];
+  createWebWorkspace?: (input: Partial<WebWorkspace>) => Promise<WebWorkspace>;
+  updateWebWorkspace?: (id: string, patch: Partial<WebWorkspace>) => Promise<void>;
+  deleteWebWorkspace?: (id: string) => Promise<void>;
+  openWebWorkspace?: (workspace: WebWorkspace) => Promise<void>;
+  refreshWebWorkspace?: (workspace: WebWorkspace) => Promise<{ open: boolean; url?: string }>;
+  refreshLocalTool?: (tool: LocalTool) => Promise<{ running: boolean }>;
+  closeWebWorkspace?: (workspace: WebWorkspace) => Promise<void>;
+  clearWebWorkspaceProfile?: (workspace: WebWorkspace) => Promise<void>;
+  localTools: LocalTool[];
+  createLocalTool?: (input: Partial<LocalTool>) => Promise<LocalTool>;
+  updateLocalTool?: (id: string, patch: Partial<LocalTool>) => Promise<void>;
+  deleteLocalTool?: (id: string) => Promise<void>;
+  installLocalTool?: (tool: LocalTool) => Promise<{ output: string }>;
+  startLocalTool?: (tool: LocalTool) => Promise<{ serviceUrl?: string; servicePid?: number; running?: boolean }>;
+  stopLocalTool?: (tool: LocalTool) => Promise<void>;
+  inspectGithubTool?: (repositoryUrl: string) => Promise<GithubToolInspection>;
+  requestGithubToolPlan?: (request: { inspection: GithubToolInspection; userMessage?: string; onChunk?: (chunk: string) => void }) => Promise<GithubToolInstallPlan>;
+  prepareGithubTool?: (request: { repositoryUrl: string; installerPath?: string; installerArgs?: string[]; launcherPath?: string; launcherArgs?: string[]; workingDirectory?: string }) => Promise<GithubToolPrepareResult>;
 }
 
 const EMPTY_ARRAY: never[] = [];
@@ -159,6 +183,8 @@ export function useStoreView(): AppStoreView {
       vocabularyReviews: raw.vocabularyReviews ?? EMPTY_ARRAY,
       thoughtEvents: raw.thoughtEvents ?? EMPTY_ARRAY,
       aiGenerations: raw.aiGenerations ?? EMPTY_ARRAY,
+      webWorkspaces: raw.webWorkspaces ?? EMPTY_ARRAY,
+      localTools: raw.localTools ?? EMPTY_ARRAY,
       settings: raw.settings ?? EMPTY_SETTINGS,
     }),
     [raw],

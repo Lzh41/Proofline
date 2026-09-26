@@ -16,7 +16,7 @@
   <a href="https://github.com/Lzh41/Proofline"><img src="https://img.shields.io/github/stars/Lzh41/Proofline?style=flat-square&color=E8B86D" alt="GitHub stars" /></a>
 </p>
 
-> 当前版本：`0.1.12` · Windows x64 · Tauri 2 · React 19 · SQLite
+> 当前版本：`0.1.13` · Windows x64 · Tauri 2 · React 19 · SQLite
 
 ## 先看它在做什么
 
@@ -65,6 +65,12 @@
 
 Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从当前用户选择的公开单题建立学习卡。页面遇到登录、验证码、改版或反爬限制时，会保留链接型卡片，并提供手工录入、剪贴板和截图 OCR 回退。
 
+### 本地工具：在 Proofline 内管理 Web UI
+
+- **多个本地服务**：登记任意使用 `.ps1`、`.cmd`、`.bat` 或 `.exe` 启动的本地 Web 工具，分别启动、停止和刷新状态。
+- **独立 WebView 会话**：每个工具拥有独立的登录态和站点缓存，可在 Proofline 内打开多个 Web 工作台。
+- **AI 安装助手**：输入公开 GitHub 仓库地址，先读取仓库元数据、文件索引和安装说明，再由 AI 生成候选路径；用户确认后才下载源码和执行安装脚本。
+
 ## 一次完整练习是什么样
 
 1. 在“题库”或官方平台窗口选择一道题。
@@ -78,8 +84,8 @@ Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从�
 
 前往 [Releases](https://github.com/Lzh41/Proofline/releases) 下载：
 
-- `Proofline_0.1.12_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
-- `Proofline_0.1.12_x64-portable.exe`：Windows x64 便携版，免安装运行。
+- `Proofline_0.1.13_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
+- `Proofline_0.1.13_x64-portable.exe`：Windows x64 便携版，免安装运行。
 
 当前版本未配置商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。下载后请先核对 Release 页面中的 SHA-256。若系统没有 WebView2 Runtime，安装阶段需要联网下载安装运行时。
 
@@ -126,8 +132,8 @@ React 19 · TypeScript · Vite · Tauri 2 · Rust · SQLite · Zustand · CSS Mo
 
 ## 验证记录
 
-- 前端测试：`35` 个测试文件，`235/235` 通过。
-- Rust 测试：`65/65` 通过。
+- 前端测试：`39` 个测试文件，`279/279` 通过。
+- Rust 测试：`91/91` 通过。
 - Windows x64 NSIS 安装包和便携版已构建。
 - 已在全新安装目录验证：首次启动、导入题目、完全退出、重启后数据持久化。
 

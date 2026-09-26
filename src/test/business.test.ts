@@ -161,10 +161,13 @@ describe('业务安全与统计', () => {
     expect(manifest.entityCounts.algorithmProblems).toBe(1);
     expect(manifest.entityCounts.interviewQuestions).toBe(0);
     expect(manifest.entityCounts.interviewAttempts).toBe(0);
+    expect(manifest.entityCounts.webWorkspaces).toBe(0);
+    expect(manifest.entityCounts.localTools).toBe(0);
     expect(manifest.includesCredentials).toBe(false);
     expect(manifest.includesPlatformCookies).toBe(false);
     const restored = parseExport(serializeExport(value));
     expect(restored.problems[0].title).toBe('两数之和');
     expect(restored.settings.hasAiCredential).toBe(false);
+    expect(JSON.parse(serializeExport(value)).manifest.appVersion).toBe('0.1.13');
   });
 });

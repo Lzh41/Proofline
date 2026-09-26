@@ -16,6 +16,7 @@ import { TodayPage } from './pages/TodayPage';
 import { InterviewsPage } from './pages/InterviewsPage';
 import { InterviewPracticePage } from './pages/InterviewPracticePage';
 import { VocabularyPage } from './pages/VocabularyPage';
+import { ToolsPage } from './pages/ToolsPage';
 
 function ApplicationRoutes() {
   const store = useStoreView();
@@ -46,6 +47,7 @@ function ApplicationRoutes() {
         <Route path="/plan" element={<PlanPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/tools" element={<ToolsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

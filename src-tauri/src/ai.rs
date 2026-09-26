@@ -198,6 +198,10 @@ fn coach_instruction(intent: &str) -> Result<(&'static str, &'static str), Strin
             "生成主题面试题",
             "先依据职位名称和岗位需求审计本地题库覆盖，再围绕未覆盖能力域补齐不重复、不换皮且有真实区分度的考点与题目；答案必须技术准确，并包含回答要点和递进追问。",
         )),
+        "tool-installer" => Ok((
+            "分析 GitHub 本地工具",
+            "根据公开仓库的文件索引和只读内容，判断是否存在本地 Web UI 的安装/启动入口，生成待确认的 JSON 工具配置。只允许引用仓库内相对路径，不得生成任意命令、密钥或密码。",
+        )),
         _ => Err("未知的 AI 代码教练请求类型".to_string()),
     }
 }
@@ -206,6 +210,9 @@ fn coach_system_prompt(intent: &str, intent_label: &str, instruction: &str) -> S
     match intent {
         "interview-examiner" => format!(
             "你是 Proofline 的资深中文技术面试出题官。必须使用简体中文，技术名词、公式和代码标识符可以保留英文。\n本轮请求：{intent_label}。{instruction}\n输出约束：只输出一个合法 JSON 对象，并严格遵守用户提示中给出的字段、枚举值和题目数量。禁止 Markdown 代码围栏、解释性前后缀或 JSON 之外的任何字符；首字符必须是 `{{`，末字符必须是 `}}`。不得编造不存在的技术结论；信息不足时只能在 JSON 字段内容中明确说明合理假设。"
+        ),
+        "tool-installer" => format!(
+            "你是 Proofline 的中文本地工具安装助手。必须使用简体中文，技术名词和文件路径可保留原文。\n本轮请求：{intent_label}。{instruction}\n输出约束：只输出一个合法 JSON 对象，严格遵守用户提示中的字段；禁止 Markdown 代码围栏、解释性前后缀或 JSON 之外的任何字符。所有脚本路径必须是仓库内相对路径，requiresConfirmation 必须为 true。无法确认时留空并在 notes 说明。"
         ),
         "interview-follow-up" => format!(
             "你是 Proofline 中严谨但耐心的中文技术面试官。必须使用简体中文，并基于题目、候选人当前回答和参考要点进行判断。\n本轮请求：{intent_label}。{instruction}\n直接输出一个完整的递进问题，不使用 Markdown 标题、列表或代码块。问题应能检验理解深度，并自然承接候选人已经说过的内容。信息不足时围绕最关键的不确定点追问，不得编造候选人的经历。"
@@ -504,7 +511,10 @@ fn request_error(context: &str, error: reqwest::Error) -> String {
 }
 
 fn completion_token_budget(intent: &str, prompt: &str) -> u32 {
-    if intent == "interview-examiner" || prompt.contains("本轮请求：生成主题面试题") {
+    if intent == "interview-examiner"
+        || intent == "tool-installer"
+        || prompt.contains("本轮请求：生成主题面试题")
+    {
         // 岗位出题会同时返回覆盖审计、能力缺口和较多完整参考答案；
         // 6K 容易在 15~20 道题时被截断，保持与浏览器端预算一致。
         12_288
@@ -601,6 +611,14 @@ mod tests {
                 "desktop AI should accept {intent}"
             );
         }
+    }
+
+    #[test]
+    fn tool_installer_intent_requires_json_confirmation() {
+        let system = coach_system("tool-installer").unwrap();
+        assert!(system.contains("本地工具安装助手"));
+        assert!(system.contains("相对路径"));
+        assert!(system.contains("requiresConfirmation"));
     }
 
     #[test]

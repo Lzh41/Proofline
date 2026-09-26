@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeSnapshot } from '../lib/data';
+import { normalizeSnapshot, sanitizeWebUrl } from '../lib/data';
 
 const legacySchema1Snapshot = {
   schemaVersion: 1,
@@ -66,6 +66,11 @@ const legacySchema1Snapshot = {
 } as const;
 
 describe('数据快照规范化', () => {
+  it('清理工作台地址中的常见会话凭据参数', () => {
+    expect(sanitizeWebUrl('http://127.0.0.1:8123/app?tab=home&token=secret#section')).toBe('http://127.0.0.1:8123/app?tab=home#section');
+    expect(sanitizeWebUrl('https://example.com/?access_token=secret#session=abc')).toBe('https://example.com/');
+  });
+
   it('用真实 schema 1 字面量迁移旧计划的算法目标', () => {
     const snapshot = normalizeSnapshot(legacySchema1Snapshot);
 

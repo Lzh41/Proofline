@@ -1,6 +1,8 @@
 import type { AppDataSnapshot, BackupManifest } from '../types';
 
-export function createBackupManifest(snapshot: AppDataSnapshot, appVersion = '0.1.0', now = Date.now()): BackupManifest {
+export const PROOFLINE_APP_VERSION = '0.1.13';
+
+export function createBackupManifest(snapshot: AppDataSnapshot, appVersion = PROOFLINE_APP_VERSION, now = Date.now()): BackupManifest {
   return {
     format: 'xiti-backup',
     version: 1,
@@ -22,6 +24,8 @@ export function createBackupManifest(snapshot: AppDataSnapshot, appVersion = '0.
       vocabularyWords: snapshot.vocabularyWords.length,
       vocabularyProgress: snapshot.vocabularyProgress.length,
       vocabularyReviews: snapshot.vocabularyReviews.length,
+      webWorkspaces: snapshot.webWorkspaces?.length ?? 0,
+      localTools: snapshot.localTools?.length ?? 0,
     },
     includesCredentials: false,
     includesPlatformCookies: false,

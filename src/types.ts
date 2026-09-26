@@ -16,6 +16,98 @@ export type EditorFontSize = 14 | 16 | 18 | 20 | 22;
 export type InterviewFormat = 'knowledge' | 'scenario' | 'system-design' | 'project';
 export type InterviewContentOrigin = 'builtin' | 'user' | 'import' | 'ai';
 
+/** 通用 Web UI 工作台。站点数据留在独立 WebView2 profile，快照只保存恢复所需元数据。 */
+export interface WebWorkspace {
+  id: string;
+  name: string;
+  homeUrl: string;
+  allowedHosts: string[];
+  profileKey: string;
+  description?: string;
+  lastUrl?: string;
+  lastOpenedAt?: number;
+  status?: 'idle' | 'open' | 'stopped' | 'error' | 'unknown';
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 可由 Proofline 管理的本地工具及其服务启动配置。不会保存密钥或 WebView Cookie。 */
+export interface LocalTool {
+  id: string;
+  name: string;
+  description?: string;
+  /** 由 GitHub 助手下载的公开仓库地址；不包含凭据。 */
+  repositoryUrl?: string;
+  /** GitHub 源码在本机的根目录，便于复查来源和后续更新。 */
+  sourceRoot?: string;
+  installerPath?: string;
+  installerArgs?: string[];
+  launcherPath?: string;
+  launcherArgs?: string[];
+  workingDirectory?: string;
+  profileRoot?: string;
+  workspaceId?: string;
+  serviceUrl?: string;
+  servicePid?: number;
+  status: 'not-installed' | 'installed' | 'running' | 'stopped' | 'error';
+  lastError?: string;
+  installedAt?: number;
+  lastStartedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** GitHub 公开仓库的只读分析结果；不会保存凭据或执行仓库内容。 */
+export interface GithubToolFile {
+  path: string;
+  content: string;
+}
+
+export interface GithubToolInspection {
+  repositoryUrl: string;
+  htmlUrl: string;
+  fullName: string;
+  owner: string;
+  repo: string;
+  name: string;
+  description?: string;
+  defaultBranch: string;
+  language?: string;
+  stars?: number;
+  files: string[];
+  readme?: string;
+  setupFiles: GithubToolFile[];
+}
+
+/** AI 生成的候选配置只允许使用仓库内相对路径，执行前必须由用户确认。 */
+export interface GithubToolInstallPlan {
+  repositoryUrl: string;
+  name: string;
+  description: string;
+  installerPath?: string;
+  installerArgs: string[];
+  launcherPath?: string;
+  launcherArgs: string[];
+  workingDirectory?: string;
+  serviceUrl?: string;
+  confidence: 'high' | 'medium' | 'low';
+  installSteps: string[];
+  notes: string[];
+  requiresConfirmation: true;
+}
+
+export interface GithubToolPrepareResult {
+  repositoryUrl: string;
+  sourcePath: string;
+  installerPath?: string;
+  launcherPath?: string;
+  workingDirectory: string;
+  /** 下载阶段为需要本地发布资产的工具补充的安装参数。 */
+  installerArgs?: string[];
+  launcherArgs?: string[];
+  files: string[];
+}
+
 export interface InterviewProblemData {
   catalogId?: string;
   catalogVersion?: number;
@@ -331,6 +423,8 @@ export interface AppDataSnapshot {
   vocabularyProgress: VocabularyProgress[];
   vocabularyReviews: VocabularyReview[];
   aiGenerations: AiGeneration[];
+  webWorkspaces?: WebWorkspace[];
+  localTools?: LocalTool[];
   settings: AppSettings;
   updatedAt: number;
 }

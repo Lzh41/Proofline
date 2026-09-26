@@ -1,4 +1,4 @@
-import type { AppDataSnapshot, AppSettings, AppTheme, EditorFontSize } from '../types';
+import type { AppDataSnapshot, AppSettings, AppTheme, EditorFontSize, LocalTool, WebWorkspace } from '../types';
 import { VOCABULARY_CATALOG_FULL } from '../data/vocabularyCatalog';
 import { isVocabularyDifficulty, type VocabularyReviewDirection, type VocabularyScope, type VocabularySessionCardState, type VocabularySessionState, type VocabularyWord } from './vocabulary';
 
@@ -22,6 +22,25 @@ export const DEFAULT_SETTINGS: AppSettings = {
   privacyConfirmed: false,
   theme: 'dark',
 };
+
+const SENSITIVE_URL_PARAM = /(?:token|secret|password|passwd|authorization|credential|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|session|cookie|code)/i;
+
+/** 保存工作台元数据时保留普通路由参数，移除常见会话凭据参数。 */
+export function sanitizeWebUrl(value: string | undefined): string | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    const parsed = new URL(value.trim());
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (SENSITIVE_URL_PARAM.test(key)) parsed.searchParams.delete(key);
+    }
+    if (parsed.hash && /(?:^|[?&#])(?:token|secret|password|passwd|authorization|credential|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|session|cookie|code)=/i.test(parsed.hash)) {
+      parsed.hash = '';
+    }
+    return parsed.toString();
+  } catch {
+    return value.trim();
+  }
+}
 
 export function normalizeTheme(value: unknown): AppTheme {
   return value === 'light' || value === 'system' || value === 'dark' ? value : 'dark';
@@ -51,6 +70,8 @@ export function createEmptySnapshot(now = Date.now()): AppDataSnapshot {
     vocabularyProgress: [],
     vocabularyReviews: [],
     aiGenerations: [],
+    webWorkspaces: [],
+    localTools: [],
     settings: { ...DEFAULT_SETTINGS },
     updatedAt: now,
   };
@@ -144,6 +165,73 @@ function normalizeVocabularyReviews(value: unknown): AppDataSnapshot['vocabulary
   }));
 }
 
+function normalizeWebWorkspaces(value: unknown): WebWorkspace[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const raw = item as Record<string, unknown>;
+    const id = typeof raw.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(raw.id) ? raw.id : '';
+    const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 120) : '';
+    const homeUrl = typeof raw.homeUrl === 'string' ? raw.homeUrl.trim().slice(0, 2_000) : '';
+    if (!id || !name || !homeUrl) return [];
+    const allowedHosts = Array.isArray(raw.allowedHosts)
+      ? raw.allowedHosts.filter((host): host is string => typeof host === 'string' && host.trim().length > 0).map((host) => host.trim().toLowerCase()).slice(0, 32)
+      : [];
+    const status = raw.status === 'open' || raw.status === 'stopped' || raw.status === 'error' || raw.status === 'unknown' ? raw.status : 'idle';
+    return [{
+      id,
+      name,
+      homeUrl: sanitizeWebUrl(homeUrl) ?? homeUrl,
+      allowedHosts,
+      profileKey: typeof raw.profileKey === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(raw.profileKey) ? raw.profileKey : id,
+      description: typeof raw.description === 'string' ? raw.description.trim().slice(0, 400) : undefined,
+      lastUrl: typeof raw.lastUrl === 'string' && raw.lastUrl.trim() ? sanitizeWebUrl(raw.lastUrl.trim().slice(0, 2_000)) : undefined,
+      lastOpenedAt: typeof raw.lastOpenedAt === 'number' && Number.isFinite(raw.lastOpenedAt) ? raw.lastOpenedAt : undefined,
+      status,
+      createdAt: typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
+      updatedAt: typeof raw.updatedAt === 'number' && Number.isFinite(raw.updatedAt) ? raw.updatedAt : Date.now(),
+    } satisfies WebWorkspace];
+  });
+}
+
+function normalizeLocalTools(value: unknown): LocalTool[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const raw = item as Record<string, unknown>;
+    const id = typeof raw.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(raw.id) ? raw.id : '';
+    const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 120) : '';
+    if (!id || !name) return [];
+    const status = raw.status === 'installed' || raw.status === 'running' || raw.status === 'stopped' || raw.status === 'error' ? raw.status : 'not-installed';
+    const stringArray = (entry: unknown, max = 24) => Array.isArray(entry)
+      ? entry.filter((value): value is string => typeof value === 'string').map((value) => value.slice(0, 500)).slice(0, max)
+      : undefined;
+    const numberValue = (entry: unknown) => typeof entry === 'number' && Number.isFinite(entry) ? entry : undefined;
+    return [{
+      id,
+      name,
+      description: typeof raw.description === 'string' ? raw.description.trim().slice(0, 400) : undefined,
+      repositoryUrl: typeof raw.repositoryUrl === 'string' && /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(raw.repositoryUrl.trim()) ? raw.repositoryUrl.trim() : undefined,
+      sourceRoot: typeof raw.sourceRoot === 'string' ? raw.sourceRoot.trim().slice(0, 2_000) : undefined,
+      installerPath: typeof raw.installerPath === 'string' ? raw.installerPath.trim().slice(0, 2_000) : undefined,
+      installerArgs: stringArray(raw.installerArgs),
+      launcherPath: typeof raw.launcherPath === 'string' ? raw.launcherPath.trim().slice(0, 2_000) : undefined,
+      launcherArgs: stringArray(raw.launcherArgs),
+      workingDirectory: typeof raw.workingDirectory === 'string' ? raw.workingDirectory.trim().slice(0, 2_000) : undefined,
+      profileRoot: typeof raw.profileRoot === 'string' ? raw.profileRoot.trim().slice(0, 2_000) : undefined,
+      workspaceId: typeof raw.workspaceId === 'string' ? raw.workspaceId : undefined,
+      serviceUrl: typeof raw.serviceUrl === 'string' ? sanitizeWebUrl(raw.serviceUrl.trim().slice(0, 2_000)) : undefined,
+      servicePid: numberValue(raw.servicePid),
+      status,
+      lastError: typeof raw.lastError === 'string' ? raw.lastError.trim().slice(0, 800) : undefined,
+      installedAt: numberValue(raw.installedAt),
+      lastStartedAt: numberValue(raw.lastStartedAt),
+      createdAt: numberValue(raw.createdAt) ?? Date.now(),
+      updatedAt: numberValue(raw.updatedAt) ?? Date.now(),
+    } satisfies LocalTool];
+  });
+}
+
 export function normalizeVocabularySessions(value: unknown): Partial<Record<VocabularyScope, VocabularySessionState>> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const sessions: Partial<Record<VocabularyScope, VocabularySessionState>> = {};
@@ -226,6 +314,8 @@ export function normalizeSnapshot(value: unknown): AppDataSnapshot {
     vocabularyProgress: normalizeVocabularyProgress(raw.vocabularyProgress),
     vocabularyReviews: normalizeVocabularyReviews(raw.vocabularyReviews),
     aiGenerations: arrayValue(raw.aiGenerations, 'aiGenerations'),
+    webWorkspaces: normalizeWebWorkspaces(raw.webWorkspaces),
+    localTools: normalizeLocalTools(raw.localTools),
     settings,
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
   };

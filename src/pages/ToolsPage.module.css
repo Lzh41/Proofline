@@ -1,0 +1,55 @@
+.notice { display:flex; gap:10px; align-items:flex-start; margin-bottom:24px; padding:12px 14px; border:1px solid color-mix(in srgb, var(--info) 22%, transparent); border-left:3px solid var(--info); border-radius:0 6px 6px 0; background:var(--info-soft); color:var(--body); font-size:11px; line-height:1.6; }
+.notice svg { flex:0 0 auto; color:var(--info); }
+.message { margin-bottom:22px; padding:11px 13px; border:1px solid var(--accent-border); background:var(--accent-soft); color:var(--accent); font-size:11px; }
+.overview { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:38px; }
+.overview > div { display:grid; gap:7px; padding:15px 17px; border:1px solid var(--line); background:var(--surface); }
+.overview span { color:var(--muted); font-size:10px; }
+.overview strong { font-family:var(--font-code); font-size:25px; font-weight:600; color:var(--ink); }
+.section { margin-bottom:38px; }
+.aiInstaller { display:grid; gap:14px; padding:17px; border:1px solid var(--line); border-top-color:var(--accent); background:var(--surface); box-shadow:var(--inset-highlight); }
+.aiInstallerHead { display:flex; gap:12px; align-items:center; }
+.aiInstallerHead strong { color:var(--ink); font-size:13px; }
+.aiInstallerHead p { margin:4px 0 0; color:var(--muted); font-size:11px; line-height:1.5; }
+.aiInstallerForm { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+.aiInspection,.aiPlan { display:grid; gap:9px; padding:12px; border:1px solid var(--line); background:var(--control); }
+.aiInspection strong,.planHead strong { color:var(--ink); font-size:12px; }
+.aiInspection span,.planHead span { color:var(--muted); font-size:10px; }
+.aiOutput { max-height:150px; overflow:auto; margin:0; padding:10px; border:1px solid var(--line); background:var(--surface-elevated); color:var(--muted); font:10px/1.5 var(--font-code); white-space:pre-wrap; }
+.planHead { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.aiPlan p { margin:0; color:var(--muted); font-size:11px; line-height:1.5; }
+.planGrid { display:grid; grid-template-columns:70px minmax(0,1fr); gap:6px 10px; color:var(--quiet); font-size:10px; align-items:center; }
+.planGrid code { min-width:0; overflow:hidden; color:var(--muted); font:10px var(--font-code); text-overflow:ellipsis; white-space:nowrap; }
+.aiPlan ul { margin:0; padding-left:18px; color:var(--muted); font-size:10px; line-height:1.5; }
+.assistantIcon,.toolMark { display:grid; place-items:center; width:38px; height:38px; border:1px solid var(--accent-border); border-radius:8px; color:var(--accent); background:var(--accent-soft); }
+.toolList { display:grid; gap:12px; }
+.toolCard { padding:17px; border:1px solid var(--line); border-top-color:var(--line-strong); background:var(--surface); box-shadow:var(--inset-highlight); }
+.toolHead { display:flex; gap:11px; align-items:center; }
+.toolTitle { min-width:0; flex:1; display:grid; gap:6px; }
+.toolTitle strong { color:var(--ink); font-size:14px; }
+.toolTitle span { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:10px; }
+.toolTitle i { width:7px; height:7px; border:1px solid var(--line-strong); border-radius:50%; background:var(--line-strong); }
+.toolTitle .running { color:var(--success); }
+.toolTitle .running i { border-color:var(--success); background:var(--success); box-shadow:0 0 0 3px var(--success-soft); }
+.toolDescription { margin:13px 0 0; color:var(--muted); font-size:11px; line-height:1.6; }
+.toolMeta { display:grid; grid-template-columns:78px minmax(0,1fr); gap:7px 10px; margin-top:14px; color:var(--quiet); font-size:10px; align-items:center; }
+.toolMeta code { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-family:var(--font-code); }
+.serviceUrl { display:flex; gap:8px; align-items:center; min-width:0; margin-top:12px; padding:8px 10px; border:1px solid var(--line); background:var(--control); color:var(--accent); font-size:10px; }
+.serviceUrl code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.errorLine { margin-top:12px; padding:8px 10px; border-left:2px solid var(--danger); background:var(--danger-soft); color:var(--danger); font-size:10px; line-height:1.5; }
+.toolActions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:16px; }
+.dialogBackdrop { position:fixed; inset:36px 0 0; z-index:40; display:grid; place-items:center; padding:24px; background:rgba(10,10,9,.54); }
+.dialog { width:min(620px,100%); max-height:calc(100vh - 84px); overflow:auto; display:grid; gap:14px; padding:22px; border:1px solid var(--line-strong); background:var(--surface-elevated); box-shadow:0 24px 80px rgba(0,0,0,.3); }
+.dialogHead { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; padding-bottom:8px; border-bottom:1px solid var(--line); }
+.dialogHead h2 { margin:5px 0 0; color:var(--ink); font-family:var(--font-reading); font-size:20px; font-weight:600; }
+.kicker { color:var(--accent); font-size:10px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }
+.dialog label { display:grid; gap:6px; color:var(--muted); font-size:10px; font-weight:700; }
+.pathRow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+.dialogFoot { display:flex; justify-content:flex-end; gap:8px; padding-top:6px; }
+.mono { font-family:var(--font-code); }
+.emptyState { min-width:0; }
+@media (max-width:700px) {
+  .overview { grid-template-columns:1fr; }
+  .emptyState > div { flex-wrap:wrap; }
+  .emptyState > div > button { min-width:110px; margin-left:53px !important; white-space:nowrap; }
+  .dialogBackdrop { padding:12px; }
+}

@@ -3,6 +3,8 @@ mod backup;
 mod db;
 mod platform;
 mod runner;
+mod tools;
+mod web;
 
 use std::{env, path::PathBuf, sync::Mutex};
 use tauri::Manager;
@@ -144,6 +146,16 @@ pub fn run() {
             platform::fetch_public_problem,
             platform::fetch_public_problem_range,
             platform::cancel_public_problem_range,
+            tools::install_local_tool,
+            tools::start_local_tool,
+            tools::stop_local_tool,
+            tools::get_local_tool_process_state,
+            tools::inspect_github_tool,
+            tools::prepare_github_tool,
+            web::open_web_workspace,
+            web::get_web_workspace_state,
+            web::close_web_workspace,
+            web::clear_web_workspace_profile,
             backup::load_app_data,
             backup::save_app_data,
             backup::apply_database_migrations,

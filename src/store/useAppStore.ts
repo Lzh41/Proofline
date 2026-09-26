@@ -23,16 +23,23 @@ import type {
   RunCodeRequest,
   RunCodeResult,
   ThoughtEvent,
+  WebWorkspace,
+  LocalTool,
+  GithubToolInspection,
+  GithubToolInstallPlan,
+  GithubToolPrepareResult,
 } from '../types';
 import { INTERVIEW_CATALOG, INTERVIEW_CATALOG_VERSION } from '../data/interviewCatalog';
 import {
   AiSseDecoder,
+  buildGithubToolInstallPrompt,
   buildHintPrompt,
   buildInterviewExaminerPrompt,
   buildInterviewPrompt,
   coachIntentLevel,
   extractAiResponseContent,
   parseInterviewExaminerResponse,
+  parseGithubToolInstallPlan,
   type AiCoachIntent,
   type AiStreamEvent,
   type InterviewCoachIntent,
@@ -41,7 +48,7 @@ import {
 } from '../lib/ai';
 import { parseExport, serializeExport } from '../lib/backup';
 import { chooseTextFile, downloadTextFile } from '../lib/browserFiles';
-import { createEmptySnapshot, normalizeSnapshot } from '../lib/data';
+import { createEmptySnapshot, normalizeSnapshot, sanitizeWebUrl } from '../lib/data';
 import { createId, uniqueStrings } from '../lib/ids';
 import { importSnapshot } from '../lib/importer';
 import { interviewRoleRequirements, mergeInterviewCatalog, problemToInterviewCatalogItem, retrieveInterviewCatalog } from '../lib/interviews';
@@ -164,6 +171,7 @@ function completionTokenBudget(prompt: string): number {
   // 最近练习复盘要覆盖多道题并输出 5 个章节，预算不足会被截断成半篇笔记。
   if (prompt.includes('最近练习复盘')) return 8_192;
   if (prompt.includes('资深技术面试出题官')) return 12_288;
+  if (prompt.includes('本地 Web 工具安装助手')) return 12_288;
   if (prompt.includes('本轮请求：给完整代码')) return 8_192;
   return 4_096;
 }
@@ -189,7 +197,15 @@ type AiHintRequest = {
   onChunk?: (chunk: string) => void;
 };
 
+type GithubToolInstallRequest = {
+  inspection: GithubToolInspection;
+  userMessage?: string;
+  onChunk?: (chunk: string) => void;
+};
+
 interface AppStore extends AppDataSnapshot {
+  webWorkspaces: WebWorkspace[];
+  localTools: LocalTool[];
   initialized: boolean;
   loading: boolean;
   error: string | null;
@@ -249,6 +265,30 @@ interface AppStore extends AppDataSnapshot {
   searchKnowledgeFts: (query: string) => Promise<KnowledgeNote[]>;
   pickRandomReviewProblem: (kind: 'algorithm' | 'interview') => Problem | null;
   recordReview: (problemId: string, kind: 'algorithm' | 'interview') => Promise<void>;
+  createWebWorkspace: (input: Partial<WebWorkspace>) => Promise<WebWorkspace>;
+  updateWebWorkspace: (id: string, patch: Partial<WebWorkspace>) => Promise<void>;
+  deleteWebWorkspace: (id: string) => Promise<void>;
+  openWebWorkspace: (workspace: WebWorkspace) => Promise<void>;
+  refreshWebWorkspace: (workspace: WebWorkspace) => Promise<{ open: boolean; url?: string }>;
+  refreshLocalTool: (tool: LocalTool) => Promise<{ running: boolean }>;
+  closeWebWorkspace: (workspace: WebWorkspace) => Promise<void>;
+  clearWebWorkspaceProfile: (workspace: WebWorkspace) => Promise<void>;
+  createLocalTool: (input: Partial<LocalTool>) => Promise<LocalTool>;
+  updateLocalTool: (id: string, patch: Partial<LocalTool>) => Promise<void>;
+  deleteLocalTool: (id: string) => Promise<void>;
+  installLocalTool: (tool: LocalTool) => Promise<{ output: string }>;
+  startLocalTool: (tool: LocalTool) => Promise<{ serviceUrl?: string; servicePid?: number; running?: boolean }>;
+  stopLocalTool: (tool: LocalTool) => Promise<void>;
+  inspectGithubTool: (repositoryUrl: string) => Promise<GithubToolInspection>;
+  requestGithubToolPlan: (request: GithubToolInstallRequest) => Promise<GithubToolInstallPlan>;
+  prepareGithubTool: (request: {
+    repositoryUrl: string;
+    installerPath?: string;
+    installerArgs?: string[];
+    launcherPath?: string;
+    launcherArgs?: string[];
+    workingDirectory?: string;
+  }) => Promise<GithubToolPrepareResult>;
 }
 
 function isTauriRuntime(): boolean {
@@ -270,6 +310,15 @@ function snapshotFrom(state: AppStore): AppDataSnapshot {
     vocabularyProgress: state.vocabularyProgress,
     vocabularyReviews: state.vocabularyReviews,
     aiGenerations: state.aiGenerations,
+    webWorkspaces: state.webWorkspaces.map((workspace) => ({
+      ...workspace,
+      homeUrl: sanitizeWebUrl(workspace.homeUrl) ?? workspace.homeUrl,
+      lastUrl: sanitizeWebUrl(workspace.lastUrl),
+    })),
+    localTools: state.localTools.map((tool) => ({
+      ...tool,
+      serviceUrl: sanitizeWebUrl(tool.serviceUrl),
+    })),
     settings: state.settings,
     updatedAt: Date.now(),
   };
@@ -590,6 +639,8 @@ export const useAppStore = create<AppStore>((set, get) => {
   if (cachedTheme) empty.settings.theme = cachedTheme;
   return {
     ...empty,
+    webWorkspaces: empty.webWorkspaces ?? [],
+    localTools: empty.localTools ?? [],
     initialized: false,
     loading: false,
     error: null,
@@ -1530,6 +1581,207 @@ export const useAppStore = create<AppStore>((set, get) => {
           reviewHistory: { ...history, interviewReviewedIds: ids, lastInterviewReviewAt: now },
         });
       }
+    },
+    createWebWorkspace: async (input) => {
+      await waitForInitialization();
+      const now = Date.now();
+      const id = input.id ?? createId('web');
+      const workspace: WebWorkspace = {
+        id,
+        name: input.name?.trim() || '未命名 Web 工作台',
+        homeUrl: sanitizeWebUrl(input.homeUrl?.trim()) || '',
+        allowedHosts: [...new Set((input.allowedHosts ?? []).map((host) => host.trim().toLowerCase()).filter(Boolean))],
+        profileKey: input.profileKey?.trim() || id,
+        description: input.description?.trim() || undefined,
+        lastUrl: sanitizeWebUrl(input.lastUrl?.trim()),
+        lastOpenedAt: input.lastOpenedAt,
+        status: input.status ?? 'idle',
+        createdAt: input.createdAt ?? now,
+        updatedAt: now,
+      };
+      if (!/^https?:\/\//i.test(workspace.homeUrl)) throw new Error('首页网址必须以 http:// 或 https:// 开头');
+      if (get().webWorkspaces.some((item) => item.id === workspace.id)) throw new Error('工作台 ID 已存在');
+      set({ webWorkspaces: [workspace, ...get().webWorkspaces] });
+      await saveState(get, set);
+      return workspace;
+    },
+    updateWebWorkspace: async (id, patch) => {
+      await waitForInitialization();
+      const current = get().webWorkspaces.find((item) => item.id === id);
+      if (!current) throw new Error('找不到该 Web 工作台');
+      const next = {
+        ...current,
+        ...patch,
+        homeUrl: sanitizeWebUrl(patch.homeUrl ?? current.homeUrl) ?? current.homeUrl,
+        lastUrl: sanitizeWebUrl(patch.lastUrl ?? current.lastUrl),
+        id,
+        updatedAt: Date.now(),
+      };
+      if (!/^https?:\/\//i.test(next.homeUrl)) throw new Error('首页网址必须以 http:// 或 https:// 开头');
+      set({ webWorkspaces: get().webWorkspaces.map((item) => item.id === id ? next : item) });
+      await saveState(get, set);
+    },
+    deleteWebWorkspace: async (id) => {
+      await waitForInitialization();
+      const workspace = get().webWorkspaces.find((item) => item.id === id);
+      if (!workspace) return;
+      if (isTauriRuntime()) await invoke('close_web_workspace', { workspaceId: id });
+      set({ webWorkspaces: get().webWorkspaces.filter((item) => item.id !== id) });
+      await saveState(get, set);
+    },
+    openWebWorkspace: async (workspace) => {
+      const url = workspace.lastUrl || workspace.homeUrl;
+      if (isTauriRuntime()) {
+        const runtime = await invoke<{ url?: string }>('open_web_workspace', {
+          request: {
+            workspaceId: workspace.id,
+            title: workspace.name,
+            url,
+            allowedHosts: workspace.allowedHosts,
+          },
+        });
+        await get().updateWebWorkspace(workspace.id, { lastUrl: runtime.url || url, lastOpenedAt: Date.now(), status: 'open' });
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        await get().updateWebWorkspace(workspace.id, { lastUrl: url, lastOpenedAt: Date.now(), status: 'open' });
+      }
+    },
+    refreshWebWorkspace: async (workspace) => {
+      if (!isTauriRuntime()) return { open: false, url: workspace.lastUrl || workspace.homeUrl };
+      const runtime = await invoke<{ open?: boolean; url?: string } | null>('get_web_workspace_state', { workspaceId: workspace.id });
+      const state = runtime ?? { open: false };
+      await get().updateWebWorkspace(workspace.id, { lastUrl: state.url || workspace.lastUrl, status: state.open ? 'open' : 'stopped' });
+      return { open: Boolean(state.open), url: state.url };
+    },
+    refreshLocalTool: async (tool) => {
+      if (!tool.servicePid) {
+        if (tool.status === 'running') await get().updateLocalTool(tool.id, { status: 'stopped', servicePid: undefined });
+        return { running: false };
+      }
+      if (!isTauriRuntime()) return { running: tool.status === 'running' };
+      const state = await invoke<{ running?: boolean }>('get_local_tool_process_state', { pid: tool.servicePid });
+      const running = Boolean(state?.running);
+      await get().updateLocalTool(tool.id, { status: running ? 'running' : 'stopped', servicePid: running ? tool.servicePid : undefined });
+      return { running };
+    },
+    closeWebWorkspace: async (workspace) => {
+      if (isTauriRuntime()) await invoke('close_web_workspace', { workspaceId: workspace.id });
+      await get().updateWebWorkspace(workspace.id, { status: 'stopped' });
+    },
+    clearWebWorkspaceProfile: async (workspace) => {
+      if (!isTauriRuntime()) throw new Error('浏览器预览无法清理桌面 WebView 会话');
+      await invoke('clear_web_workspace_profile', { workspaceId: workspace.id });
+      await get().updateWebWorkspace(workspace.id, { lastUrl: workspace.homeUrl, status: 'stopped' });
+    },
+    createLocalTool: async (input) => {
+      await waitForInitialization();
+      const now = Date.now();
+      const id = input.id ?? createId('tool');
+      const tool: LocalTool = {
+        id,
+        name: input.name?.trim() || '未命名本地工具',
+        description: input.description?.trim() || undefined,
+        repositoryUrl: input.repositoryUrl?.trim() || undefined,
+        sourceRoot: input.sourceRoot?.trim() || undefined,
+        installerPath: input.installerPath?.trim() || undefined,
+        installerArgs: input.installerArgs,
+        launcherPath: input.launcherPath?.trim() || undefined,
+        launcherArgs: input.launcherArgs,
+        workingDirectory: input.workingDirectory?.trim() || undefined,
+        profileRoot: input.profileRoot?.trim() || undefined,
+        workspaceId: input.workspaceId,
+        serviceUrl: input.serviceUrl,
+        servicePid: input.servicePid,
+        status: input.status ?? (input.launcherPath ? 'installed' : 'not-installed'),
+        lastError: input.lastError,
+        installedAt: input.installedAt,
+        lastStartedAt: input.lastStartedAt,
+        createdAt: input.createdAt ?? now,
+        updatedAt: now,
+      };
+      if (get().localTools.some((item) => item.id === id)) throw new Error('工具 ID 已存在');
+      set({ localTools: [tool, ...get().localTools] });
+      await saveState(get, set);
+      return tool;
+    },
+    updateLocalTool: async (id, patch) => {
+      await waitForInitialization();
+      const current = get().localTools.find((item) => item.id === id);
+      if (!current) throw new Error('找不到该本地工具');
+      const next = { ...current, ...patch, id, updatedAt: Date.now() };
+      set({ localTools: get().localTools.map((item) => item.id === id ? next : item) });
+      await saveState(get, set);
+    },
+    deleteLocalTool: async (id) => {
+      await waitForInitialization();
+      const tool = get().localTools.find((item) => item.id === id);
+      if (!tool) return;
+      if (isTauriRuntime() && tool.servicePid) {
+        await invoke('stop_local_tool', { pid: tool.servicePid }).catch(() => undefined);
+      }
+      set({ localTools: get().localTools.filter((item) => item.id !== id) });
+      await saveState(get, set);
+    },
+    installLocalTool: async (tool) => {
+      if (!isTauriRuntime()) throw new Error('浏览器预览无法安装本地工具');
+      if (!tool.installerPath) throw new Error('请先配置安装脚本路径');
+      const result = await invoke<{ output?: string }>('install_local_tool', {
+        installerPath: tool.installerPath,
+        arguments: tool.installerArgs ?? [],
+        workingDirectory: tool.workingDirectory,
+      });
+      await get().updateLocalTool(tool.id, { status: 'installed', installedAt: Date.now(), lastError: undefined });
+      return { output: result.output ?? '' };
+    },
+    startLocalTool: async (tool) => {
+      if (!isTauriRuntime()) throw new Error('浏览器预览无法启动本地服务');
+      if (!tool.launcherPath) throw new Error('请先配置启动脚本路径');
+      const result = await invoke<{ serviceUrl?: string; servicePid?: number; output?: string; running?: boolean }>('start_local_tool', {
+        launcherPath: tool.launcherPath,
+        arguments: tool.launcherArgs ?? [],
+        workingDirectory: tool.workingDirectory,
+      });
+      const serviceUrl = sanitizeWebUrl(result.serviceUrl || tool.serviceUrl);
+      const running = result.running !== false;
+      await get().updateLocalTool(tool.id, { status: running ? 'running' : 'stopped', serviceUrl, servicePid: running ? result.servicePid : undefined, lastStartedAt: Date.now(), lastError: undefined });
+      return result;
+    },
+    stopLocalTool: async (tool) => {
+      if (!isTauriRuntime()) throw new Error('浏览器预览无法停止本地服务');
+      if (!tool.servicePid) throw new Error('没有可停止的服务进程记录');
+      await invoke('stop_local_tool', { pid: tool.servicePid });
+      await get().updateLocalTool(tool.id, { status: 'stopped', servicePid: undefined });
+    },
+    inspectGithubTool: async (repositoryUrl) => {
+      if (!isTauriRuntime()) throw new Error('浏览器预览无法读取 GitHub 工具仓库');
+      return invoke<GithubToolInspection>('inspect_github_tool', { repositoryUrl });
+    },
+    requestGithubToolPlan: async (request) => {
+      await waitForInitialization();
+      const settings = get().settings;
+      if (!settings.hasAiCredential) throw new Error('请先在设置中保存 AI 密钥');
+      if (!settings.aiModel.trim()) throw new Error('请先在设置中填写模型 ID');
+      if (!settings.privacyConfirmed) throw new Error('发送仓库信息前需要确认隐私提示');
+      const prompt = buildGithubToolInstallPrompt({ inspection: request.inspection, userMessage: request.userMessage });
+      let response: string;
+      if (isTauriRuntime()) {
+        const onEvent = new Channel<AiStreamEvent>();
+        onEvent.onmessage = (event) => { if (event.event === 'delta') request.onChunk?.(event.content); };
+        response = await invoke<string>('request_ai_hint', {
+          baseUrl: settings.aiBaseUrl,
+          model: settings.aiModel,
+          prompt,
+          intent: 'tool-installer',
+          onEvent,
+        });
+      } else {
+        response = await browserAiRequest(settings, prompt, request.onChunk);
+      }
+      return parseGithubToolInstallPlan(response, request.inspection.repositoryUrl);
+    },
+    prepareGithubTool: async (request) => {
+      if (!isTauriRuntime()) throw new Error('浏览器预览无法下载 GitHub 工具');
+      return invoke<GithubToolPrepareResult>('prepare_github_tool', { request });
     },
   };
 });

@@ -2679,9 +2679,9 @@
 
 @media (max-width: 920px) {
   .solveContent {
-    height: calc(100dvh - 112px);
+    height: calc(100dvh - 36px);
     min-height: 0;
-    padding: 8px 10px 10px;
+    padding: 64px 10px 10px;
     overflow: hidden;
   }
 
@@ -2710,7 +2710,7 @@
 @media (max-width: 760px) {
   .solveContent {
     height: auto;
-    min-height: calc(100dvh - 112px);
+    min-height: calc(100dvh - 36px);
     overflow-y: auto;
   }
 
@@ -2783,7 +2783,8 @@
 
 @media (max-width: 560px) {
   .solveContent {
-    min-height: calc(100dvh - 104px);
+    min-height: calc(100dvh - 36px);
+    padding-top: 60px;
   }
   .solveWorkspace { grid-template-rows: auto 8px auto; }
   .solveProblem { min-height: 390px; }

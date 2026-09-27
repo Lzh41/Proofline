@@ -71,7 +71,13 @@ async function installThemeFixture(page: Page) {
 async function useTheme(page: Page, theme: 'light' | 'dark') {
   const current = await page.locator('html').getAttribute('data-theme');
   if (current !== theme) {
+    if (page.viewportSize() && page.viewportSize()!.width <= 920) {
+      await page.getByRole('button', { name: '打开导航' }).click();
+    }
     await page.getByRole('button', { name: theme === 'dark' ? '切换到深色主题' : '切换到浅色主题' }).click();
+    if (page.viewportSize() && page.viewportSize()!.width <= 920) {
+      await page.getByRole('button', { name: '关闭导航' }).last().click();
+    }
   }
   await expect.poll(() => page.locator('html').getAttribute('data-theme')).toBe(theme);
 }
@@ -89,10 +95,12 @@ async function inspectSolveLayout(page: Page) {
       viewportWidth: document.documentElement.clientWidth,
       documentWidth: document.documentElement.scrollWidth,
       bodyWidth: document.body.scrollWidth,
+      mainTop: document.querySelector('main')?.getBoundingClientRect().top ?? null,
+      workspaceTop: document.querySelector('main')?.parentElement?.getBoundingClientRect().top ?? null,
+      workspaceHeaderCount: document.querySelector('main')?.parentElement?.querySelectorAll(':scope > header').length ?? null,
       problem: box('solveProblem'),
       code: box('codeWorkbench'),
       coach: box('aiCoachPane'),
-      search: box('search'),
       themeToggle: box('themeToggle'),
       mobileTrigger: box('mobileTrigger'),
     };
@@ -122,18 +130,17 @@ test('深浅主题做题页在桌面与窄屏都无重叠和横向溢出', async
       expect(layout.editorBackground).toBe(theme === 'light' ? 'rgb(250, 249, 245)' : 'rgb(24, 23, 21)');
       expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
       expect(layout.bodyWidth).toBeLessThanOrEqual(layout.viewportWidth);
+      expect(layout.workspaceHeaderCount).toBe(0);
+      expect(layout.mainTop).toBe(layout.workspaceTop);
       expect(layout.problem && layout.code && layout.coach).toBeTruthy();
-      for (const box of [layout.problem, layout.code, layout.coach, layout.search, layout.themeToggle]) {
+      for (const box of [layout.problem, layout.code, layout.coach]) {
         expect(box?.x).toBeGreaterThanOrEqual(0);
         expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(layout.viewportWidth);
       }
       expect(intersects(layout.problem as DOMRect, layout.code as DOMRect)).toBe(false);
       expect(intersects(layout.problem as DOMRect, layout.coach as DOMRect)).toBe(false);
       expect(intersects(layout.code as DOMRect, layout.coach as DOMRect)).toBe(false);
-      expect(intersects(layout.search as DOMRect, layout.themeToggle as DOMRect)).toBe(false);
-      if (viewport.width <= 920) {
-        expect(intersects(layout.search as DOMRect, layout.mobileTrigger as DOMRect)).toBe(false);
-      }
+      if (viewport.width <= 920) expect(intersects(layout.problem as DOMRect, layout.mobileTrigger as DOMRect)).toBe(false);
     }
   }
 

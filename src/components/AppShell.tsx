@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   BarChart3,
   BookOpenText,
@@ -12,7 +12,6 @@ import {
   Languages,
   Menu,
   Moon,
-  Search,
   Settings,
   Sun,
   Waypoints,
@@ -48,11 +47,9 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [query, setQuery] = useState('');
   const [themeSaving, setThemeSaving] = useState(false);
   const themeSavePending = useRef(false);
   const location = useLocation();
-  const navigate = useNavigate();
   const store = useStoreView();
   const resolvedTheme = useResolvedTheme(store.settings.theme ?? 'dark');
   const themeActionLabel = resolvedTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题';
@@ -62,19 +59,16 @@ export function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        if (location.pathname !== '/problems' && location.pathname !== '/problems/import') return;
+        const problemSearch = document.getElementById('problem-search');
+        if (!problemSearch) return;
         event.preventDefault();
-        document.getElementById('global-search')?.focus();
+        problemSearch.focus();
       }
     };
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
-  }, []);
-
-  const submitSearch = (event: React.FormEvent) => {
-    event.preventDefault();
-    const trimmed = query.trim();
-    navigate(trimmed ? `/problems?q=${encodeURIComponent(trimmed)}` : '/problems');
-  };
+  }, [location.pathname]);
 
   const toggleTheme = async () => {
     if (themeSavePending.current || !store.updateSettings || !store.initialized || store.loading) return;
@@ -138,10 +132,28 @@ export function AppShell({ children }: AppShellProps) {
         </nav>
 
         <div className={styles.sidebarFoot}>
+          <div className={styles.syncState} title="个人数据仅保存在本机">
+            <span className={clsx(styles.statusDot, store.error && styles.statusError)} />
+            <span>{store.error ? '本地服务异常' : store.loading ? '正在整理数据' : '本地已保存'}</span>
+          </div>
           <div className={styles.streak}>
             <BrainCircuit size={17} aria-hidden="true" />
             <span><strong>{store.attempts.length}</strong> 次练习已沉淀</span>
           </div>
+          <button
+            className={styles.themeToggle}
+            type="button"
+            aria-label={themeActionLabel}
+            title={themeActionLabel}
+            aria-busy={themeSaving}
+            disabled={themeSaving || !store.initialized || store.loading}
+            onClick={() => { void toggleTheme(); }}
+          >
+            {resolvedTheme === 'dark'
+              ? <Sun size={17} strokeWidth={1.9} aria-hidden="true" />
+              : <Moon size={17} strokeWidth={1.9} aria-hidden="true" />}
+            <span>切换主题</span>
+          </button>
           <button
             className={styles.collapseButton}
             type="button"
@@ -155,38 +167,6 @@ export function AppShell({ children }: AppShellProps) {
       </aside>
 
       <section className={styles.workspace}>
-        <header className={styles.topbar}>
-          <form className={styles.search} onSubmit={submitSearch}>
-            <Search size={17} aria-hidden="true" />
-            <input
-              id="global-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索题目、标签或题号"
-              aria-label="全局搜索"
-            />
-            <kbd>Ctrl K</kbd>
-          </form>
-          <div className={styles.topbarActions}>
-            <div className={styles.syncState} title="个人数据仅保存在本机">
-              <span className={clsx(styles.statusDot, store.error && styles.statusError)} />
-              {store.error ? '本地服务异常' : store.loading ? '正在整理数据' : '本地已保存'}
-            </div>
-            <button
-              className={styles.themeToggle}
-              type="button"
-              aria-label={themeActionLabel}
-              title={themeActionLabel}
-              aria-busy={themeSaving}
-              disabled={themeSaving || !store.initialized || store.loading}
-              onClick={() => { void toggleTheme(); }}
-            >
-              {resolvedTheme === 'dark'
-                ? <Sun size={17} strokeWidth={1.9} aria-hidden="true" />
-                : <Moon size={17} strokeWidth={1.9} aria-hidden="true" />}
-            </button>
-          </div>
-        </header>
         <main className={styles.content}>{children}</main>
       </section>
       </div>

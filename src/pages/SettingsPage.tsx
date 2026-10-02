@@ -97,7 +97,7 @@ export function SettingsPage() {
             <label className="field"><span>默认语言</span><select className="select" value={language} onChange={(event) => { const value = event.target.value; setLanguage(value); void store.updateSettings?.({ defaultLanguage: value }); }}><option value="cpp">C++17</option><option value="python">Python 3</option><option value="javascript">JavaScript</option><option value="typescript">TypeScript</option></select></label>
             <label className="field"><span>界面主题</span><select className="select" value={store.settings.theme ?? 'dark'} onChange={(event) => { void store.updateSettings?.({ theme: event.target.value as AppTheme }); }}><option value="dark">深色</option><option value="system">跟随系统</option><option value="light">浅色</option></select></label>
             <label className="field"><span>应用字号</span><select className="select" aria-label="应用字号" value={String(store.settings.appFontScale ?? 100)} onChange={(event) => { void store.updateSettings?.({ appFontScale: Number(event.target.value) as AppFontScale }); }}>{APP_FONT_SCALES.map((scale) => <option key={scale} value={scale}>{scale === 100 ? '标准（100%）' : `${scale}%`}</option>)}</select></label>
-            <div className={styles.toggle}><div><strong style={{ fontSize: 13 }}>发送前隐私确认</strong><p className={styles.noteContent} style={{ margin: '3px 0 0' }}>关闭后，下次 AI 请求会重新显示题面与代码发送确认。</p></div><input type="checkbox" checked={Boolean(store.settings.privacyConfirmed)} onChange={(event) => store.updateSettings?.({ privacyConfirmed: event.target.checked })} aria-label="发送前隐私确认" /></div>
+            <div className={styles.toggle}><div><strong style={{ fontSize: 'calc(13px * var(--app-font-scale, 1))' }}>发送前隐私确认</strong><p className={styles.noteContent} style={{ margin: '3px 0 0' }}>关闭后，下次 AI 请求会重新显示题面与代码发送确认。</p></div><input type="checkbox" checked={Boolean(store.settings.privacyConfirmed)} onChange={(event) => store.updateSettings?.({ privacyConfirmed: event.target.checked })} aria-label="发送前隐私确认" /></div>
           </div>
         </section>
 
@@ -109,7 +109,7 @@ export function SettingsPage() {
         <section className={styles.settingRow}>
           <div className={styles.settingIntro}><Trash2 size={20} color="var(--danger)" /><h2>删除本机数据</h2><p>删除后无法撤销。平台登录、AI 密钥、题目、错题、知识库和计划都会清除。</p></div>
           <div className={styles.settingControls}>
-            <label className={styles.toggle}><div><strong style={{ fontSize: 13 }}>同时删除文档备份</strong><p className={styles.noteContent} style={{ margin: '3px 0 0' }}>关闭时保留“文档\Proofline\备份”中的恢复文件。</p></div><input type="checkbox" checked={deleteBackups} onChange={(event) => setDeleteBackups(event.target.checked)} aria-label="同时删除文档备份" /></label>
+            <label className={styles.toggle}><div><strong style={{ fontSize: 'calc(13px * var(--app-font-scale, 1))' }}>同时删除文档备份</strong><p className={styles.noteContent} style={{ margin: '3px 0 0' }}>关闭时保留“文档\Proofline\备份”中的恢复文件。</p></div><input type="checkbox" checked={deleteBackups} onChange={(event) => setDeleteBackups(event.target.checked)} aria-label="同时删除文档备份" /></label>
             <div className={styles.buttonRow}><button className="button buttonDanger" type="button" disabled={busy} onClick={() => {
               const scope = deleteBackups ? '全部本机数据和所有备份' : '全部本机数据（保留文档备份）';
               if (window.confirm(`确定删除${scope}吗？此操作无法撤销。`)) {

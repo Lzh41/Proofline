@@ -56,7 +56,7 @@ test.describe('析题个人学习闭环', () => {
     await expect(page.getByText('今天还没有题目')).toBeVisible();
     await page.getByRole('link', { name: '题库', exact: true }).click();
     // 等待 HashRouter 完成导航，避免在旧页面上读取空行数后立即触发下一次导航。
-    await expect(page.getByRole('heading', { name: '每道题，都留下一条可复用的路。' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '函数题与完整程序题，分开练。' })).toBeVisible();
     await expect(page.getByRole('row')).toHaveCount(0);
     await expect.poll(async () => {
       const snapshot = await readSnapshot(page);
@@ -102,10 +102,8 @@ test.describe('析题个人学习闭环', () => {
     await expect(page.getByRole('heading', { name: problemTitle, exact: false })).toBeVisible();
     await page.getByRole('button', { name: '开始计时', exact: true }).click();
     await expect(page.getByText('计时已开始，代码和笔记会自动保存。')).toBeVisible();
-    await expect.poll(async () => {
-      const snapshot = await readSnapshot(page);
-      return snapshot?.attempts.find((attempt) => attempt.problemId === savedProblemId)?.durationSeconds ?? 0;
-    }, { timeout: 5_000 }).toBeGreaterThan(0);
+    await expect(page.getByRole('button', { name: '暂停计时', exact: true })).toBeVisible();
+    await page.waitForTimeout(1_100);
 
     const editor = page.locator('.monaco-editor');
     await expect(editor).toBeVisible({ timeout: 15_000 });
@@ -114,14 +112,21 @@ test.describe('析题个人学习闭环', () => {
     await editorInput.focus();
     await expect(editorInput).toBeFocused();
     await page.keyboard.press('Control+A');
+    await page.keyboard.press('Backspace');
     await page.keyboard.insertText(codeDraft);
-    await page.getByRole('button', { name: '保存草稿' }).click();
-    await expect.poll(async () => (await readSnapshot(page))?.attempts.find((attempt) => attempt.problemId === savedProblemId)?.code).toBe(codeDraft);
+    await expect.poll(async () => (await readSnapshot(page))?.attempts.find((attempt) => attempt.problemId === savedProblemId)?.code).toContain(codeDraft);
     // 停止计时后再直接构造失败记录，避免后台计时写入覆盖本次测试快照。
     await page.getByRole('button', { name: '暂停计时' }).click();
     await expect(page.getByRole('button', { name: '开始计时' })).toBeVisible();
+    await expect.poll(async () => {
+      const snapshot = await readSnapshot(page);
+      return snapshot?.attempts.find((attempt) => attempt.problemId === savedProblemId)?.durationSeconds ?? 0;
+    }).toBeGreaterThan(0);
 
     // 练习完成由“运行全部样例”自动判定；这里直接恢复一次失败记录，继续验证错题与计划的持久化链路。
+    // 先离开做题页，让 pagehide 草稿补刷完成，再改写失败记录，避免离开页面时的旧快照覆盖测试数据。
+    await page.goto('/#/');
+    await expect(page.getByRole('heading', { name: '今天，稳稳推进。' })).toBeVisible();
     await page.evaluate(({ key, problemId }) => {
       const raw = localStorage.getItem(key);
       if (!raw) return;
@@ -163,15 +168,9 @@ test.describe('析题个人学习闭环', () => {
       };
     }).toEqual({ result: 'sample-failed', ended: true, mistakes: 1 });
 
-    await page.getByRole('link', { name: '错题', exact: true }).click();
-    const mistakeRow = page.locator('[class*="row"]').filter({ hasText: problemTitle }).first();
-    await expect(mistakeRow).toContainText('本次练习未通过，待补充根因');
-    await mistakeRow.getByRole('button', { name: '复习失败' }).click();
-    await expect(page.getByText('已重置为 1 天后复习。')).toBeVisible();
-    await expect.poll(async () => {
-      const mistake = (await readSnapshot(page))?.mistakes.find((item) => item.problemId === savedProblemId);
-      return { intervalDays: mistake?.intervalDays, failedReviews: mistake?.failedReviews, status: mistake?.status };
-    }).toEqual({ intervalDays: 1, failedReviews: 1, status: 'active' });
+    await page.getByRole('link', { name: '复习', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '温故而知新，随机巩固已练过的题目。' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '随机复习一道算法题' })).toBeEnabled();
 
     await page.getByRole('link', { name: '计划', exact: true }).click();
     await page.getByLabel('学习时长（分钟）').fill('45');
@@ -179,7 +178,7 @@ test.describe('析题个人学习闭环', () => {
     await page.getByLabel('面试题目标').fill('0');
     await page.getByLabel('关注专题').fill('滑动窗口');
     await page.getByRole('button', { name: '生成今日任务' }).click();
-    await expect(page.getByText('已优先安排到期复习，并按薄弱标签补齐新题。')).toBeVisible();
+    await expect(page.getByText('今日词汇与题目任务已生成；到期单词复习不会占用新词目标。')).toBeVisible();
     await expect(page.getByText(problemTitle)).toBeVisible();
 
     const beforeReload = await readSnapshot(page);

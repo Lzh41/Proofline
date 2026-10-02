@@ -212,7 +212,7 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
           <div className={styles.solveProblemHeader}>
             <div className={styles.solveProblemIdentity}>
               <span className={styles.solveSectionLabel}><BookOpenCheck size={14} />题干</span>
-              <h1 style={{ fontSize: 15 }}>{problem.externalId ? `${problem.externalId}. ` : ''}{problem.title}</h1>
+              <h1 style={{ fontSize: 'calc(15px * var(--app-font-scale, 1))' }}>{problem.externalId ? `${problem.externalId}. ` : ''}{problem.title}</h1>
               <div className={styles.tags}>{problem.tags.slice(0, 5).map((t) => <span className={styles.tag} key={t}>{t}</span>)}</div>
             </div>
           </div>
@@ -427,7 +427,7 @@ function InterviewReview({ problem, onDone }: { problem: Problem; onDone: () => 
         <section className={styles.reviewEditorPane}>
           <div className={styles.reviewEditorToolbar}>
             <div className={styles.reviewToolbarLeft}><Send size={15} /><strong>我的回答</strong></div>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{answer.trim().length} 字</span>
+            <span style={{ fontSize: 'calc(12px * var(--app-font-scale, 1))', color: 'var(--muted)' }}>{answer.trim().length} 字</span>
           </div>
           <textarea
             className={styles.reviewAnswerEditor}

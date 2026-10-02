@@ -7,6 +7,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:1420',
     trace: 'retain-on-failure',
+    ...(process.env.PROOFLINE_USE_SYSTEM_CHROME === '1' ? { channel: 'chrome' as const } : {}),
   },
   webServer: {
     command: 'npm run dev',

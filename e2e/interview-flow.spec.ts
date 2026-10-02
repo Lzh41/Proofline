@@ -101,7 +101,8 @@ test('面试题筛选、草稿恢复、离线复盘和错题闭环', async ({ pa
   await expect(page.getByText(/先根据业务确认一致性等级/)).toBeVisible();
   await page.getByRole('button', { name: '还需巩固' }).click();
   await expect(page.getByText('已加入巩固队列。')).toBeVisible();
-  await page.getByRole('link', { name: '错题' }).click();
+  await page.locator('a[href="#/review"]').click();
+  await page.getByRole('button', { name: '随机复习一道面试题' }).click();
   await expect(page.getByText(QUESTION)).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });

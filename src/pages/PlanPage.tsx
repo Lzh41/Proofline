@@ -126,7 +126,7 @@ export function PlanPage() {
             <label className="field"><span>词汇方向</span><select className="select" value={vocabularyDifficulty} onChange={(event) => setVocabularyDifficulty(event.target.value as VocabularyDifficulty | 'all')}><option value="all">全部难度</option>{VOCABULARY_DIFFICULTY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label className={`field ${styles.formFull}`}><span>关注专题</span><input className="input" value={focusTags} onChange={(event) => setFocusTags(event.target.value)} placeholder="动态规划，二分查找，图" /></label>
             <div className={styles.formFull}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 12, fontWeight: 700 }}><span>难度比例</span><span style={{ color: totalRatio === 100 ? 'var(--accent-deep)' : 'var(--danger)' }}>合计 {totalRatio}%</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 'calc(12px * var(--app-font-scale, 1))', fontWeight: 700 }}><span>难度比例</span><span style={{ color: totalRatio === 100 ? 'var(--accent-deep)' : 'var(--danger)' }}>合计 {totalRatio}%</span></div>
               <div className={styles.formGrid} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                 {(['easy', 'medium', 'hard'] as const).map((key) => <label className="field" key={key}><span>{key === 'easy' ? '简单' : key === 'medium' ? '中等' : '困难'}</span><input className="input" type="number" min={0} max={100} value={ratio[key]} onChange={(event) => setRatio({ ...ratio, [key]: Number(event.target.value) })} /></label>)}
               </div>

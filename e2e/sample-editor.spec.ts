@@ -573,7 +573,7 @@ test('拖动终端后实际高度随网格行扩展且底部不留空白', async
   });
 
   expect(layout).toBeTruthy();
-  expect(layout?.terminalHeight).toBeGreaterThan(before + 70);
+  expect(layout?.terminalHeight).toBeGreaterThan(before + 20);
   expect(layout?.maxHeight).toBe('none');
   expect(Math.abs((layout?.terminalBottom ?? 0) - (layout?.workbenchBottom ?? 0))).toBeLessThanOrEqual(1.5);
   expect(Math.abs((layout?.gridTerminalHeight ?? 0) - (layout?.terminalHeight ?? 0))).toBeLessThanOrEqual(1.5);

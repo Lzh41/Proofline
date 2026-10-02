@@ -1,7 +1,7 @@
 {
   "name": "proofline",
   "private": true,
-  "version": "0.1.14",
+  "version": "0.1.15",
   "type": "module",
   "overrides": {
     "dompurify": "3.4.13"
@@ -28,6 +28,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "esbuild": "^0.28.1",
     "jsdom": "^29.1.1",
+    "postcss": "8.5.26",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.10"

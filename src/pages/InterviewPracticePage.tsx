@@ -320,7 +320,7 @@ export function InterviewPracticePage() {
           background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
           borderBottom: '1px solid var(--line)',
           color: 'var(--fg)',
-          fontSize: '14px'
+          fontSize: 'calc(14px * var(--app-font-scale, 1))'
         }}>
           <Sparkles size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
           复习模式 - 提交回答后 AI 将自动点评

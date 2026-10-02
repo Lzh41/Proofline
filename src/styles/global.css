@@ -1,4 +1,5 @@
 :root {
+  font-size: calc(16px * var(--app-font-scale, 1));
   font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
   color: var(--ink);
   background: var(--paper);
@@ -120,9 +121,8 @@
 * { box-sizing: border-box; }
 
 #root {
-  min-height: calc(100vh / var(--app-font-scale, 1));
-  width: calc(100% / var(--app-font-scale, 1));
-  zoom: var(--app-font-scale, 1);
+  min-height: 100vh;
+  width: 100%;
 }
 
 html {

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { appFontScaleCssPlugin } from './scripts/fontScaleCssPlugin';
 export default defineConfig({
     plugins: [react()],
     clearScreen: false,
@@ -11,6 +12,11 @@ export default defineConfig({
     envPrefix: ['VITE_', 'TAURI_'],
     worker: {
         format: 'es',
+    },
+    css: {
+        postcss: {
+            plugins: [appFontScaleCssPlugin],
+        },
     },
     build: {
         target: 'esnext',

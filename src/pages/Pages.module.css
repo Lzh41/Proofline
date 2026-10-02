@@ -2709,24 +2709,24 @@
 
 @media (max-width: 760px) {
   .solveContent {
-    height: auto;
-    min-height: calc(100dvh - 112px);
-    overflow-y: auto;
+    height: calc(100dvh - 104px);
+    min-height: 0;
+    overflow: hidden;
   }
 
   .solvePage,
   .solveWorkspace {
-    height: auto;
-    min-height: 100%;
-    overflow: visible;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
 
-  .solveWorkspace { grid-template-rows: auto 8px auto; }
-  .solveProblem { min-height: 390px; overflow: visible; }
-  .solveProblemBody { min-height: 220px; max-height: 320px; overflow-y: auto; }
-  .solveWorkbench { height: auto; min-height: 570px; overflow: visible; }
+  .solveWorkspace { grid-template-rows: minmax(220px, 34%) 8px minmax(0, 1fr); }
+  .solveProblem { min-height: 0; overflow: hidden; }
+  .solveProblemBody { min-height: 0; max-height: none; overflow-y: auto; }
+  .solveWorkbench { height: 100%; min-height: 0; overflow: hidden; grid-template-rows: minmax(0, 1fr) minmax(0, .8fr); }
   .codeWorkbench,
-  .aiCoachPane { min-height: 270px; }
+  .aiCoachPane { min-height: 0; }
 
   .solveProblem { height: auto; }
   .solveProblemHeader,
@@ -2783,11 +2783,11 @@
 
 @media (max-width: 560px) {
   .solveContent {
-    min-height: calc(100dvh - 104px);
+    min-height: 0;
   }
-  .solveWorkspace { grid-template-rows: auto 8px auto; }
-  .solveProblem { min-height: 390px; }
-  .solveWorkbench { grid-template-rows: minmax(320px, auto) minmax(250px, auto); min-height: 570px; }
+  .solveWorkspace { grid-template-rows: minmax(220px, 34%) 8px minmax(0, 1fr); }
+  .solveProblem { min-height: 0; }
+  .solveWorkbench { grid-template-rows: minmax(0, 1fr) minmax(0, .8fr); min-height: 0; }
   .codeWorkbenchTitle span { display: none; }
   .coachIntentButton { min-height: 34px; }
   .aiCoachModules { grid-auto-rows: minmax(180px, 1fr); }
@@ -4492,7 +4492,7 @@
   .interviewMasteryBar > div { display: grid; grid-template-columns: 1fr; }
   .interviewExaminerForm { grid-template-columns: 1fr; }
   .interviewExaminerBody { overflow-y: auto; scrollbar-width: thin; }
-  .interviewExaminerForm { max-height: none; overflow: visible; padding-right: 0; }
+  .interviewExaminerForm { max-height: 270px; overflow-y: auto; padding-right: 4px; }
   .interviewExaminerTopic,
   .interviewExaminerForm :global(.button) { grid-column: auto; }
   .interviewExaminerResults > header { align-items: flex-start; flex-direction: column; gap: 5px; }

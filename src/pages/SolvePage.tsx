@@ -852,7 +852,6 @@ export function SolvePage() {
     window.clearTimeout(saveTimer.current);
     const delay = draftSavedRef.current ? DRAFT_SAVE_DELAY : DRAFT_FIRST_SAVE_DELAY;
     saveTimer.current = window.setTimeout(() => {
-      draftSavedRef.current = true;
       void draftPersistRef.current();
     }, delay);
   }, []);
@@ -1000,6 +999,7 @@ export function SolvePage() {
       }
       if (!allowStaleOwner && (currentProblemIdRef.current !== capturedProblemId || codeProblemIdRef.current !== capturedCodeProblemId)) return;
       await store.updateAttempt?.(targetAttemptId, { code: latestCode, language: latestLanguage, durationSeconds: secondsRef.current });
+      if (draftOwnerRef.current === capturedProblemId) draftSavedRef.current = true;
     };
     draftPersistRef.current = persistDraft;
 

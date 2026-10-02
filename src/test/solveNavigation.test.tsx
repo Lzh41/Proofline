@@ -222,6 +222,9 @@ const helper = (value: number): number => value * 2;`.split('\n');
       </MemoryRouter>,
     );
 
+    // Let the mount-time save of the default template complete before the first real edit.
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+
     const editor = await screen.findByLabelText('代码编辑器 Mock') as HTMLTextAreaElement;
     expect(useAppStore.getState().attempts.filter((item) => item.problemId === 'algo-lis')).toHaveLength(0);
 

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Bot, Check, DatabaseBackup, FolderOpen, HardDrive, KeyRound, LibraryBig, RefreshCw, Shield, Trash2, Upload } from 'lucide-react';
 import { PageHeader } from '../components/PagePrimitives';
 import { useStoreView } from '../app/storeAdapter';
-import type { AppTheme } from '../types';
+import type { AppFontScale, AppTheme } from '../types';
+import { APP_FONT_SCALES } from '../lib/data';
 import styles from './Pages.module.css';
 
 export function SettingsPage() {
@@ -95,6 +96,7 @@ export function SettingsPage() {
           <div className={styles.settingControls}>
             <label className="field"><span>默认语言</span><select className="select" value={language} onChange={(event) => { const value = event.target.value; setLanguage(value); void store.updateSettings?.({ defaultLanguage: value }); }}><option value="cpp">C++17</option><option value="python">Python 3</option><option value="javascript">JavaScript</option><option value="typescript">TypeScript</option></select></label>
             <label className="field"><span>界面主题</span><select className="select" value={store.settings.theme ?? 'dark'} onChange={(event) => { void store.updateSettings?.({ theme: event.target.value as AppTheme }); }}><option value="dark">深色</option><option value="system">跟随系统</option><option value="light">浅色</option></select></label>
+            <label className="field"><span>应用字号</span><select className="select" aria-label="应用字号" value={String(store.settings.appFontScale ?? 100)} onChange={(event) => { void store.updateSettings?.({ appFontScale: Number(event.target.value) as AppFontScale }); }}>{APP_FONT_SCALES.map((scale) => <option key={scale} value={scale}>{scale === 100 ? '标准（100%）' : `${scale}%`}</option>)}</select></label>
             <div className={styles.toggle}><div><strong style={{ fontSize: 13 }}>发送前隐私确认</strong><p className={styles.noteContent} style={{ margin: '3px 0 0' }}>关闭后，下次 AI 请求会重新显示题面与代码发送确认。</p></div><input type="checkbox" checked={Boolean(store.settings.privacyConfirmed)} onChange={(event) => store.updateSettings?.({ privacyConfirmed: event.target.checked })} aria-label="发送前隐私确认" /></div>
           </div>
         </section>

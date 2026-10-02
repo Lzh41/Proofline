@@ -205,11 +205,13 @@ test.describe('析题个人学习闭环', () => {
     await expect(page.getByText('AI 配置已保存，密钥不会写入普通配置文件。')).toBeVisible();
 
     await page.getByLabel('默认语言').selectOption('typescript');
+    await page.getByLabel('应用字号').selectOption('120');
     await page.getByLabel('发送前隐私确认').check();
     await expect.poll(async () => (await readSnapshot(page))?.settings).toMatchObject({
       aiBaseUrl: 'https://ai.example.test/v1',
       aiModel: 'xiti-e2e-model',
       defaultLanguage: 'typescript',
+      appFontScale: 120,
       privacyConfirmed: true,
       hasAiCredential: true,
     });
@@ -224,6 +226,7 @@ test.describe('析题个人学习闭环', () => {
     await expect(page.getByLabel('接口地址')).toHaveValue('https://ai.example.test/v1');
     await expect(page.getByLabel('模型 ID')).toHaveValue('xiti-e2e-model');
     await expect(page.getByLabel('默认语言')).toHaveValue('typescript');
+    await expect(page.getByLabel('应用字号')).toHaveValue('120');
     await expect(page.getByLabel('发送前隐私确认')).toBeChecked();
     await expect(page.getByLabel('API 密钥')).toHaveValue('');
   });

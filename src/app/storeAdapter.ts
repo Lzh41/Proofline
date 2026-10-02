@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import type {
   AppTheme,
+  AppFontScale,
   AiGeneration,
   EditorFontSize,
   Attempt,
@@ -34,6 +35,7 @@ export interface AppSettingsView {
   hasAiCredential?: boolean;
   defaultLanguage?: string;
   editorFontSize?: EditorFontSize;
+  appFontScale?: AppFontScale;
   dailyTargetMinutes?: number;
   dailyTargetProblems?: number;
   dailyTargetInterviewQuestions?: number;

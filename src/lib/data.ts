@@ -1,8 +1,9 @@
-import type { AppDataSnapshot, AppSettings, AppTheme, EditorFontSize } from '../types';
+import type { AppDataSnapshot, AppFontScale, AppSettings, AppTheme, EditorFontSize } from '../types';
 import { VOCABULARY_CATALOG_FULL } from '../data/vocabularyCatalog';
 import { isVocabularyDifficulty, type VocabularyReviewDirection, type VocabularyScope, type VocabularySessionCardState, type VocabularySessionState, type VocabularyWord } from './vocabulary';
 
 export const EDITOR_FONT_SIZES: EditorFontSize[] = [14, 16, 18, 20, 22];
+export const APP_FONT_SCALES: AppFontScale[] = [90, 100, 110, 120, 130];
 
 export const DEFAULT_SETTINGS: AppSettings = {
   aiBaseUrl: 'https://api.openai.com/v1',
@@ -10,6 +11,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hasAiCredential: false,
   defaultLanguage: 'cpp',
   editorFontSize: 16,
+  appFontScale: 100,
   dailyTargetMinutes: 60,
   dailyTargetProblems: 3,
   dailyTargetInterviewQuestions: 2,
@@ -29,6 +31,10 @@ export function normalizeTheme(value: unknown): AppTheme {
 
 export function normalizeEditorFontSize(value: unknown): EditorFontSize {
   return EDITOR_FONT_SIZES.includes(value as EditorFontSize) ? value as EditorFontSize : 16;
+}
+
+export function normalizeAppFontScale(value: unknown): AppFontScale {
+  return APP_FONT_SCALES.includes(value as AppFontScale) ? value as AppFontScale : 100;
 }
 
 function normalizeLayoutDimension(value: unknown, minimum: number, maximum: number): number | undefined {
@@ -195,6 +201,7 @@ export function normalizeSnapshot(value: unknown): AppDataSnapshot {
   settings.vocabularySessions = normalizeVocabularySessions(settings.vocabularySessions);
   settings.theme = normalizeTheme(settings.theme);
   settings.editorFontSize = normalizeEditorFontSize(settings.editorFontSize);
+  settings.appFontScale = normalizeAppFontScale(settings.appFontScale);
   settings.lastSolveProblemId = typeof settings.lastSolveProblemId === 'string' && settings.lastSolveProblemId.trim()
     ? settings.lastSolveProblemId
     : undefined;

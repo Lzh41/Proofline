@@ -10,6 +10,9 @@
 
 $ErrorActionPreference = 'Stop'
 
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$packageJson = Get-Content -Raw (Join-Path $projectRoot 'package.json') | ConvertFrom-Json
+$versionDescription = "Proofline v$($packageJson.version)"
 $target = 'G:\Codex\xiti\src-tauri\target\release\proofline.exe'
 $workDir = 'G:\Codex\xiti\src-tauri\target\release'
 $shortcuts = @(
@@ -32,7 +35,9 @@ foreach ($path in $shortcuts) {
   # 已有工作目录时保持原样，避免改变应用的相对路径解析行为
   if (-not $link.WorkingDirectory) { $link.WorkingDirectory = $workDir }
   $link.IconLocation = "$target,0"
-  if (-not $link.Description) { $link.Description = 'Proofline 学习工作台' }
+  if (-not $link.Description -or $link.Description -match '^Proofline v\d+\.\d+\.\d+$') {
+    $link.Description = $versionDescription
+  }
   $link.Save()
   Write-Host "已更新：$path"
   Write-Host "   目标：$before  ->  $target"

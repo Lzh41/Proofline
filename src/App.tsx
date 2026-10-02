@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary } from './app/ErrorBoundary';
 import { useStoreView } from './app/storeAdapter';
 import { applyTheme } from './app/theme';
+import { applyAppFontScale } from './app/fontScale';
 import { AppShell } from './components/AppShell';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { KnowledgePage } from './pages/KnowledgePage';
@@ -25,6 +26,7 @@ function ApplicationRoutes() {
   }, [store.initialize]);
 
   useLayoutEffect(() => applyTheme(store.settings.theme ?? 'dark'), [store.settings.theme]);
+  useLayoutEffect(() => applyAppFontScale(store.settings.appFontScale ?? 100), [store.settings.appFontScale]);
 
   return (
     <AppShell>

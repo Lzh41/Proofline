@@ -13,6 +13,7 @@ export type AttemptMode = 'code' | 'interview';
 export type MistakeCategory = 'concept' | 'implementation' | 'boundary' | 'complexity' | 'reading' | 'incomplete' | 'unclear' | 'no-example' | 'other';
 export type AppTheme = 'light' | 'dark' | 'system';
 export type EditorFontSize = 14 | 16 | 18 | 20 | 22;
+export type AppFontScale = 90 | 100 | 110 | 120 | 130;
 export type InterviewFormat = 'knowledge' | 'scenario' | 'system-design' | 'project';
 export type InterviewContentOrigin = 'builtin' | 'user' | 'import' | 'ai';
 
@@ -284,6 +285,7 @@ export interface AppSettings {
   hasAiCredential: boolean;
   defaultLanguage: string;
   editorFontSize: EditorFontSize;
+  appFontScale: AppFontScale;
   dailyTargetMinutes: number;
   dailyTargetProblems: number;
   dailyTargetInterviewQuestions: number;

@@ -195,9 +195,13 @@ function completionLanguage(languageId: string): string {
 //
 // 旧版用 model.getVersionId() 做 key，但每次按键 version +1，
 // 缓存 100% 失效。现在改为按「最后扫描的版本号 + 时间戳」
-// 缓存，在 500ms 内直接复用上次结果，大幅减少主线程正则扫描。
+// 缓存，在 TTL 窗口内直接复用上次结果，大幅减少主线程正则扫描。
+//
+// TTL 从 500ms 提到 1500ms：连续输入/删除时，补全只需要「当前文档里有哪些
+// 标识符」这种粗粒度信息，1.5 秒内复用完全够用，却能把整篇正则扫描的频率
+// 降到 1/3（删除长代码时最明显）。
 // ────────────────────────────────────────────────────────
-const CACHE_TTL_MS = 500;
+const CACHE_TTL_MS = 1500;
 
 const documentSymbolsCache = new WeakMap<monaco.editor.ITextModel, {
   version: number;
@@ -319,13 +323,13 @@ function declarationForLine(line: string, language: string): { name: string; kin
     return { name, kind: monaco.languages.SymbolKind.Function, nameStartColumn: line.indexOf(name) + 1 };
   }
 
-  const arrowFunction = trimmed.match(/^(?:(?:export|default)\\s+)?(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>/);
+  const arrowFunction = trimmed.match(/^(?:(?:export|default)\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/);
   if (arrowFunction && (language === 'javascript' || language === 'typescript')) {
     const name = arrowFunction[1];
     return { name, kind: monaco.languages.SymbolKind.Function, nameStartColumn: line.indexOf(name) + 1 };
   }
 
-  const method = trimmed.match(/^(?:(?:export|default|public|private|protected|static|async|virtual|inline|constexpr|const|final)\\s+)*(?:[A-Za-z_$][\\w$:<>&*\\[\\]]*\\s+)?(~?[A-Za-z_$][\\w$]*)\\s*\\([^;\\n]*\\)\\s*(?::\\s*[^{}]+)?(?:\\{|$)/);
+  const method = trimmed.match(/^(?:(?:export|default|public|private|protected|static|async|virtual|inline|constexpr|const|final)\s+)*(?:[A-Za-z_$][\w$:<>&*[\],]*\s+)?(~?[A-Za-z_$][\w$]*)\s*\([^;\n]*\)\s*(?::\s*[^{}]+)?(?:\{|$)/);
   if (method) {
     const name = method[1];
     if (SYMBOL_EXCLUSIONS.has(name)) return null;
@@ -429,10 +433,40 @@ function parseDocumentSymbols(model: monaco.editor.ITextModel): monaco.languages
   return buildDocumentSymbolTree(parsed).map((node) => documentSymbolFromTree(node, model));
 }
 
+// ────────────────────────────────────────────────────────
+// 文档符号缓存（stickyScroll / 大纲的关键路径）
+//
+// stickyScroll 默认走 OutlineModel → documentSymbolProvider，也就是这里的
+// parseDocumentSymbols：全文档逐行正则解析。它由 Delayer(300) 调度，
+// 每次输入/删除停顿都会触发一次 —— 这是删除时仍然卡顿的主因。
+//
+// 改为「版本相同直接复用 + 1 秒 TTL 内复用」：大纲和顶部吸附行允许
+// 秒级轻微滞后，换来的是把 O(行数) 的全文档解析从「每次停顿一遍」
+// 降到「最多每秒一遍」。
+// ────────────────────────────────────────────────────────
+const DOCUMENT_SYMBOL_CACHE_TTL_MS = 1000;
+
+const documentSymbolCache = new WeakMap<monaco.editor.ITextModel, {
+  version: number;
+  savedAt: number;
+  result: monaco.languages.DocumentSymbol[];
+}>();
+
+function cachedParseDocumentSymbols(model: monaco.editor.ITextModel): monaco.languages.DocumentSymbol[] {
+  const version = model.getVersionId();
+  const cached = documentSymbolCache.get(model);
+  if (cached && (cached.version === version || Date.now() - cached.savedAt < DOCUMENT_SYMBOL_CACHE_TTL_MS)) {
+    return cached.result;
+  }
+  const result = parseDocumentSymbols(model);
+  documentSymbolCache.set(model, { version, savedAt: Date.now(), result });
+  return result;
+}
+
 const documentSymbolProvider: monaco.languages.DocumentSymbolProvider = {
   displayName: 'Proofline 代码作用域',
   provideDocumentSymbols(model) {
-    return parseDocumentSymbols(model);
+    return cachedParseDocumentSymbols(model);
   },
 };
 
@@ -494,6 +528,52 @@ const codeCompletionProvider: monaco.languages.CompletionItemProvider = {
       });
     }
     return { suggestions };
+  },
+};
+
+// ────────────────────────────────────────────────────────
+// 输入延迟探针：统计「模型内容变更 → 下一帧开始」的间隔，
+// 这是输入/删除手感的最直接代理指标。
+//
+// 用法（DevTools 控制台）：
+//   __prooflineEditorPerf.stats()   // 查看 p50 / p95 / max（毫秒）
+//   __prooflineEditorPerf.reset()   // 清零后重新采样
+// 开销仅一次 performance.now() + 一个 rAF 回调，不写日志、不做 IO。
+// ────────────────────────────────────────────────────────
+const INPUT_LATENCY_SAMPLES: number[] = [];
+let pendingInputAt = 0;
+
+function recordInputLatency(): void {
+  if (pendingInputAt) return;
+  pendingInputAt = performance.now();
+  requestAnimationFrame(() => {
+    const latency = performance.now() - pendingInputAt;
+    pendingInputAt = 0;
+    if (INPUT_LATENCY_SAMPLES.length >= 300) INPUT_LATENCY_SAMPLES.shift();
+    INPUT_LATENCY_SAMPLES.push(latency);
+  });
+}
+
+function percentile(values: number[], ratio: number): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.floor(sorted.length * ratio));
+  return Number(sorted[index].toFixed(2));
+}
+
+(globalThis as Record<string, unknown>).__prooflineEditorPerf = {
+  stats() {
+    const samples = INPUT_LATENCY_SAMPLES;
+    return {
+      count: samples.length,
+      p50: percentile(samples, 0.5),
+      p95: percentile(samples, 0.95),
+      max: samples.length ? Number(Math.max(...samples).toFixed(2)) : 0,
+      avg: samples.length ? Number((samples.reduce((sum, value) => sum + value, 0) / samples.length).toFixed(2)) : 0,
+    };
+  },
+  reset() {
+    INPUT_LATENCY_SAMPLES.length = 0;
   },
 };
 
@@ -575,14 +655,8 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
     disposeEditorSubscriptions();
     editorSubscriptionsRef.current = [
       editor.onDidChangeModelContent((event) => {
-        // ── 性能诊断：测量每次按键的同步处理耗时 ──
-        if (!(window as any).__monacoPerfLogged) {
-          (window as any).__monacoPerfLogged = true;
-          const t0 = performance.now();
-          queueMicrotask(() => {
-            console.log(`[Proofline] 首次按键同步处理耗时: ${(performance.now() - t0).toFixed(1)}ms`);
-          });
-        }
+        // 采样「输入/删除 → 下一帧」的延迟（见 __prooflineEditorPerf 说明）。
+        recordInputLatency();
         pendingEventRef.current = event;
         window.clearTimeout(syncTimerRef.current);
         syncTimerRef.current = window.setTimeout(flushPendingChange, CHANGE_SYNC_DELAY);
@@ -611,7 +685,11 @@ export default function LocalMonacoEditor({ onChange, onMount, ...props }: Edito
     // ── 补全/建议：仅显示当前文档中出现的词 ──
     quickSuggestions: { other: true, comments: false, strings: false },
     suggestOnTriggerCharacters: true,
-    wordBasedSuggestions: 'currentDocument',
+    // ── 关闭 Monaco 自带的「当前文档词索引」──
+    // 它会在每次编辑（含删除）后重建文档词表用于补全，而我们的
+    // codeCompletionProvider 已经用带 TTL 缓存的 cachedDocumentSymbols
+    // 提供了同类标识符，属于重复扫描。关闭后删除/输入少一遍全文档遍历。
+    wordBasedSuggestions: 'off' as const,
     suggestSelection: 'first',
     suggest: { ...(props.options?.suggest ?? {}), filterGraceful: false },
     tabCompletion: 'on',

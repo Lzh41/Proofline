@@ -289,19 +289,71 @@ async function waitForInitialization(): Promise<void> {
   if (!state.initialized) throw new Error(state.error ?? '个人数据尚未完成初始化');
 }
 
+// ────────────────────────────────────────────────────────
+// 保存合并：同一时刻只存在一个持久化循环，且每个调用方都等到
+// 「包含自己那次状态变更的快照」落盘后才 resolve（语义与旧实现一致）。
+//
+// 做题页的草稿保存、计时落盘、设置更新常在几十毫秒内连发；旧实现让每个
+// 请求各自入队一份「全量快照序列化 + 写库」，一次停顿后可能连做两三遍。
+// 现在循环每轮读取「当时的最新状态」再落盘，循环期间新到的请求只登记版本号，
+// 由循环补做一轮 —— 只要快照是在请求到达之后取的，一次写入即可同时满足
+// 多个等待者；否则补做一轮，绝不丢更新。
+// ────────────────────────────────────────────────────────
+let saveRequestVersion = 0;
+let savedVersion = 0;
+let saveLoopRunning = false;
+
+interface SaveWaiter {
+  version: number;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
+const saveWaiters: SaveWaiter[] = [];
+
+function settleSaveWaiters(uptoVersion: number): void {
+  for (let index = saveWaiters.length - 1; index >= 0; index -= 1) {
+    if (saveWaiters[index].version <= uptoVersion) {
+      const [waiter] = saveWaiters.splice(index, 1);
+      waiter.resolve();
+    }
+  }
+}
+
+async function runSaveLoop(get: () => AppStore, set: (patch: Partial<AppStore>) => void): Promise<void> {
+  saveLoopRunning = true;
+  try {
+    while (savedVersion < saveRequestVersion) {
+      const version = saveRequestVersion;
+      try {
+        await enqueuePersistence(async () => {
+          const snapshot = snapshotFrom(get());
+          await appRepository.save(snapshot);
+          set({ updatedAt: snapshot.updatedAt, error: null });
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        set({ error: `本地数据保存失败：${message}` });
+        // 失败时向所有等待者抛出，恢复后由下一个调用方重新开一轮。
+        saveWaiters.splice(0, saveWaiters.length).forEach((waiter) => waiter.reject(error));
+        return;
+      }
+      savedVersion = version;
+      settleSaveWaiters(version);
+    }
+  } finally {
+    saveLoopRunning = false;
+  }
+}
+
 async function saveState(get: () => AppStore, set: (patch: Partial<AppStore>) => void): Promise<void> {
   await waitForInitialization();
-  return enqueuePersistence(async () => {
-    try {
-      const snapshot = snapshotFrom(get());
-      await appRepository.save(snapshot);
-      set({ updatedAt: snapshot.updatedAt, error: null });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      set({ error: `本地数据保存失败：${message}` });
-      throw error;
-    }
+  saveRequestVersion += 1;
+  const waiter = new Promise<void>((resolve, reject) => {
+    saveWaiters.push({ version: saveRequestVersion, resolve, reject });
   });
+  if (!saveLoopRunning) void runSaveLoop(get, set);
+  return waiter;
 }
 
 async function persistProblems(

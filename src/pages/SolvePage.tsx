@@ -51,7 +51,13 @@ const MonacoEditor = lazy(() => import('../lib/localMonaco'));
 
 // 编辑器文本本身由 Monaco 非受控维护；用户输入只更新 ref 与草稿保存定时器，
 // 不再同步 React 状态 —— 避免每个输入/删除停顿都触发整页重渲染造成卡顿。
-const DRAFT_SAVE_DELAY = 500;
+//
+// 两次排期策略：本次进入题目后的「首次输入」用 300ms 快速落盘（保证草稿尽早
+// 存在、便于崩溃恢复），之后每次输入重置为 1200ms —— 配合 localMonaco 的
+// 350ms 同步延迟，实际门槛约 1.55s，边写边改时不会每停一次就写一遍快照。
+// 数据安全由四处兜底：切换题目/语言、卸载、窗口 pagehide、运行样例前落盘。
+const DRAFT_FIRST_SAVE_DELAY = 300;
+const DRAFT_SAVE_DELAY = 1200;
 
 type AiStatus = 'idle' | 'streaming' | 'cancelling' | 'done' | 'cancelled' | 'error';
 interface AiCoachTurn {
@@ -509,11 +515,15 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
     wordWrap: 'off',
     codeLens: false,
     folding: false,
+    // stickyScroll 走 OutlineModel → documentSymbolProvider，其全文档解析
+    // 已由 localMonaco 的 cachedParseDocumentSymbols 加缓存（见注释），
+    // 因此这里保持开启不会带来每按键的全文档扫描开销。
     stickyScroll: { enabled: true },
     // ── 补全/建议：仅显示当前文档中出现的词 ──
     quickSuggestions: { other: true, comments: false, strings: false },
     suggestOnTriggerCharacters: true,
-    wordBasedSuggestions: 'currentDocument',
+    // 已由 localMonaco 统一改为 'off'（文档标识符由自定义补全提供者给出）
+    wordBasedSuggestions: 'off' as const,
     suggestSelection: 'first',
     tabCompletion: 'on',
     acceptSuggestionOnCommitCharacter: true,
@@ -609,6 +619,59 @@ const CodeEditorSurface = memo(function CodeEditorSurface({
   );
 });
 
+// 秒表独立持有计时状态：每秒只重渲染这个小组件本身。
+// 旧实现把 seconds 存在 SolvePage 根组件，导致计时运行时每秒
+// 对整页 2000+ 行 JSX 树做一次 reconcile（还包含两遍题面 Markdown
+// 解析），是做题过程中周期性输入卡顿的直接来源。
+const SolveStopwatch = memo(function SolveStopwatch({
+  running,
+  problemId,
+  initialSeconds,
+  onTick,
+}: {
+  running: boolean;
+  problemId?: string;
+  initialSeconds: number;
+  onTick?: (seconds: number) => void;
+}) {
+  const [seconds, setSeconds] = useState(initialSeconds);
+  const latestRef = useRef(initialSeconds);
+  const onTickRef = useRef(onTick);
+  onTickRef.current = onTick;
+  // 只在题目切换时与该题练习记录中的已计时长重新对齐。
+  // 不能把 initialSeconds 直接放进依赖：计时落盘后 attempt.durationSeconds
+  // 会变化，若此时重设，秒表会被回拉到落盘那一刻的旧秒数。
+  const initialSecondsRef = useRef(initialSeconds);
+  initialSecondsRef.current = initialSeconds;
+  const lastSyncRef = useRef({ problemId, running });
+
+  useEffect(() => {
+    const previous = lastSyncRef.current;
+    lastSyncRef.current = { problemId, running };
+    const problemChanged = previous.problemId !== problemId;
+    const justPaused = previous.running && !running;
+    // 计时运行中出现的 initialSeconds 变化是本组件自己落盘回写的旧值，
+    // 暂停瞬间同理 —— 这两种情况都不能回拉秒表。
+    if (!problemChanged && (running || justPaused)) return;
+    latestRef.current = initialSecondsRef.current;
+    setSeconds(initialSecondsRef.current);
+  }, [initialSeconds, problemId, running]);
+
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => {
+      latestRef.current += 1;
+      setSeconds(latestRef.current);
+      onTickRef.current?.(latestRef.current);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+
+  return (
+    <div className={styles.timer}><Clock3 size={15} />{formatDuration(seconds)}</div>
+  );
+});
+
 export function SolvePage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -669,7 +732,9 @@ export function SolvePage() {
   const [editorHistory, setEditorHistory] = useState({ canUndo: false, canRedo: false });
   const codeEditorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const [language, setLanguage] = useState(attempt?.language ?? store.settings.defaultLanguage ?? 'cpp');
-  const [seconds, setSeconds] = useState(attempt?.durationSeconds ?? 0);
+  // 计时秒数只保留在 ref 中（由 SolveStopwatch 的 onTick 回写），
+  // 不再作为 SolvePage 的 state —— 避免计时运行时每秒整页重渲染。
+  const secondsRef = useRef(attempt?.durationSeconds ?? 0);
   const [running, setRunning] = useState(false);
   const [coachTurns, setCoachTurns] = useState<AiCoachTurn[]>([]);
   const [activeIntent, setActiveIntent] = useState<AiCoachIntent>('next-code');
@@ -701,6 +766,9 @@ export function SolvePage() {
   const debugSessionRef = useRef<DebugSession | null>(null);
   const debugSessionIdRef = useRef('');
   const saveTimer = useRef<number | undefined>(undefined);
+  // 本次进入题目后是否已经落过草稿：决定后续排期用短延迟还是合并延迟。
+  const draftSavedRef = useRef(false);
+  const draftOwnerRef = useRef<string | undefined>(undefined);
   const layoutSaveTimerRef = useRef<number | undefined>(undefined);
   const pendingLayoutPatchRef = useRef<LayoutSettingPatch>({});
   const loadedProblemIdRef = useRef<string | undefined>(undefined);
@@ -709,7 +777,6 @@ export function SolvePage() {
   const draftCreatePromiseRef = useRef<Promise<Attempt | void> | null>(null);
   const draftPersistRef = useRef<(allowStaleOwner?: boolean) => Promise<void>>(async () => undefined);
   const languageRef = useRef(language);
-  const secondsRef = useRef(seconds);
   const requestGenerationRef = useRef(0);
   const currentProblemIdRef = useRef(problem?.id);
   // 记录当前编辑器代码属于哪道题，防止切换题目时把上一题的代码误存进新题的草稿
@@ -734,6 +801,16 @@ export function SolvePage() {
   const editorDefaultCode = loadedProblemIdRef.current === problem?.id
     ? codeRef.current
     : initialEditorCode(problem, attempt, editorRenderLanguage, algorithmProblems);
+  // 题面 Markdown 解析结果缓存：旧实现在 JSX 内联调用 renderMarkdown，
+  // 任何 store 更新（草稿保存、计时落盘等）都会让整页重渲染时重复解析两遍题面。
+  const problemHtml = useMemo(() => renderMarkdown(problem?.content || (problem?.algorithmMode === 'stdin'
+    ? '当前学习卡只保存了题目链接。可打开官方题面阅读，并在下方完整编写程序。'
+    : '当前学习卡只保存了题目链接。可打开官方题面阅读，并在下方直接编写解题函数。')),
+  [problem?.algorithmMode, problem?.content]);
+  const problemReaderHtml = useMemo(
+    () => renderMarkdown(problem?.content || '当前学习卡只保存了题目链接。'),
+    [problem?.content],
+  );
 
   const flushLayoutSave = useCallback(() => {
     window.clearTimeout(layoutSaveTimerRef.current);
@@ -769,6 +846,17 @@ export function SolvePage() {
     queueLayoutSave({ solveTerminalHeight: value ?? undefined });
   }, [queueLayoutSave]);
 
+  // 草稿保存排期：首次输入用短延迟（尽快让草稿存在、便于崩溃恢复），
+  // 之后每次输入重置长延迟 —— 边写边改时不再每停一次就整页重渲染 + 写一遍快照。
+  const scheduleDraftPersist = useCallback(() => {
+    window.clearTimeout(saveTimer.current);
+    const delay = draftSavedRef.current ? DRAFT_SAVE_DELAY : DRAFT_FIRST_SAVE_DELAY;
+    saveTimer.current = window.setTimeout(() => {
+      draftSavedRef.current = true;
+      void draftPersistRef.current();
+    }, delay);
+  }, []);
+
   const updateEditorCode = useCallback((nextCode: string, immediate = false) => {
     codeRef.current = nextCode;
     if (immediate) {
@@ -779,9 +867,8 @@ export function SolvePage() {
     }
     // 用户输入路径：编辑器本身已是最新文本，只重置草稿保存定时器，
     // 不再同步 React 状态 —— 避免每个输入/删除停顿都触发整页重渲染造成卡顿。
-    window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => void draftPersistRef.current(), DRAFT_SAVE_DELAY);
-  }, []);
+    scheduleDraftPersist();
+  }, [scheduleDraftPersist]);
   const handleEditorChange = useCallback((nextCode: string) => {
     codeProblemIdRef.current = problem?.id;
     updateEditorCode(nextCode);
@@ -791,6 +878,10 @@ export function SolvePage() {
   }, []);
   const handleEditorHistoryChange = useCallback((canUndo: boolean, canRedo: boolean) => {
     setEditorHistory({ canUndo, canRedo });
+  }, []);
+  // 秒表每秒回写一次 ref，供草稿保存/运行快照读取，不触发任何页面重渲染。
+  const handleStopwatchTick = useCallback((value: number) => {
+    secondsRef.current = value;
   }, []);
   const undoCode = useCallback(() => {
     const editor = codeEditorRef.current;
@@ -824,11 +915,15 @@ export function SolvePage() {
   );
   currentProblemIdRef.current = problem?.id;
   languageRef.current = language;
-  secondsRef.current = seconds;
   draftAttemptIdRef.current = attempt?.problemId === problem?.id ? attempt?.id : undefined;
   // 渲染期同步“当前代码归属题目”：题目切换后草稿保存 effect 捕获到新题的 id，
   // 守卫不再因旧题 id 误拦截恢复保存（旧逻辑依赖 code 状态变化让 effect 重跑才能捕获新值）。
   codeProblemIdRef.current = problem?.id;
+  // 换题时重置草稿排期状态，让新题的第一段输入重新享受快速落盘。
+  if (draftOwnerRef.current !== problem?.id) {
+    draftOwnerRef.current = problem?.id;
+    draftSavedRef.current = false;
+  }
 
   const isCurrentProblemRequest = (generation: number, problemId: string) => (
     requestGenerationRef.current === generation && currentProblemIdRef.current === problemId
@@ -853,19 +948,20 @@ export function SolvePage() {
   ]);
 
   useEffect(() => {
-    if (!running) return;
-    const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [running]);
-
-  useEffect(() => {
     if (!running || !attempt?.id || !store.updateAttempt) return;
-    // 计时中的时长需要及时落盘，避免窗口刷新或进程异常时丢失最近几秒的练习记录。
-    // 2 秒间隔足以降低写入频率，同时让恢复/同步读取不会长期停留在 0 秒。
-    const timer = window.setInterval(() => {
+    // 计时中的时长需要周期性落盘，避免窗口刷新或进程异常时丢失练习记录。
+    // 旧实现每 2 秒落盘一次：每次都会触发全量快照序列化 + 整页重渲染，
+    // 是计时期间做题输入周期性卡顿的来源之一。放宽到 15 秒，并在
+    // pagehide（窗口关闭/刷新）时补刷一次，异常退出最多丢 15 秒时长。
+    const flushDuration = () => {
       void store.updateAttempt?.(attempt.id, { durationSeconds: secondsRef.current });
-    }, 2_000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(flushDuration, 15_000);
+    window.addEventListener('pagehide', flushDuration);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('pagehide', flushDuration);
+    };
   }, [attempt?.id, running, store.updateAttempt]);
 
   useEffect(() => {
@@ -907,17 +1003,21 @@ export function SolvePage() {
     };
     draftPersistRef.current = persistDraft;
 
-    window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
-      void persistDraft();
-    }, DRAFT_SAVE_DELAY);
+    // 与用户输入路径共用同一套排期策略（首次快速落盘、之后合并延迟）。
+    scheduleDraftPersist();
     // 用户输入路径（updateEditorCode）会直接重置该定时器；这里只负责
     // 题目/语言/练习记录变化时的重新排期，避免每次输入都写库造成卡顿。
+    // pagehide 补刷：草稿延迟已放宽到 1200ms，直接关窗时不能丢掉最后一段输入。
+    const flushDraftOnHide = () => {
+      void persistDraft(true);
+    };
+    window.addEventListener('pagehide', flushDraftOnHide);
     return () => {
+      window.removeEventListener('pagehide', flushDraftOnHide);
       window.clearTimeout(saveTimer.current);
       void persistDraft(true);
     };
-  }, [attempt?.id, language, problem, store.startAttempt, store.updateAttempt]);
+  }, [attempt?.id, language, problem, scheduleDraftPersist, store.startAttempt, store.updateAttempt]);
 
   useEffect(() => {
     if (!problem?.id) return;
@@ -931,7 +1031,7 @@ export function SolvePage() {
     codeProblemIdRef.current = problem?.id;
     // 复习模式下使用空字符串，不保留之前的代码
     updateEditorCode(initialEditorCode(problem, attempt, nextLanguage, algorithmProblems), true);
-    setSeconds(attempt?.durationSeconds ?? 0);
+    secondsRef.current = attempt?.durationSeconds ?? 0;
     const restoredTurns = store.aiGenerations
       .filter((generation) => generation.problemId === problem?.id && generation.response.trim())
       .sort((a, b) => a.createdAt - b.createdAt)
@@ -1260,7 +1360,7 @@ export function SolvePage() {
 
   const ensureActiveAttempt = async (draft?: { code: string; language: string; durationSeconds: number }): Promise<Attempt | undefined> => {
     if (!problem) return undefined;
-    const nextDraft = draft ?? { code: codeRef.current, language, durationSeconds: seconds };
+    const nextDraft = draft ?? { code: codeRef.current, language, durationSeconds: secondsRef.current };
     if (attempt?.id && !attempt.endedAt && attempt.result === 'unfinished') {
       await store.updateAttempt?.(attempt.id, nextDraft);
       draftAttemptIdRef.current = attempt.id;
@@ -1402,7 +1502,7 @@ export function SolvePage() {
     const problemId = problem.id;
     const codeToRun = codeRef.current;
     const languageToRun = language;
-    const durationAtStart = seconds;
+    const durationAtStart = secondsRef.current;
     let activeAttempt: Attempt | undefined;
     // 运行使用不可变代码快照；取消尚未触发的自动保存定时器，随后由 ensureActiveAttempt
     // 一次性写入同一份快照，避免运行期间的旧闭包再次创建练习记录。
@@ -1634,11 +1734,7 @@ export function SolvePage() {
           <div className={styles.solveProblemBody} key={problem.id} style={resizeStyle}>
             <div
               className={styles.problemText}
-              dangerouslySetInnerHTML={{
-                __html: renderMarkdown(problem.content || (problem.algorithmMode === 'stdin'
-                  ? '当前学习卡只保存了题目链接。可打开官方题面阅读，并在下方完整编写程序。'
-                  : '当前学习卡只保存了题目链接。可打开官方题面阅读，并在下方直接编写解题函数。')),
-              }}
+              dangerouslySetInnerHTML={{ __html: problemHtml }}
             />
             <div
               className={styles.problemBodyResizeHandle}
@@ -1709,7 +1805,7 @@ export function SolvePage() {
                 <div><strong>代码编辑器</strong><span>{problem.algorithmMode === 'stdin' ? '完整程序：自行读取标准输入并输出标准结果' : '只写解题函数，样例入口由应用生成'}</span></div>
               </div>
               <div className={styles.buttonRow}>
-                <div className={styles.timer}><Clock3 size={15} />{formatDuration(seconds)}</div>
+                <SolveStopwatch running={running} problemId={problem?.id} initialSeconds={attempt?.durationSeconds ?? 0} onTick={handleStopwatchTick} />
                 <select className="select" value={language} onChange={(event) => {
                   const nextLanguage = event.target.value;
                   const currentSnippet = editorTemplateForProblem(problem, language);
@@ -2064,7 +2160,7 @@ export function SolvePage() {
           <article className={styles.problemReaderScroll} aria-label="完整题目内容">
             <div
               className={styles.problemReaderText}
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(problem.content || '当前学习卡只保存了题目链接。') }}
+              dangerouslySetInnerHTML={{ __html: problemReaderHtml }}
             />
           </article>
           <aside className={styles.problemReaderExamples} aria-label="题目样例">

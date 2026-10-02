@@ -7,9 +7,29 @@ const STORAGE_KEY = 'xiti.app-data.v1';
 const BUILTIN_VOCABULARY_IDS = new Set(VOCABULARY_CATALOG_FULL.map((word) => word.id));
 export const READ_ONLY_REPOSITORY_MESSAGE = 'SQLite 读取失败后，本地回退数据处于只读状态；请刷新并重新连接主存储';
 
+// ────────────────────────────────────────────────────────
+// 性能关键：持久化前剥离打包内置的词库词条。
+//
+// 内置词库有 11,000+ 词条，全量 JSON 约 3.5MB。旧逻辑每次保存
+// （刷词输入防抖、做题草稿、计时落盘等）都把整份词库序列化两遍
+// （Tauri invoke 参数 + localStorage 镜像），主线程单次阻塞可达
+// 数十毫秒，是做题页和刷词页输入卡顿的主因。
+//
+// 数据安全性：加载时 normalizeVocabularyWords 会用 VOCABULARY_CATALOG_FULL
+// 重建完整词表，且快照中与内置词条同 id 的数据本来就会被忽略 ——
+// 剥离后加载结果完全一致，无数据丢失。
+// ────────────────────────────────────────────────────────
+function stripBuiltinVocabulary(snapshot: AppDataSnapshot): AppDataSnapshot {
+  const kept = snapshot.vocabularyWords.filter((word) => !BUILTIN_VOCABULARY_IDS.has(word.id));
+  if (kept.length === snapshot.vocabularyWords.length) return snapshot;
+  return { ...snapshot, vocabularyWords: kept };
+}
+
 function compactBrowserSnapshot(snapshot: AppDataSnapshot): AppDataSnapshot {
-  // 浏览器缓存省略打包内置的面试正文和词条；加载时分别从稳定 catalogId
-  // 和当前词库目录恢复，避免词库扩充后占满 localStorage。
+  // 内置词条在 Tauri 与浏览器两种运行时都剥离（见 stripBuiltinVocabulary 注释）。
+  snapshot = stripBuiltinVocabulary(snapshot);
+  // 纯浏览器缓存额外省略内置面试正文；加载时从稳定 catalogId 恢复，
+  // 避免词库扩充后占满 localStorage。
   if (isTauriRuntime()) return snapshot;
   const hasBuiltinInterview = snapshot.problems.some((problem) => (
     problem.kind === 'interview' && problem.interview?.contentOrigin === 'builtin' && problem.interview.catalogId
@@ -21,7 +41,6 @@ function compactBrowserSnapshot(snapshot: AppDataSnapshot): AppDataSnapshot {
       interviewCatalogVersion: snapshot.settings.interviewCatalogVersion,
       browserCatalogCompact: hasBuiltinInterview || snapshot.settings.browserCatalogCompact === true,
     },
-    vocabularyWords: snapshot.vocabularyWords.filter((word) => !BUILTIN_VOCABULARY_IDS.has(word.id)),
     problems: snapshot.problems.map((problem) => {
       const interview = problem.interview;
       if (problem.kind !== 'interview' || interview?.contentOrigin !== 'builtin' || !interview.catalogId) return problem;
@@ -84,7 +103,9 @@ export class TauriSqliteRepository implements AppRepository {
   }
 
   async save(snapshot: AppDataSnapshot): Promise<void> {
-    await invoke('save_app_data', { snapshot });
+    // Tauri invoke 参数在主线程做 JSON 序列化，剥离内置词条避免每次保存
+    // 序列化 3.5MB 词库（Rust 端按不透明 JSON 存储剥离对加载完全透明）。
+    await invoke('save_app_data', { snapshot: stripBuiltinVocabulary(snapshot) });
   }
 }
 

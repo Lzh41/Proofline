@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot } from '../lib/data';
 import { ResilientRepository } from '../lib/repository';
 import { catalogItemToProblem } from '../lib/interviews';
+import type { AppDataSnapshot } from '../types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -109,6 +110,9 @@ describe('SQLite 读取失败回退', () => {
 
   it('SQLite 保存成功后本地缓存刷新失败不影响主存储成功', async () => {
     const incoming = createEmptySnapshot(200);
+    // 用户新增的词条必须落盘；内置词库由加载时的目录重建，不再写入快照。
+    const customWord = { ...incoming.vocabularyWords[0], id: 'custom-word-1', word: 'customword' };
+    incoming.vocabularyWords = [...incoming.vocabularyWords, customWord];
     vi.mocked(invoke).mockResolvedValueOnce(undefined);
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('本地缓存空间不足');
@@ -116,7 +120,28 @@ describe('SQLite 读取失败回退', () => {
 
     await expect(new ResilientRepository().save(incoming)).resolves.toBeUndefined();
 
-    expect(invoke).toHaveBeenCalledWith('save_app_data', { snapshot: incoming });
+    const [, payload] = vi.mocked(invoke).mock.calls[0] as unknown as [string, { snapshot: AppDataSnapshot }];
+    expect(payload.snapshot.vocabularyWords).toEqual([customWord]);
+    expect(payload.snapshot.updatedAt).toBe(200);
+  });
+
+  it('剥离内置词库后保存，重新加载仍能恢复完整词表', async () => {
+    const incoming = createEmptySnapshot(300);
+    const customWord = { ...incoming.vocabularyWords[0], id: 'custom-word-2', word: 'customword2' };
+    incoming.vocabularyWords = [...incoming.vocabularyWords, customWord];
+    const builtinCount = incoming.vocabularyWords.length - 1;
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+
+    await new ResilientRepository().save(incoming);
+    const [, payload] = vi.mocked(invoke).mock.calls[0] as unknown as [string, { snapshot: AppDataSnapshot }];
+    expect(payload.snapshot.vocabularyWords).toHaveLength(1);
+
+    // SQLite 返回剥离后的快照：加载时必须由内置目录重建，词条总数不变。
+    vi.mocked(invoke).mockResolvedValueOnce(payload.snapshot);
+    const loaded = await new ResilientRepository().load();
+
+    expect(loaded.vocabularyWords).toHaveLength(builtinCount + 1);
+    expect(loaded.vocabularyWords.filter((word) => word.id === customWord.id)).toEqual([customWord]);
   });
 
   it('浏览器缓存紧凑保存内置面试题，避免首次目录写入阻塞主线程', async () => {

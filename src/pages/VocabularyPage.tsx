@@ -54,6 +54,7 @@ export function VocabularyPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const wrongSpellingContinueRef = useRef<HTMLButtonElement | null>(null);
+  const answerInputRef = useRef<HTMLInputElement | null>(null);
   const [loadedSessionScope, setLoadedSessionScope] = useState<VocabularyScope | null>(null);
   const latestSessionRef = useRef<{
     scope: VocabularyScope;
@@ -122,20 +123,12 @@ export function VocabularyPage() {
     setLoadedSessionScope(difficulty);
   }, [difficulty, store.initialized, store.vocabularyWords]);
 
+  // 会话进度（含拼写草稿）统一防抖 600ms 后再落盘。
+  // 旧实现每次按键都同步做一次 localStorage 日志「读取+解析+序列化+写入」，
+  // 且 300ms 防抖后就触发一次全量快照保存 —— 连续输入时主线程被反复
+  // 阻塞，是刷词输入卡顿的直接原因。
   useEffect(() => {
     if (!store.initialized || loadedSessionScope !== difficulty) return;
-    writeVocabularySessionJournal(difficulty, {
-      cards: queue.map((card) => ({ wordId: card.word.id, direction: card.direction, retry: card.retry })),
-      index: queueIndex,
-      phase,
-      revealed,
-      answerDraft,
-      sessionPoints,
-    });
-  }, [answerDraft, difficulty, loadedSessionScope, phase, queue, queueIndex, revealed, sessionPoints, store.initialized]);
-
-  useEffect(() => {
-    if (!store.initialized || loadedSessionScope !== difficulty || !store.saveVocabularySession) return;
     const session: VocabularySessionState = {
       cards: queue.map((card) => ({ wordId: card.word.id, direction: card.direction, retry: card.retry })),
       index: queueIndex,
@@ -144,12 +137,12 @@ export function VocabularyPage() {
       answerDraft,
       sessionPoints,
     };
-    latestSessionRef.current = { scope: difficulty, session, ready: true };
     const timeout = window.setTimeout(() => {
+      writeVocabularySessionJournal(difficulty, session);
       void Promise.resolve(store.saveVocabularySession?.(difficulty, session)).catch((error) => {
         setMessage(error instanceof Error ? error.message : String(error));
       });
-    }, 300);
+    }, 600);
     return () => window.clearTimeout(timeout);
   }, [answerDraft, difficulty, loadedSessionScope, phase, queue, queueIndex, revealed, sessionPoints, store.initialized, store.saveVocabularySession]);
 
@@ -333,6 +326,14 @@ export function VocabularyPage() {
     if (wrongSpellingFeedbackVisible && !busy) wrongSpellingContinueRef.current?.focus();
   }, [busy, wrongSpellingFeedbackVisible]);
 
+  // 答对按 Enter 进入下一词后自动回焦拼写输入框。
+  // 旧实现提交期间 busy=true 会把输入框置为 disabled，浏览器会移除焦点，
+  // 进入下一词后必须手动再点一次输入框才能继续输入。
+  useEffect(() => {
+    if (!activeWord || revealed || nextCard?.direction !== 'meaning-to-word' || busy) return;
+    answerInputRef.current?.focus();
+  }, [activeWord?.id, busy, nextCard?.direction, queueIndex, revealed]);
+
   const practiceWord = (word: VocabularyWord) => {
     setQueue([{ word, direction: 'meaning-to-word' }]);
     setQueueIndex(0);
@@ -436,7 +437,10 @@ export function VocabularyPage() {
                     <div className={styles.vocabularySpellingEntry}>
                       <label className={styles.vocabularyAnswerField}>
                         <span>拼写回忆</span>
-                        <input className="input" autoFocus autoComplete="off" autoCapitalize="none" value={answerDraft} onChange={(event) => setAnswerDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void submitSpellingAnswer(); } }} placeholder="输入英文单词后按 Enter" disabled={busy} />
+                        {/* busy 期间不再禁用输入框：禁用会让浏览器移除焦点，
+                            导致答对进入下一词后必须手动点击才能继续输入。
+                            提交期间的重复 Enter 由 submitSpellingAnswer 的 busy 守卫拦截。 */}
+                        <input ref={answerInputRef} className="input" autoFocus autoComplete="off" autoCapitalize="none" value={answerDraft} onChange={(event) => setAnswerDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void submitSpellingAnswer(); } }} placeholder="输入英文单词后按 Enter" />
                       </label>
                       <button className="button buttonAccent" type="button" disabled={busy} onClick={() => { void submitSpellingAnswer(); }}><Check size={15} />检查答案</button>
                     </div>

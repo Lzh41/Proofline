@@ -264,37 +264,27 @@ const helper = (value: number): number => value * 2;`.split('\n');
     expect(await screen.findByLabelText('代码编辑器 Mock')).toHaveValue(draftCode);
   });
 
-  it('做题页不把 AI 解惑做成一键分析按钮', async () => {
+  it('未配置 AI 时只显示按需开启入口', async () => {
     render(
       <MemoryRouter initialEntries={['/solve/algo-lis']}>
         <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
       </MemoryRouter>,
     );
 
-    const explainShortcut = screen.getByRole('button', { name: 'AI 解惑' });
-    expect(explainShortcut).toBeInTheDocument();
-    fireEvent.click(explainShortcut);
-    expect(await screen.findByLabelText('向 AI 代码教练提问')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByLabelText('向 AI 代码教练提问')).toHaveFocus());
-    expect(screen.queryByText('检查边界')).not.toBeInTheDocument();
+    expect(await screen.findByText('AI 反馈按需开启')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'AI 解惑' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('向 AI 代码教练提问')).not.toBeInTheDocument();
   });
 
-  it('默认只显示当前教练模块，AI 解惑输入仅属于解惑模块', async () => {
+  it('未配置 AI 时默认不占用固定教练区', async () => {
     render(
       <MemoryRouter initialEntries={['/solve/algo-lis']}>
         <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>
       </MemoryRouter>,
     );
 
-    expect(await screen.findByLabelText('AI 代码教练快捷操作')).toBeInTheDocument();
-    expect(screen.queryAllByRole('button', { name: '重新生成回答' })).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'AI 解惑' }));
-    expect(screen.getByRole('region', { name: 'AI 解惑对话' })).toBeVisible();
-    expect(screen.getByText('AI 解惑输入')).toBeVisible();
-    expect(Array.from(document.querySelectorAll<HTMLElement>('[data-ai-module]')).map((module) => module.dataset.aiModule))
-      .toEqual(['explain']);
-    expect(screen.getByLabelText('向 AI 代码教练提问').closest('[data-ai-module]'))
-      .toHaveAttribute('data-ai-module', 'explain');
+    expect(await screen.findByText('AI 反馈按需开启')).toBeInTheDocument();
+    expect(screen.queryByLabelText('AI 代码教练快捷操作')).not.toBeInTheDocument();
   });
 
   it('点击不同教练模块时只切换当前模块的回答', async () => {
@@ -1120,6 +1110,9 @@ const helper = (value: number): number => value * 2;`.split('\n');
   });
 
   it('做题工作台默认隐藏终端并提供可访问的布局拖动分隔条', async () => {
+    useAppStore.setState((state) => ({
+      settings: { ...state.settings, hasAiCredential: true, aiModel: 'mock-model' },
+    }));
     render(
       <MemoryRouter initialEntries={['/solve/algo-two-sum']}>
         <Routes><Route path="/solve/:id" element={<SolvePage />} /></Routes>

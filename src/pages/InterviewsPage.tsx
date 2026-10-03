@@ -236,8 +236,8 @@ export function InterviewsPage() {
       <header className={styles.interviewHero}>
         <div className={styles.interviewHeroCopy}>
           <span className={styles.interviewEyebrow}><BriefcaseBusiness size={13} />企业面试工作台</span>
-          <h1>把零散八股，练成可表达的答案。</h1>
-          <p>覆盖 AI 与传统研发岗位，按岗位、场景和掌握状态反复演练。</p>
+          <h1>企业面试题库</h1>
+          <p>按岗位、场景和掌握状态筛选题目，练习后保留回答与复习记录。</p>
         </div>
         <div className={styles.interviewHeroActions}>
           <span className={styles.interviewCatalogCount}><strong>{problems.length}</strong><small>道完整面试题</small></span>

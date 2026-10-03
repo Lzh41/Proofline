@@ -49,8 +49,8 @@ export function TodayPage() {
     <>
       <PageHeader
         eyebrow={new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}
-        title="今天，稳稳推进。"
-        description="先清理到期复习，再推进题目和单词目标。每次回忆都会留下下次复习时间。"
+        title="今日任务"
+        description="先完成到期复习，再按任务单推进题目和单词。每次回忆都会记录下一次复习时间。"
         actions={
           <>
             <button className="button" type="button" onClick={() => navigate('/plan')}><CalendarClock size={16} />调整计划</button>
@@ -72,7 +72,7 @@ export function TodayPage() {
 
       <div className={styles.twoColumn}>
         <section className={styles.section}>
-          <SectionHeader title="今日任务" meta={plan ? `${plan.completedProblemIds.length}/${plan.targetProblems}` : '尚未排程'} action={<button className="button" type="button" onClick={generatePlan}><RotateCcw size={15} />智能排程</button>} />
+          <SectionHeader title="今日任务" meta={plan ? `${plan.completedProblemIds.length}/${plan.targetProblems}` : '尚未排程'} action={<button className="button" type="button" onClick={generatePlan}><RotateCcw size={15} />重新排程</button>} />
           {plan && <div style={{ padding: '18px 0 8px' }}><ProgressBar value={progress} label="计划完成度" /></div>}
           <div className={styles.list}>
             {tasks.length === 0 ? (

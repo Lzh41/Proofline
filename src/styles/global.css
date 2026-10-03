@@ -136,11 +136,7 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
-  background:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-    var(--paper);
-  background-size: 32px 32px;
+  background: var(--paper);
   color: var(--body);
   transition: color 150ms ease, background-color 150ms ease;
 }

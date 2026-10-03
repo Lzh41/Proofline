@@ -215,11 +215,7 @@
 .workspace {
   min-width: 0;
   min-height: calc(100vh - 36px);
-  background:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-    var(--paper);
-  background-size: 32px 32px;
+  background: var(--paper);
 }
 
 @media (min-width: 921px) {

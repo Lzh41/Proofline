@@ -38,7 +38,7 @@ async function openWithEmptyLocalStore(page: Page) {
   await page.goto('/');
   await page.evaluate((key) => localStorage.removeItem(key), STORAGE_KEY);
   await page.reload();
-  await expect(page.getByRole('heading', { name: '今天，稳稳推进。' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日任务', level: 1 })).toBeVisible();
   await expect(page.getByText('本地已保存')).toBeVisible();
 }
 
@@ -63,7 +63,7 @@ test.describe('析题个人学习闭环', () => {
       return snapshot?.problems.filter((problem) => problem.kind !== 'interview').length ?? -1;
     }).toBe(0);
     await page.getByRole('link', { name: '面试题', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '把零散八股，练成可表达的答案。' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '企业面试题库' })).toBeVisible();
     await expect.poll(async () => {
       const snapshot = await readSnapshot(page);
       return snapshot?.problems.filter((problem) => problem.kind === 'interview').length ?? 0;
@@ -126,7 +126,7 @@ test.describe('析题个人学习闭环', () => {
     // 练习完成由“运行全部样例”自动判定；这里直接恢复一次失败记录，继续验证错题与计划的持久化链路。
     // 先离开做题页，让 pagehide 草稿补刷完成，再改写失败记录，避免离开页面时的旧快照覆盖测试数据。
     await page.goto('/#/');
-    await expect(page.getByRole('heading', { name: '今天，稳稳推进。' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '今日任务', level: 1 })).toBeVisible();
     await page.evaluate(({ key, problemId }) => {
       const raw = localStorage.getItem(key);
       if (!raw) return;

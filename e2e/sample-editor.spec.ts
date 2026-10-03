@@ -466,10 +466,14 @@ test('桌面与 390px 窄屏保持单屏且长样例只在对话框内部滚动'
     });
     expect(pageLayout.documentHeight).toBeLessThanOrEqual(pageLayout.viewportHeight);
     expect(pageLayout.bodyHeight).toBeLessThanOrEqual(pageLayout.viewportHeight);
-    for (const box of [pageLayout.problem, pageLayout.code, pageLayout.coach]) {
+    for (const box of [pageLayout.problem, pageLayout.code]) {
       expect(box).toBeTruthy();
       expect(box?.top).toBeGreaterThanOrEqual(0);
       expect(box?.bottom).toBeLessThanOrEqual(pageLayout.viewportHeight);
+    }
+    if (pageLayout.coach) {
+      expect(pageLayout.coach.top).toBeGreaterThanOrEqual(0);
+      expect(pageLayout.coach.bottom).toBeLessThanOrEqual(pageLayout.viewportHeight);
     }
 
     await page.locator('[class*="solveProblemActions"]').getByRole('button', { name: '编辑样例' }).click();
@@ -581,6 +585,7 @@ test('拖动终端后实际高度随网格行扩展且底部不留空白', async
 
 test('题干与工作台布局拖动后保存并在重新打开时恢复', async ({ page }) => {
   await installProblem(page, { examples: [{ input: '1', output: '1' }] });
+  await installAiCoachProbe(page);
   const problemHandle = page.getByTestId('problem-area-resizer');
   const workbenchHandle = page.getByTestId('workbench-resizer');
   const before = await page.evaluate(() => ({
@@ -624,6 +629,7 @@ test('题干与工作台布局拖动后保存并在重新打开时恢复', async
 
   await page.reload();
   await expect(page.getByRole('heading', { name: /样例编辑测试题/ })).toBeVisible();
+  await installAiCoachProbe(page);
   await page.waitForTimeout(240);
   const restored = await page.evaluate(() => ({
     problemHeight: document.querySelector<HTMLElement>('[class*="solveProblem"]')?.getBoundingClientRect().height ?? 0,

@@ -124,12 +124,12 @@ export function KnowledgePage() {
           <div className={styles.noteReaderBody} dangerouslySetInnerHTML={{ __html: renderMarkdown(openedNote.content) }} />
         </article>
       ) : <>
-      <PageHeader eyebrow="知识库" title="把解题经验写成自己的工具箱。" description="笔记、代码模板、易错清单和关联题目统一检索；内容始终保存在本地。" actions={<div className="buttonRow"><button className="button buttonAccent" type="button" disabled={analyzing || !store.analyzeRecentPractice} onClick={() => void analyzeRecentPractice()}><BrainCircuit size={16} />{analyzing ? '分析中…' : 'AI 分析最近练习'}</button>{aiNoteCount > 0 && <button className="button buttonDanger" type="button" onClick={() => void deleteAiNotes()}><Trash2 size={15} />删除全部 AI 笔记 ({aiNoteCount})</button>}<button className="button buttonPrimary" type="button" onClick={() => dialogRef.current?.showModal()}><Plus size={16} />新建笔记</button></div>} />
+      <PageHeader eyebrow="知识库" title="知识库" description="笔记、代码模板、易错清单和关联题目统一检索；内容始终保存在本地。" actions={<div className="buttonRow"><button className="button buttonAccent" type="button" disabled={analyzing || !store.analyzeRecentPractice} onClick={() => void analyzeRecentPractice()}><BrainCircuit size={16} />{analyzing ? '分析中…' : 'AI 分析最近练习'}</button>{aiNoteCount > 0 && <button className="button buttonDanger" type="button" onClick={() => void deleteAiNotes()}><Trash2 size={15} />删除全部 AI 笔记 ({aiNoteCount})</button>}<button className="button buttonPrimary" type="button" onClick={() => dialogRef.current?.showModal()}><Plus size={16} />新建笔记</button></div>} />
       {message && <div className={styles.notice}>{message}</div>}
       <section className={styles.accentPanel} style={{ marginBottom: 30 }}>
         <Sparkles size={20} color="var(--accent)" />
-        <strong>让练习变成一篇能回看的笔记</strong>
-        <p>AI 只分析已经完成、且还没有进入历史分析的题目。它会把共同考点、每题思路、错误模式和下一轮复习清单整理到一篇本地笔记里，重复点击不会重复统计旧题。</p>
+        <strong>最近练习分析</strong>
+        <p>只分析已经完成、且还没有进入历史分析的题目，把共同考点、错误模式和下一轮复习清单整理到一篇本地笔记里。</p>
       </section>
       <div className={styles.twoColumn}>
         <section className={styles.section}>

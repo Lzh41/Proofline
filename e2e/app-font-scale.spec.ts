@@ -122,6 +122,16 @@ async function installFixture(page: Page) {
   }, { key: STORAGE_KEY, timestamp: now });
 }
 
+async function configureAiCoach(page: Page) {
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/useAppStore.ts');
+    await useAppStore.getState().initialize();
+    useAppStore.setState((state) => ({
+      settings: { ...state.settings, aiModel: 'e2e-font-scale-model', hasAiCredential: true, privacyConfirmed: true },
+    }));
+  });
+}
+
 async function layoutMetrics(page: Page) {
   return page.evaluate(() => {
     const root = document.querySelector<HTMLElement>('#root')!;
@@ -169,6 +179,7 @@ test('所有页面在应用字号放大后保持视口布局与文字倍率', as
         await page.evaluate((hash) => { window.location.hash = hash; }, route);
         await expect(page.locator('[class*="shell"]').first()).toBeVisible();
         await expect(page.locator('main').first()).toBeVisible();
+        if (route === `#/solve/${PROBLEM_ID}`) await configureAiCoach(page);
 
         const layout = await layoutMetrics(page);
         expect(layout.appScale, `${route} @ ${viewport.width}px @ ${scale}%`).toBe(String(scale));

@@ -68,6 +68,16 @@ async function installThemeFixture(page: Page) {
   }, { key: STORAGE_KEY, timestamp: now });
 }
 
+async function configureAiCoach(page: Page) {
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/useAppStore.ts');
+    await useAppStore.getState().initialize();
+    useAppStore.setState((state) => ({
+      settings: { ...state.settings, aiModel: 'e2e-layout-model', hasAiCredential: true, privacyConfirmed: true },
+    }));
+  });
+}
+
 async function useTheme(page: Page, theme: 'light' | 'dark') {
   const current = await page.locator('html').getAttribute('data-theme');
   if (current !== theme) {
@@ -99,6 +109,19 @@ async function inspectSolveLayout(page: Page) {
   });
 }
 
+async function inspectSoloSolveLayout(page: Page) {
+  return page.evaluate(() => {
+    const workbench = document.querySelector<HTMLElement>('[class*="solveWorkbench"]');
+    const code = workbench?.querySelector<HTMLElement>('[class*="codeWorkbench"]');
+    return {
+      rows: workbench ? getComputedStyle(workbench).gridTemplateRows : '',
+      workbenchHeight: workbench?.getBoundingClientRect().height ?? 0,
+      codeHeight: code?.getBoundingClientRect().height ?? 0,
+      childCount: workbench?.children.length ?? 0,
+    };
+  });
+}
+
 test('深浅主题做题页在桌面与窄屏都无重叠和横向溢出', async ({ page }) => {
   test.setTimeout(90_000);
   await installThemeFixture(page);
@@ -111,6 +134,7 @@ test('深浅主题做题页在桌面与窄屏都无重叠和横向溢出', async
   ]) {
     await page.setViewportSize(viewport);
     await page.goto('/#/solve/theme-two-sum');
+    await configureAiCoach(page);
     await expect(page.getByRole('heading', { name: /两数之和/ })).toBeVisible();
     await expect(page.locator('.monaco-editor')).toBeVisible({ timeout: 15_000 });
 
@@ -140,4 +164,24 @@ test('深浅主题做题页在桌面与窄屏都无重叠和横向溢出', async
   await page.reload();
   await expect(page.getByRole('button', { name: '切换到浅色主题' })).toBeVisible();
   await expect.poll(() => page.locator('.monaco-editor').evaluate((element) => getComputedStyle(element).backgroundColor)).toBe('rgb(24, 23, 21)');
+});
+
+test('未配置 AI 时各断点的单栏编辑器填满工作台', async ({ page }) => {
+  await installThemeFixture(page);
+
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 768, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/#/solve/theme-two-sum');
+    await expect(page.getByRole('heading', { name: /两数之和/ })).toBeVisible();
+    await expect(page.getByText('AI 反馈按需开启')).toBeVisible();
+
+    const layout = await inspectSoloSolveLayout(page);
+    expect(layout.childCount).toBe(1);
+    expect(layout.rows.trim().split(/\s+/)).toHaveLength(1);
+    expect(Math.abs(layout.workbenchHeight - layout.codeHeight)).toBeLessThanOrEqual(2);
+  }
 });

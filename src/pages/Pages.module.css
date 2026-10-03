@@ -153,7 +153,7 @@
   margin-bottom: 24px;
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--info) 22%, transparent);
-  border-left: 3px solid var(--info);
+  border-left: 0;
   border-radius: 0 6px 6px 0;
   background: var(--info-soft);
   color: var(--body);
@@ -315,7 +315,7 @@
   padding: 20px 22px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-top: 3px solid var(--accent);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line));
   border-radius: 7px;
   background: var(--surface);
   box-shadow: var(--inset-highlight);
@@ -508,7 +508,7 @@
   padding: 20px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-top: 3px solid var(--platform-tone);
+  border-top: 1px solid color-mix(in srgb, var(--platform-tone) 48%, var(--line));
   border-radius: 7px;
   background: var(--surface);
   box-shadow: var(--inset-highlight);
@@ -898,8 +898,8 @@
   padding: 12px;
   overflow: auto;
   border: 1px solid color-mix(in srgb, var(--info) 22%, transparent);
-  border-left: 3px solid var(--info);
-  border-radius: 0 5px 5px 0;
+  border-left: 1px solid var(--line-strong);
+  border-radius: 5px;
   background: var(--panel-info-elevated);
   color: var(--body);
   white-space: pre-wrap;
@@ -1011,8 +1011,8 @@
 
 .aiProse h3 {
   margin: 14px 0 2px;
-  padding-left: 10px;
-  border-left: 2px solid var(--info);
+  padding: 0 0 4px;
+  border-bottom: 1px solid var(--line);
   color: var(--ink);
   font-family: var(--font-reading);
   font-size: 15px;
@@ -1139,7 +1139,7 @@
   margin: 0 18px 18px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
-  border-left: 3px solid var(--danger);
+  border-left: 2px solid color-mix(in srgb, var(--danger) 78%, var(--line));
   background: var(--danger-soft);
   color: var(--danger);
   font-weight: 700;
@@ -1437,7 +1437,7 @@
 .problemReaderText blockquote {
   margin: 14px 0;
   padding: 9px 13px;
-  border-left: 3px solid var(--info);
+  border-top: 1px solid color-mix(in srgb, var(--info) 45%, var(--line));
   color: var(--muted);
   background: var(--info-soft);
 }
@@ -1459,8 +1459,8 @@
   padding: 12px 14px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 6px 6px 0;
+  border-left: 1px solid var(--line-strong);
+  border-radius: 6px;
   color: var(--body);
   background: var(--surface-elevated);
   font-family: var(--font-code);
@@ -1565,8 +1565,8 @@
   min-width: 0;
   padding: 10px 11px;
   border: 1px solid var(--line);
-  border-left: 2px solid var(--warning);
-  border-radius: 0 5px 5px 0;
+  border-left: 1px solid var(--line);
+  border-radius: 5px;
   background: var(--surface-elevated);
 }
 
@@ -1614,6 +1614,9 @@
   grid-template-columns: 1fr;
 }
 
+.solveWorkbenchSolo { grid-template-columns: 1fr; }
+.solveWorkbench.solveWorkbenchSolo { grid-template-rows: minmax(0, 1fr); }
+
 .codeWorkbench,
 .aiCoachPane {
   min-width: 0;
@@ -1629,6 +1632,25 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
+
+.codeWorkbenchSolo { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+
+.aiSetupStrip {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--accent-soft) 28%, var(--surface));
+}
+
+.aiSetupStrip > svg { flex: 0 0 auto; color: var(--accent); }
+.aiSetupStrip > div { min-width: 0; display: grid; gap: 2px; }
+.aiSetupStrip strong { color: var(--ink); font-size: 10px; }
+.aiSetupStrip span { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.aiSetupStrip :global(.button) { flex: 0 0 auto; margin-left: auto; }
 
 .codeWorkbench .solveToolbar {
   min-height: 50px;
@@ -1793,7 +1815,7 @@
   padding: 8px 9px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--info);
+  border-left: 0;
   border-radius: 0 5px 5px 0;
   background: var(--panel-info);
   color: var(--info);
@@ -3148,8 +3170,8 @@
   gap: 8px;
   padding: 9px 10px 10px;
   border: 1px solid var(--line);
-  border-left: 2px solid var(--warning);
-  border-radius: 0 5px 5px 0;
+  border-left: 1px solid var(--line);
+  border-radius: 5px;
   background: var(--surface-elevated);
 }
 
@@ -3260,7 +3282,7 @@
 .noteReaderBody li { margin: .35em 0; }
 .noteReaderBody strong { color: var(--ink); font-weight: 750; }
 .noteReaderBody a { color: var(--info); text-decoration: underline; text-underline-offset: 3px; }
-.noteReaderBody blockquote { margin: 1.2em 0; padding: 10px 16px; border-left: 3px solid var(--accent); background: var(--subtle-fill); color: var(--muted); }
+.noteReaderBody blockquote { margin: 1.2em 0; padding: 10px 16px; border-top: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--subtle-fill); color: var(--muted); }
 .noteReaderBody code { padding: .15em .35em; border: 1px solid var(--line); border-radius: 3px; background: var(--subtle-fill); color: var(--accent-deep); font-family: 'JetBrains Mono', Consolas, monospace; font-size: .86em; }
 .noteReaderBody pre { margin: 1.25em 0; padding: 16px 18px; overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface-strong); color: var(--ink); font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; line-height: 1.65; }
 .noteReaderBody pre code { padding: 0; border: 0; background: transparent; color: inherit; }
@@ -4397,7 +4419,7 @@
   display: flex;
   align-items: center;
   padding: 0 12px;
-  border-left: 2px solid var(--info);
+  border: 1px solid var(--line);
   color: var(--muted);
   background: var(--info-soft);
   font-size: 9px;
@@ -4639,8 +4661,8 @@
 .batchQueueRow {
   gap: 9px;
   padding: 12px 13px;
-  border-left: 3px solid color-mix(in srgb, var(--accent) 54%, var(--line));
-  border-radius: 0 6px 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   background: color-mix(in srgb, var(--surface-elevated) 58%, var(--subtle-fill));
 }
 
@@ -4769,7 +4791,7 @@
 .problemReaderText blockquote {
   margin: 14px 0;
   padding: 8px 13px;
-  border-left: 3px solid var(--info);
+  border-top: 1px solid color-mix(in srgb, var(--info) 45%, var(--line));
   background: var(--info-soft);
   color: var(--muted);
 }
@@ -4792,8 +4814,8 @@
   padding: 12px 14px;
   overflow: auto;
   border: 1px solid var(--line-strong);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 5px 5px 0;
+  border-left: 1px solid var(--line-strong);
+  border-radius: 5px;
   background: var(--editor-bg);
   color: var(--editor-ink);
   font-family: var(--font-code);
@@ -5023,7 +5045,8 @@
   gap: 8px;
   padding: 17px clamp(18px, 3vw, 34px);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
+  border-left: 1px solid var(--line);
+  border-top: 2px solid color-mix(in srgb, var(--accent) 30%, var(--line));
   border-radius: 4px;
   background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 7%, var(--surface)), var(--surface) 58%);
 }
@@ -5151,7 +5174,7 @@
 .vocabularyStartPanel > p,
 .vocabularyComplete > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .vocabularyTargetLine { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.vocabularyTargetLine > div { padding-left: 12px; border-left: 1px solid var(--accent); }
+.vocabularyTargetLine > div { padding-left: 12px; border-left: 1px solid var(--line); }
 .vocabularyTargetLine small { display: block; color: var(--quiet); font-size: 10px; }
 .vocabularyTargetLine strong { display: block; margin-top: 6px; color: var(--ink); font-family: var(--font-code); font-size: 27px; }
 .vocabularyTargetLine strong span { color: var(--muted); font-family: var(--font-body); font-size: 11px; }
@@ -5226,6 +5249,7 @@
 @media (max-width: 760px) {
   .todayMetrics,
   .vocabularyMetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .todayMetrics > :last-child { grid-column: 1 / -1; }
   .vocabularyToolbar { display: flex; align-items: stretch; flex-direction: column; }
   .vocabularyToolbar .modeTabs { width: 100%; }
   .vocabularyToolbar > .button { width: 100%; justify-content: center; }

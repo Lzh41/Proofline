@@ -113,7 +113,7 @@ export function PlanPage() {
 
   return (
     <>
-      <PageHeader eyebrow="每日计划" title="让目标具体到下一道题。" description="计划会先放入到期复习题，再按关注专题和难度比例选择个人题库中的新题。" actions={<><button className="button" type="button" onClick={save}><Save size={15} />保存目标</button><button className="button buttonPrimary" type="button" onClick={generate}><RefreshCw size={15} />生成今日任务</button></>} />
+      <PageHeader eyebrow="每日计划" title="每日计划" description="先安排到期复习，再按关注专题和难度比例选择个人题库中的题目。" actions={<><button className="button" type="button" onClick={save}><Save size={15} />保存目标</button><button className="button buttonPrimary" type="button" onClick={generate}><RefreshCw size={15} />生成今日任务</button></>} />
       {(message || targetError) && <div className={`${styles.notice} ${totalRatio !== 100 || targetError ? styles.noticeDanger : ''}`}>{totalRatio === 100 && !targetError ? <Check size={17} /> : <CalendarCheck2 size={17} />}{targetError || message}</div>}
       <div className={`${styles.twoColumn} ${styles.balanced}`}>
         <section className={styles.paperPanel}>

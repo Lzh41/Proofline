@@ -1797,8 +1797,8 @@ export function SolvePage() {
           }}
         />
 
-        <div className={styles.solveWorkbench} style={resizeStyle}>
-          <section className={styles.codeWorkbench}>
+        <div className={`${styles.solveWorkbench} ${!aiConfigured && coachTurns.length === 0 ? styles.solveWorkbenchSolo : ''}`} style={resizeStyle}>
+          <section className={`${styles.codeWorkbench} ${!aiConfigured && coachTurns.length === 0 ? styles.codeWorkbenchSolo : ''}`}>
             <div className={styles.solveToolbar}>
               <div className={styles.codeWorkbenchTitle}>
                 <Code2 size={16} />
@@ -1838,6 +1838,17 @@ export function SolvePage() {
                 <button className="iconButton" type="button" title="还原 (Ctrl+Y)" aria-label="还原" disabled={!editorHistory.canRedo} onClick={redoCode}><Redo2 size={15} /></button>
               </div>
             </div>
+
+            {!aiConfigured && coachTurns.length === 0 && (
+              <div className={styles.aiSetupStrip} role="status">
+                <Bot size={16} />
+                <div>
+                  <strong>AI 反馈按需开启</strong>
+                  <span>本地做题、样例运行和复盘不受影响；需要点评时再配置 AI 服务。</span>
+                </div>
+                <button className="button" type="button" onClick={() => navigate('/settings')}>前往设置</button>
+              </div>
+            )}
 
             <div className={styles.solveEditor} key={`${problem.id}:${language}`}>
               <CodeEditorSurface
@@ -1916,7 +1927,7 @@ export function SolvePage() {
 
           </section>
 
-          <div
+          {(aiConfigured || coachTurns.length > 0) && <div
             className={styles.workbenchResizeHandle}
             role="separator"
             aria-orientation="vertical"
@@ -1936,8 +1947,8 @@ export function SolvePage() {
                 updateWorkbenchCodeWidth(event.key === 'Home' ? 300 : null);
               }
             }}
-          />
-          <aside className={styles.aiCoachPane}>
+          />}
+          {(aiConfigured || coachTurns.length > 0) && <aside className={styles.aiCoachPane}>
             <div className={styles.aiCoachHeader}>
               <div className={styles.aiCoachIdentity}>
                 <span><Bot size={17} /></span>
@@ -2140,7 +2151,7 @@ export function SolvePage() {
               {aiError && !busyCoach && <div className={styles.aiStreamMessage}>{aiError}</div>}
             </div>
 
-          </aside>
+          </aside>}
         </div>
       </div>
 

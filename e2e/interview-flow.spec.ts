@@ -78,7 +78,7 @@ test('面试题筛选、草稿恢复、离线复盘和错题闭环', async ({ pa
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/#/interviews');
 
-  await expect(page.getByRole('heading', { name: '把零散八股，练成可表达的答案。' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '企业面试题库' })).toBeVisible();
   await page.getByRole('textbox', { name: '检索面试题' }).fill('企业级缓存一致性');
   await expect(page.getByText(QUESTION)).toBeVisible();
   await page.getByRole('button', { name: `练习：${QUESTION}` }).click();

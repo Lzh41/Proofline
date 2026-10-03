@@ -34,7 +34,7 @@ export function AnalyticsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="学习统计" title="看见进步，也看见惯性。" description="只统计实际练习和复习记录。样例结果与官方判题分开，不会混淆通过率。" />
+      <PageHeader eyebrow="学习统计" title="学习统计" description="只统计实际练习和复习记录。样例结果与官方判题分开，不会混淆通过率。" />
       <div className={styles.metrics}>
         <Metric label="算法通过率" value={`${accuracy}%`} detail={`${passed.length}/${completed.length} 次已结束尝试`} tone="accent" />
         <Metric label="算法平均用时" value={formatDuration(avgSeconds)} detail={`平均提示 ${avgHint.toFixed(1)} 级`} />

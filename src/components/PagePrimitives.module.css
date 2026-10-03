@@ -19,19 +19,6 @@
   background: linear-gradient(var(--accent), var(--line-strong) 72%, transparent);
 }
 
-.pageHeader::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 14px;
-  width: 7px;
-  height: 7px;
-  border: 1px solid var(--accent);
-  border-radius: 50%;
-  background: var(--paper);
-  box-shadow: 0 0 0 4px var(--accent-soft), 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
 .eyebrow {
   margin: 0 0 8px;
   color: var(--accent);
@@ -73,20 +60,8 @@
   justify-content: space-between;
   align-items: center;
   gap: 20px;
-  padding: 0 0 12px 14px;
+  padding: 0 0 12px;
   border-bottom: 1px solid var(--line-strong);
-}
-
-.sectionHeader::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: -3px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .sectionHeader > div {
@@ -147,26 +122,13 @@
   min-height: 120px;
   padding: 18px 8px 14px 16px;
   border-top: 1px solid var(--metric-tone);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--metric-tone) 5%, transparent), transparent 72%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--metric-tone) 3%, transparent), transparent 72%);
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
-}
-
-.metric::before {
-  content: "";
-  position: absolute;
-  top: -4px;
-  left: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--paper);
-  border: 1px solid var(--metric-tone);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--metric-tone) 12%, transparent);
 }
 
 .metric:hover {
   border-color: var(--metric-tone);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--metric-tone) 9%, transparent), transparent 78%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--metric-tone) 5%, transparent), transparent 78%);
   transform: translateY(-2px);
 }
 
@@ -233,7 +195,7 @@
   border-radius: inherit;
   background: var(--success);
   box-shadow: 0 0 14px color-mix(in srgb, var(--success) 18%, transparent);
-  transition: width 260ms cubic-bezier(.2, .75, .25, 1);
+  transition: none;
 }
 
 .track span::after {

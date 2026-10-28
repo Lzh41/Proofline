@@ -319,6 +319,31 @@ export interface BackupManifest {
   includesPlatformCookies: false;
 }
 
+/**
+ * 本机 localhost 工具（看板、工作台这类一点就开的本地 Web UI）。
+ * 只登记可直接打开的页面，不放需要先起容器/集群的 docker 服务。
+ */
+export interface LocalTool {
+  id: string;
+  name: string;
+  /** 分组标签，用于列表筛选，例如 评测 / 论文 / 集群 / 标注。 */
+  category: string;
+  description: string;
+  /** 浏览器里直接打开的地址，含端口。 */
+  url: string;
+  /** 探测在线状态用的本地端口；没有端口（纯静态文件）时省略。 */
+  port?: number;
+  /** 端口没在监听时拉起服务的命令，在 workingDirectory 下执行。 */
+  launchCommand?: string;
+  workingDirectory?: string;
+  /** seed = 首次内置清单；manual = 自己新增。 */
+  origin?: 'seed' | 'manual';
+  /** 置顶后排在清单最前面。 */
+  pinned?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AppDataSnapshot {
   schemaVersion: 2;
   problems: Problem[];
@@ -333,6 +358,7 @@ export interface AppDataSnapshot {
   vocabularyProgress: VocabularyProgress[];
   vocabularyReviews: VocabularyReview[];
   aiGenerations: AiGeneration[];
+  localTools: LocalTool[];
   settings: AppSettings;
   updatedAt: number;
 }

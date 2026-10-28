@@ -20,13 +20,14 @@ import {
   BookOpenCheck,
 } from 'lucide-react';
 import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
-import { useStoreView } from '../app/storeAdapter';
-import { EmptyState, Metric, PageHeader } from '../components/PagePrimitives';
+import { relativeDays, useStoreView } from '../app/storeAdapter';
+import { EmptyState, Metric, PageHeader, SectionHeader } from '../components/PagePrimitives';
 import { findProblemCodeSnippet } from './SolvePage';
 import { formatProblemSampleResult } from '../lib/problemRunner';
 import { EDITOR_FONT_SIZES } from '../lib/data';
 import type { Problem, ProblemExample, ProblemSampleRunResult, EditorFontSize } from '../types';
 import type { InterviewCoachIntent } from '../lib/ai';
+import { redoShortcutLabel, undoShortcutLabel } from '../lib/os';
 import styles from './Pages.module.css';
 
 const MonacoEditor = lazy(() => import('../lib/localMonaco'));
@@ -257,8 +258,8 @@ function AlgorithmReview({ problem, onDone }: { problem: Problem; onDone: () => 
                 ? <button className="iconButton" title="开始计时" type="button" onClick={() => setRunning(true)}><Target size={14} /></button>
                 : <button className="iconButton" title="暂停计时" type="button" onClick={() => setRunning(false)}><Square size={12} /></button>}
               <button className="button buttonAccent" type="button" disabled={runningCode} onClick={() => void runSamples()}><TestTube2 size={14} />{runningCode ? '运行中' : '运行全部样例'}</button>
-              <button className="iconButton" type="button" title="撤销 (Ctrl+Z)" disabled={!editorHistory.canUndo} onClick={undoCode}><Undo2 size={15} /></button>
-              <button className="iconButton" type="button" title="还原 (Ctrl+Y)" disabled={!editorHistory.canRedo} onClick={redoCode}><Redo2 size={15} /></button>
+              <button className="iconButton" type="button" title={`撤销 (${undoShortcutLabel()})`} disabled={!editorHistory.canUndo} onClick={undoCode}><Undo2 size={15} /></button>
+              <button className="iconButton" type="button" title={`还原 (${redoShortcutLabel()})`} disabled={!editorHistory.canRedo} onClick={redoCode}><Redo2 size={15} /></button>
             </div>
           </div>
 
@@ -495,6 +496,15 @@ export function MistakesPage() {
   const algorithmReviewed = reviewHistory?.algorithmReviewedIds?.length ?? 0;
   const interviewReviewed = reviewHistory?.interviewReviewedIds?.length ?? 0;
 
+  /** 按 1/3/7/14/30 天排期已经到点的错题，直接从这里进去重做。 */
+  const dueMistakes = useMemo(() => {
+    const now = Date.now();
+    return store.mistakes
+      .filter((mistake) => mistake.status !== 'mastered' && mistake.nextReviewAt <= now)
+      .sort((a, b) => a.nextReviewAt - b.nextReviewAt)
+      .slice(0, 8);
+  }, [store.mistakes]);
+
   const startAlgorithmReview = useCallback(() => {
     if (!store.pickRandomReviewProblem) { setMessage('复习功能尚未就绪。'); return; }
     const problem = store.pickRandomReviewProblem('algorithm');
@@ -529,9 +539,8 @@ export function MistakesPage() {
   return (
     <>
       <PageHeader
-        eyebrow="复习"
-        title="温故而知新，随机巩固已练过的题目。"
-        description="从你练习过的题目中随机抽取一道重新做一遍。算法题靠自己通过样例，面试题由 AI 对照参考答案打分。系统会保证不反复抽同一道，并尽可能把所有题目都复习一遍。"
+        title="复习"
+        description="随机抽一道你练过的题重做一遍。算法题靠自己通过样例，面试题由 AI 对照参考答案打分；系统尽量不重复抽同一道。"
       />
       {message && <div className={styles.notice}><Check size={17} />{message}</div>}
 
@@ -541,6 +550,38 @@ export function MistakesPage() {
         <Metric label="算法已复习" value={algorithmReviewed} />
         <Metric label="面试已复习" value={interviewReviewed} />
       </div>
+
+      {dueMistakes.length > 0 && (
+        <section className={styles.section}>
+          <SectionHeader title="到期错题" meta={`${dueMistakes.length} 道按 1 / 3 / 7 / 14 / 30 天排期到点`} />
+          <div className={styles.list}>
+            {dueMistakes.map((mistake) => {
+              const problem = store.problems.find((item) => item.id === mistake.problemId);
+              if (!problem) return null;
+              return (
+                <div className={styles.row} key={mistake.id}>
+                  <div className={styles.rowMain}>
+                    <strong>{problem.title}</strong>
+                    <p>{mistake.rootCause || '错因未记录'} · {relativeDays(mistake.nextReviewAt)}</p>
+                  </div>
+                  <div className={styles.rowActions}>
+                    <button
+                      className="button buttonPrimary"
+                      type="button"
+                      onClick={() => {
+                        setReviewKind(problem.kind === 'interview' ? 'interview' : 'algorithm');
+                        setReviewProblem(problem);
+                      }}
+                    >
+                      <Target size={14} />开始复习
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {totalPracticed === 0 ? (
         <EmptyState

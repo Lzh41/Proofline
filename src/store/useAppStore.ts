@@ -10,6 +10,7 @@ import type {
   FinishInterviewInput,
   KnowledgeNote,
   LearningStatistics,
+  LocalTool,
   Mistake,
   PlatformSource,
   PlatformBatchFetchResult,
@@ -219,6 +220,9 @@ interface AppStore extends AppDataSnapshot {
   createKnowledgeNote: (input: Partial<KnowledgeNote>) => Promise<KnowledgeNote>;
   updateKnowledgeNote: (id: string, patch: Partial<KnowledgeNote>) => Promise<void>;
   deleteKnowledgeNote: (id: string) => Promise<void>;
+  createLocalTool: (input: Partial<LocalTool>) => Promise<LocalTool>;
+  updateLocalTool: (id: string, patch: Partial<LocalTool>) => Promise<void>;
+  deleteLocalTool: (id: string) => Promise<void>;
   savePlan: (input: Partial<DailyPlan>) => Promise<DailyPlan>;
   generateDailyPlan: (options?: Record<string, unknown>) => Promise<DailyPlan>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
@@ -270,6 +274,7 @@ function snapshotFrom(state: AppStore): AppDataSnapshot {
     vocabularyProgress: state.vocabularyProgress,
     vocabularyReviews: state.vocabularyReviews,
     aiGenerations: state.aiGenerations,
+    localTools: state.localTools,
     settings: state.settings,
     updatedAt: Date.now(),
   };
@@ -1013,6 +1018,41 @@ export const useAppStore = create<AppStore>((set, get) => {
     deleteKnowledgeNote: async (id) => {
       await waitForInitialization();
       set({ knowledgeNotes: get().knowledgeNotes.filter((item) => item.id !== id) });
+      await saveState(get, set);
+    },
+    createLocalTool: async (input) => {
+      await waitForInitialization();
+      const now = Date.now();
+      const tool: LocalTool = {
+        id: input.id ?? createId('tool'),
+        name: input.name?.trim() || '未命名工具',
+        category: input.category?.trim() || '其他',
+        description: input.description?.trim() ?? '',
+        url: input.url?.trim() ?? '',
+        createdAt: now,
+        updatedAt: now,
+        origin: 'manual',
+      };
+      if (input.port !== undefined) tool.port = input.port;
+      if (input.launchCommand?.trim()) tool.launchCommand = input.launchCommand.trim();
+      if (input.workingDirectory?.trim()) tool.workingDirectory = input.workingDirectory.trim();
+      if (input.pinned === true) tool.pinned = true;
+      set({ localTools: [tool, ...get().localTools] });
+      await saveState(get, set);
+      return tool;
+    },
+    updateLocalTool: async (id, patch) => {
+      await waitForInitialization();
+      set({
+        localTools: get().localTools.map((item) => item.id === id
+          ? { ...item, ...patch, id, createdAt: item.createdAt, origin: item.origin ?? 'manual', updatedAt: Date.now() }
+          : item),
+      });
+      await saveState(get, set);
+    },
+    deleteLocalTool: async (id) => {
+      await waitForInitialization();
+      set({ localTools: get().localTools.filter((item) => item.id !== id) });
       await saveState(get, set);
     },
     savePlan: async (input) => {

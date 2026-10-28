@@ -20,7 +20,10 @@ export default defineConfig({
     },
   },
   build: {
-    target: 'esnext',
+    // macOS 侧跑的是 WKWebView（Safari 内核），Windows 侧是 WebView2（Chromium）。
+    // 原来写 esnext 只保证 Chromium 能跑，老一点 macOS 的 WKWebView 会撞上没转译的语法；
+    // 取两者交集，让 esbuild 按 safari15 降级。
+    target: ['safari15', 'chrome110'],
     minify: 'esbuild',
     sourcemap: false,
   },

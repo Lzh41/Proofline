@@ -150,7 +150,7 @@ export function PlatformsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="官方题库" title="官方题库" description="登录、运行、提交和判题始终发生在官方页面；Proofline 只记录你主动绑定的单题与学习过程。" />
+      <PageHeader eyebrow="外部题库" title="平台" description="登录、运行、提交和判题始终发生在官方页面；Proofline 只记录你主动绑定的单题与学习过程。" />
       <div className={styles.notice}><ShieldCheck size={18} />四个平台使用相互隔离的登录目录，批量导入支持按队列连续读取；官方页面无法读取本地题库、文件和 AI 密钥。</div>
       <section className={`${styles.section} ${styles.batchImport}`} aria-labelledby="batch-import-title">
         <div className={styles.batchImportHead}>
@@ -159,7 +159,6 @@ export function PlatformsPage() {
             <h2 id="batch-import-title">按题号批量加入个人题库</h2>
             <p>登录只用于官网刷题；这里仅请求公开目录和题面，不读取账号、Cookie 或提交记录。</p>
           </div>
-          <Download size={22} aria-hidden="true" />
         </div>
         <div className={styles.batchQueue} aria-label="连续导入平台队列">
           {batchRows.map((row, index) => (

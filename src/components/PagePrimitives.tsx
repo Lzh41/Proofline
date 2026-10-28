@@ -4,7 +4,8 @@ import clsx from 'clsx';
 import styles from './PagePrimitives.module.css';
 
 interface PageHeaderProps {
-  eyebrow: string;
+  /** 可选：与模块名重复时就不传，免得同一件事写两行。 */
+  eyebrow?: string;
   title: string;
   description?: string;
   actions?: ReactNode;
@@ -14,7 +15,7 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
   return (
     <header className={styles.pageHeader}>
       <div>
-        <p className={styles.eyebrow}>{eyebrow}</p>
+        {eyebrow && <p className={styles.eyebrow}>{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p className={styles.description}>{description}</p>}
       </div>

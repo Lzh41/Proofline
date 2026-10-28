@@ -45,8 +45,8 @@
   --control-hover: #fcfaf6;
   --hover-fill: rgba(20, 20, 19, .035);
   --subtle-fill: rgba(20, 20, 19, .02);
-  --panel-info: #edf3f4;
-  --panel-info-elevated: #f7faf9;
+  --panel-info: #f1ece1;
+  --panel-info-elevated: #f7f3ea;
   --editor-bg: #ffffff;
   --editor-ink: #2f2f2c;
   --editor-line: #e6dfd8;
@@ -60,6 +60,27 @@
   --titlebar-active: rgba(20, 20, 19, .1);
   --sidebar-shadow: 12px 0 32px rgba(20, 20, 19, .06);
   --shadow: 0 12px 30px rgba(20, 20, 19, .1);
+
+  /* 补齐历史遗留引用：这几个名字在样式里用过但从没定义，导致声明静默失效。 */
+  --font-body: var(--font-reading);
+  --fg: var(--ink);
+  --accent-ink: var(--accent-contrast);
+  --warning-soft: rgba(123, 90, 13, .12);
+}
+
+/* macOS：Segoe UI / 微软雅黑 在这套系统里不存在，不换掉的话中文会掉到默认衬线字体，
+ * 英文落到 PingFang 的拉丁字形上，和 Windows 侧看起来是两套东西。
+ * 平台标记由 public/theme-boot.js 在首帧前写到 <html data-os> 上。 */
+:root[data-os="macos"] {
+  font-family: -apple-system, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  --font-reading: "Iowan Old Style", "Songti SC", "Noto Serif SC", "STSong", serif;
+  --font-code: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+/* WKWebView 默认不做亚像素抗锯齿，细字重（本项目大量用 750 以外的 400/550）会显脏。 */
+:root[data-os="macos"] body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 :root[data-theme="dark"] {
@@ -101,8 +122,8 @@
   --control-hover: #2a2824;
   --hover-fill: rgba(255, 255, 255, .025);
   --subtle-fill: rgba(255, 255, 255, .012);
-  --panel-info: #1b252a;
-  --panel-info-elevated: #202d33;
+  --panel-info: #221f1a;
+  --panel-info-elevated: #28241e;
   --editor-bg: #1f1e1b;
   --editor-ink: #f5f2eb;
   --editor-line: #34312d;
@@ -155,7 +176,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
-  outline: 2px solid var(--info);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -319,7 +340,7 @@ body::-webkit-scrollbar {
 .textarea:focus {
   border-color: var(--info);
   background: var(--control);
-  box-shadow: 0 0 0 3px var(--info-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .textarea {

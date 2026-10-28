@@ -104,7 +104,7 @@
   border-radius: 3px;
   color: var(--muted);
   background: var(--subtle-fill);
-  font-size: 9px;
+  font-size: 11px;
   transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
 }
 
@@ -121,10 +121,10 @@
   min-height: 25px;
   padding: 3px 8px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--surface-strong);
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -185,7 +185,7 @@
   overflow: hidden;
   padding: 25px;
   border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--surface-elevated);
   color: var(--ink);
   box-shadow: var(--inset-highlight), var(--shadow);
@@ -316,7 +316,7 @@
   overflow: hidden;
   border: 1px solid var(--line);
   border-top: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line));
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--surface);
   box-shadow: var(--inset-highlight);
 }
@@ -361,7 +361,7 @@
 
 .kicker {
   color: var(--accent);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -382,7 +382,7 @@
 
 .batchImportForm label > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -403,7 +403,7 @@
 
 .batchImportAction small {
   color: var(--quiet);
-  font-size: 9px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -419,7 +419,7 @@
   gap: 16px;
   margin-bottom: 8px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .batchProgressMeta strong { color: var(--ink); }
@@ -430,7 +430,7 @@
   height: 5px;
   overflow: hidden;
   border: 0;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--line);
   accent-color: var(--accent);
 }
@@ -452,7 +452,7 @@
   padding: 10px 12px;
   background: var(--surface-elevated);
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .batchStats strong {
@@ -473,7 +473,7 @@
   color: var(--danger);
   background: transparent;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -494,7 +494,7 @@
   gap: 12px;
   padding: 8px 4px;
   border-bottom: 1px solid var(--line);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .failureList span { color: var(--muted); overflow-wrap: anywhere; }
@@ -509,7 +509,7 @@
   overflow: hidden;
   border: 1px solid var(--line);
   border-top: 1px solid color-mix(in srgb, var(--platform-tone) 48%, var(--line));
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--surface);
   box-shadow: var(--inset-highlight);
   transition: transform 170ms ease, border-color 170ms ease, box-shadow 170ms ease;
@@ -566,7 +566,7 @@
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .statusLine i {
@@ -630,7 +630,7 @@
 
 .timelineItem span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .solveGrid {
@@ -777,11 +777,11 @@
   padding: 9px;
   text-align: left;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   transition: color 140ms ease, border-color 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
@@ -820,13 +820,13 @@
 
 .hintButton strong {
   color: var(--ink);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.3;
 }
 
 .hintButton small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -836,7 +836,7 @@
   align-items: center;
   color: var(--info);
   font-family: var(--font-code);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -871,7 +871,7 @@
 .aiTutorIntro span {
   min-width: 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
   text-align: right;
 }
@@ -899,7 +899,7 @@
   overflow: auto;
   border: 1px solid color-mix(in srgb, var(--info) 22%, transparent);
   border-left: 1px solid var(--line-strong);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--panel-info-elevated);
   color: var(--body);
   white-space: pre-wrap;
@@ -938,7 +938,7 @@
 .aiStreamHeader small {
   overflow: hidden;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -946,7 +946,7 @@
 .aiStreamHeader button {
   min-height: 28px;
   padding: 0 8px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .aiStatusGroup {
@@ -955,7 +955,7 @@
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -990,7 +990,7 @@
 
 .aiLessonEmpty svg { color: var(--info); opacity: .8; }
 .aiLessonEmpty strong { color: var(--ink); font-size: 13px; }
-.aiLessonEmpty span { max-width: 520px; font-size: 10px; line-height: 1.65; }
+.aiLessonEmpty span { max-width: 520px; font-size: 11px; line-height: 1.65; }
 
 .aiStreamWaiting {
   padding: 22px;
@@ -1046,16 +1046,25 @@
 .aiNumbered b {
   color: var(--info);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .aiProseGap { height: 5px; }
+
+.aiCodeSame {
+  margin: 6px 0;
+  padding: 6px 9px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--quiet);
+  font-size: 11px;
+  line-height: 1.55;
+}
 
 .aiCodeBlock {
   margin: 15px 0;
   overflow: hidden;
   border: 1px solid var(--line-strong);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--editor-bg);
   white-space: normal;
 }
@@ -1070,7 +1079,7 @@
   color: var(--accent);
   background: var(--surface-elevated);
   font-family: var(--font-code);
-  font-size: 9px;
+  font-size: 11px;
   text-transform: uppercase;
 }
 
@@ -1085,7 +1094,7 @@
   min-height: 26px;
   padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--surface);
   color: var(--muted);
   font: inherit;
@@ -1123,7 +1132,7 @@
 .aiTutorActions > span {
   color: var(--muted);
   font-family: var(--font-code);
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -1176,9 +1185,37 @@
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: var(--solve-problem-row, clamp(300px, 42dvh, 380px)) 8px minmax(0, 1fr);
+  grid-template-rows: var(--solve-problem-row, clamp(340px, 46dvh, 460px)) 8px minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
+}
+
+/* 复习态多一行横幅，栅格跟着多一行，非复习态仍是两行。 */
+.solveProblem[data-reviewing='true'] {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.solveReviewBanner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 10px 0 18px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--body);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.solveReviewBanner span {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
 }
 
 .solveProblem {
@@ -1237,8 +1274,8 @@
   overflow-wrap: anywhere;
   color: var(--ink);
   font-family: var(--font-reading);
-  font-size: 16px;
-  line-height: 1.25;
+  font-size: 20px;
+  line-height: 1.3;
   white-space: normal;
 }
 
@@ -1262,7 +1299,7 @@
 .solveProblemNavigator :global(.button) {
   min-height: 32px;
   padding-inline: 9px;
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -1304,7 +1341,7 @@
   border-color: color-mix(in srgb, var(--warning) 28%, var(--line));
   color: var(--ink);
   background: var(--subtle-fill);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -1323,7 +1360,7 @@
 .solveProblemActions :global(.button) {
   min-height: 34px;
   padding-inline: 10px;
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -1337,10 +1374,10 @@
   padding: 0 9px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--accent);
   background: var(--accent-soft);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .solveInlineNotice svg { flex: 0 0 auto; }
@@ -1446,7 +1483,7 @@
 .problemReaderText code:not(pre code) {
   padding: 2px 5px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--accent);
   background: var(--subtle-fill);
   font-family: var(--font-code);
@@ -1483,7 +1520,7 @@
   height: auto;
   margin: 14px auto;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
 }
 
 .problemText hr,
@@ -1566,7 +1603,7 @@
   padding: 10px 11px;
   border: 1px solid var(--line);
   border-left: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--surface-elevated);
 }
 
@@ -1597,7 +1634,7 @@
   min-height: 28px;
   margin-top: 7px;
   padding-inline: 8px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .solveWorkbench {
@@ -1648,8 +1685,8 @@
 
 .aiSetupStrip > svg { flex: 0 0 auto; color: var(--accent); }
 .aiSetupStrip > div { min-width: 0; display: grid; gap: 2px; }
-.aiSetupStrip strong { color: var(--ink); font-size: 10px; }
-.aiSetupStrip span { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.aiSetupStrip strong { color: var(--ink); font-size: 11px; }
+.aiSetupStrip span { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .aiSetupStrip :global(.button) { flex: 0 0 auto; margin-left: auto; }
 
 .codeWorkbench .solveToolbar {
@@ -1661,7 +1698,7 @@
   width: 96px;
   min-height: 34px;
   padding: 0 26px 0 9px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .codeWorkbench .solveToolbar .editorFontSizeSelect {
@@ -1703,7 +1740,7 @@
 .codeWorkbenchTitle span {
   overflow: hidden;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1765,7 +1802,7 @@
   width: 46px;
   height: 2px;
   transform: translateX(-50%);
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--line-strong);
   transition: background 140ms ease, box-shadow 140ms ease;
 }
@@ -1789,17 +1826,17 @@
 
 .inlineTerminalTitle { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--accent); }
 .inlineTerminalTitle strong { color: var(--ink); font-size: 11px; }
-.inlineTerminalTitle small { color: var(--muted); font-size: 9px; }
+.inlineTerminalTitle small { color: var(--muted); font-size: 11px; }
 .inlineTerminalBody { min-width: 0; max-height: 230px; padding: 0 10px 10px; overflow: auto; }
-.inlineTerminalEmpty { padding: 10px; color: var(--muted); font-size: 10px; }
-.debugBreakpointField { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--muted); font-size: 9px; }
+.inlineTerminalEmpty { padding: 10px; color: var(--muted); font-size: 11px; }
+.debugBreakpointField { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--muted); font-size: 11px; }
 .debugBreakpointField .input { min-height: 28px; flex: 1; padding: 0 8px; font: 10px var(--font-code); }
 .debugEventList { display: grid; gap: 5px; padding-top: 4px; }
 .debugMeta { color: var(--muted); font: 10px/1.5 var(--font-code); }
 .debugStdout, .debugStderr { margin: 0; padding: 7px 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/1.55 var(--font-code); }
 .debugStdout { border-left: 2px solid var(--info); color: var(--body); background: var(--panel-info); }
 .debugStderr { border-left: 2px solid var(--danger); color: var(--danger); background: var(--danger-soft); }
-.debugPaused { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 7px 8px; border-left: 2px solid var(--warning); color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); font-size: 10px; }
+.debugPaused { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 7px 8px; border-left: 2px solid var(--warning); color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); font-size: 11px; }
 .debugPaused span, .debugPaused small { color: var(--body); }
 .debugPaused code { width: 100%; color: var(--muted); font: 9px/1.4 var(--font-code); overflow-wrap: anywhere; }
 
@@ -1830,7 +1867,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.58;
 }
 
@@ -1858,10 +1895,10 @@
   min-height: 26px;
   padding: 4px 7px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--surface-elevated) 72%, transparent);
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .sampleRunMarker {
@@ -1872,7 +1909,7 @@
 }
 
 .sampleRunLabel { color: var(--body); }
-.sampleRunItem strong { font-size: 10px; color: var(--muted); }
+.sampleRunItem strong { font-size: 11px; color: var(--muted); }
 .sampleRunItem small {
   min-width: 0;
   overflow: hidden;
@@ -1922,7 +1959,7 @@
   display: grid;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--info) 28%, transparent);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--info-soft);
   color: var(--info);
   box-shadow: var(--inset-highlight), 0 0 18px color-mix(in srgb, var(--info) 8%, transparent);
@@ -1938,7 +1975,7 @@
 .aiCoachIdentity small {
   overflow: hidden;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1963,7 +2000,7 @@
   padding: 5px 6px;
   text-align: left;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--surface-elevated);
   color: var(--muted);
   cursor: pointer;
@@ -1997,7 +2034,7 @@
 .coachIntentButton strong {
   overflow: hidden;
   color: var(--ink);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2117,7 +2154,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2126,7 +2163,7 @@
 .aiCoachModuleEmpty {
   padding: 14px 12px 16px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -2169,9 +2206,9 @@
   margin: 0 10px 10px;
   padding: 10px 12px;
   border: 1px dashed color-mix(in srgb, var(--info) 30%, var(--line));
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -2186,7 +2223,7 @@
 
 .aiModuleHeader strong {
   color: var(--ink);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -2194,7 +2231,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2213,13 +2250,13 @@
 
 .aiCoachEmpty > svg { color: var(--info); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--info) 25%, transparent)); }
 .aiCoachEmpty strong { color: var(--ink); font-size: 12px; }
-.aiCoachEmpty span { max-width: 330px; font-size: 9px; line-height: 1.65; }
+.aiCoachEmpty span { max-width: 330px; font-size: 11px; line-height: 1.65; }
 
 .aiCoachTurn {
   margin: 10px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--info) 19%, transparent);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--panel-info-elevated);
   box-shadow: var(--shadow);
 }
@@ -2239,7 +2276,7 @@
 
 .aiCoachTurn > header span {
   color: var(--info);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -2247,7 +2284,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2270,11 +2307,11 @@
   gap: 6px;
   padding: 0 9px;
   border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
-  border-radius: 5px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--accent-soft) 62%, var(--panel-info-elevated));
   color: var(--accent);
   font: inherit;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
@@ -2296,11 +2333,11 @@
   gap: 6px;
   padding: 0 9px;
   border: 1px solid color-mix(in srgb, var(--info) 24%, var(--line));
-  border-radius: 5px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--panel-info-elevated) 88%, transparent);
   color: var(--muted);
   font: inherit;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
@@ -2320,9 +2357,9 @@
 
 .aiCoachTurnJump:active { transform: translateY(0); }
 
-.aiCoachTurn .aiLessonContent { padding: 13px 14px 16px; font-size: 10px; line-height: 1.68; }
+.aiCoachTurn .aiLessonContent { padding: 13px 14px 16px; font-size: 11px; line-height: 1.68; }
 .aiCoachTurn .aiProse h3 { font-size: 12px; }
-.aiCoachTurn .aiCodeBlock pre { font-size: 10px; }
+.aiCoachTurn .aiCodeBlock pre { font-size: 11px; }
 
 .aiCoachTurnStreaming {
   border-color: color-mix(in srgb, var(--warning) 25%, transparent);
@@ -2352,14 +2389,14 @@
 
 .aiComposerLabel strong {
   color: var(--info);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .aiComposerLabel span {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2372,12 +2409,12 @@
   padding: 8px 10px;
   resize: none;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   outline: 0;
   background: var(--control);
   color: var(--ink);
   font: inherit;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.6;
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
@@ -2397,7 +2434,7 @@
 
 .reviewCard {
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--surface);
   overflow: hidden;
   transition: border-color 200ms ease, box-shadow 200ms ease;
@@ -2421,7 +2458,7 @@
   justify-content: center;
   width: 42px;
   height: 42px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
   flex-shrink: 0;
@@ -2713,7 +2750,7 @@
     overflow: hidden;
   }
 
-  .solveWorkspace { grid-template-rows: var(--solve-problem-row, clamp(280px, 40%, 340px)) 8px minmax(0, 1fr); }
+  .solveWorkspace { grid-template-rows: var(--solve-problem-row, clamp(320px, 44%, 420px)) 8px minmax(0, 1fr); }
   .solveProblem { height: auto; }
 
   .solveWorkbench {
@@ -2767,11 +2804,11 @@
     font-size: 0;
   }
   .solveProblemNavigator :global(.select) {
-    font-size: 10px;
+    font-size: 11px;
   }
   .solveProblemActions { flex: 0 0 auto; }
   .solveProblemActions :global(.button) { width: 34px; padding: 0; font-size: 0; }
-  .solveProblemActions :global(.button):last-child { width: auto; padding-inline: 8px; font-size: 9px; }
+  .solveProblemActions :global(.button):last-child { width: auto; padding-inline: 8px; font-size: 11px; }
   .solveInlineNotice { display: none; }
   .solveProblemBody {
     display: block;
@@ -2838,19 +2875,9 @@
 .barTrack span {
   display: block;
   height: 100%;
-  background: var(--info);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--info) 18%, transparent);
+  background: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 18%, transparent);
   transition: filter 140ms ease;
-}
-
-.barRow:nth-child(2n) .barTrack span {
-  background: var(--success);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--success) 18%, transparent);
-}
-
-.barRow:nth-child(3n) .barTrack span {
-  background: var(--warning);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--warning) 16%, transparent);
 }
 
 .barRow:hover .barTrack span { filter: brightness(1.2); }
@@ -2905,7 +2932,7 @@
 .dialog {
   width: min(620px, calc(100vw - 40px));
   border: 1px solid var(--line-strong);
-  border-radius: 7px;
+  border-radius: 6px;
   padding: 0;
   color: var(--ink);
   background: var(--surface);
@@ -3130,7 +3157,7 @@
 .sampleEditorIntro > span {
   min-width: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -3139,16 +3166,16 @@
   flex: 0 0 auto;
   min-height: 32px;
   padding-inline: 10px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .sampleEditorNotice {
   padding: 7px 9px;
   border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--warning);
   background: color-mix(in srgb, var(--warning) 8%, var(--surface-elevated));
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -3171,14 +3198,14 @@
   padding: 9px 10px 10px;
   border: 1px solid var(--line);
   border-left: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--surface-elevated);
 }
 
 .sampleEditorItemHead strong {
   color: var(--warning);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .sampleEditorItemHead :global(.iconButton) {
@@ -3201,7 +3228,7 @@
   display: grid;
   gap: 4px;
   color: var(--body);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -3213,7 +3240,7 @@
 
 .sampleEditorField small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -3226,12 +3253,12 @@
   padding: 7px 8px;
   resize: vertical;
   border: 1px solid var(--line-strong);
-  border-radius: 5px;
+  border-radius: 6px;
   outline: 0;
   background: var(--control);
   color: var(--ink);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
@@ -3284,7 +3311,7 @@
 .noteReaderBody a { color: var(--info); text-decoration: underline; text-underline-offset: 3px; }
 .noteReaderBody blockquote { margin: 1.2em 0; padding: 10px 16px; border-top: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--subtle-fill); color: var(--muted); }
 .noteReaderBody code { padding: .15em .35em; border: 1px solid var(--line); border-radius: 3px; background: var(--subtle-fill); color: var(--accent-deep); font-family: 'JetBrains Mono', Consolas, monospace; font-size: .86em; }
-.noteReaderBody pre { margin: 1.25em 0; padding: 16px 18px; overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface-strong); color: var(--ink); font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; line-height: 1.65; }
+.noteReaderBody pre { margin: 1.25em 0; padding: 16px 18px; overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-strong); color: var(--ink); font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; line-height: 1.65; }
 .noteReaderBody pre code { padding: 0; border: 0; background: transparent; color: inherit; }
 .noteReaderBody table { width: 100%; margin: 1.25em 0; border-collapse: collapse; font-family: var(--font-body); font-size: 13px; }
 .noteReaderBody th, .noteReaderBody td { padding: 9px 11px; border: 1px solid var(--line); text-align: left; }
@@ -3296,7 +3323,7 @@
   flex-wrap: wrap;
   gap: 14px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .legend span {
@@ -3308,7 +3335,7 @@
 .legend i {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--accent-deep);
 }
 
@@ -3451,7 +3478,7 @@
   margin-bottom: 7px;
   color: var(--accent);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -3493,7 +3520,7 @@
 .interviewCatalogCount small {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .interviewLibrary {
@@ -3501,7 +3528,7 @@
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--surface);
   box-shadow: var(--inset-highlight);
   overflow: hidden;
@@ -3530,7 +3557,7 @@
   border-radius: 6px;
   color: var(--muted);
   background: transparent;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   cursor: pointer;
   transition: color 140ms ease, border-color 140ms ease, background 140ms ease, transform 140ms ease;
@@ -3563,7 +3590,7 @@
   min-width: 0;
   min-height: 36px;
   padding-block: 6px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .interviewFilters :global(.iconButton) { width: 36px; height: 36px; }
@@ -3610,7 +3637,7 @@
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-family: var(--font-code);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .interviewListHeader span:last-child {
@@ -3662,7 +3689,7 @@
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .interviewQuestionMeta > span + span::before {
@@ -3709,7 +3736,7 @@
   border-radius: 3px;
   color: var(--muted);
   background: var(--subtle-fill);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .interviewPracticeButton {
@@ -3719,10 +3746,10 @@
   gap: 7px;
   padding: 0 10px 0 13px;
   border: 1px solid var(--line-strong);
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--ink);
   background: var(--surface-elevated);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   cursor: pointer;
   transition: color 140ms ease, border-color 140ms ease, background 140ms ease, transform 140ms ease;
@@ -3743,7 +3770,7 @@
   padding: 0 14px;
   border-top: 1px solid var(--line);
   color: var(--quiet);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .interviewLibraryFoot svg { color: var(--success); }
@@ -3796,7 +3823,7 @@
   color: var(--muted);
   background: var(--subtle-fill);
   font-family: var(--font-code);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .batchQueue {
@@ -3809,7 +3836,7 @@
   gap: 8px;
   padding: 11px 12px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--subtle-fill);
 }
 
@@ -3818,12 +3845,12 @@
   align-items: center;
   gap: 9px;
   color: var(--ink);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .batchQueueTitle span {
   color: var(--quiet);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .batchQueueTitle .iconButton {
@@ -3835,7 +3862,7 @@
   gap: 4px;
   margin-top: 10px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .modeTabs {
@@ -3853,7 +3880,7 @@
 .modeCount {
   color: var(--quiet);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .problemModule {
@@ -3903,7 +3930,7 @@
   border-radius: 6px;
   color: var(--muted);
   background: var(--subtle-fill);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .interviewExaminerNotice svg { color: var(--info); }
@@ -3927,9 +3954,9 @@
 }
 
 .interviewExaminerResults > header div { min-width: 0; }
-.interviewExaminerResults > header span { color: var(--accent); font-family: var(--font-code); font-size: 9px; font-weight: 800; }
+.interviewExaminerResults > header span { color: var(--accent); font-family: var(--font-code); font-size: 11px; font-weight: 800; }
 .interviewExaminerResults > header h3 { margin: 4px 0 0; overflow-wrap: anywhere; color: var(--ink); font-family: var(--font-reading); font-size: 14px; line-height: 1.35; white-space: normal; }
-.interviewExaminerResults > header small { flex: 0 0 auto; color: var(--muted); font-family: var(--font-code); font-size: 9px; }
+.interviewExaminerResults > header small { flex: 0 0 auto; color: var(--muted); font-family: var(--font-code); font-size: 11px; }
 
 .interviewExaminerCoverage {
   display: flex;
@@ -3938,14 +3965,14 @@
   gap: 5px;
   padding-bottom: 9px;
 }
-.interviewExaminerCoverage strong { margin-right: 3px; color: var(--muted); font-size: 9px; }
+.interviewExaminerCoverage strong { margin-right: 3px; color: var(--muted); font-size: 11px; }
 .interviewExaminerCoverage span {
   padding: 3px 7px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--muted);
   background: var(--subtle-fill);
-  font-size: 8px;
+  font-size: 11px;
 }
 .interviewExaminerCoverage .interviewExaminerGap {
   color: var(--warning, var(--danger));
@@ -3968,10 +3995,10 @@
   flex: 0 0 auto;
   padding: 4px 8px;
   border: 1px solid var(--accent-border);
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--accent);
   background: var(--accent-soft);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -4008,18 +4035,18 @@
   display: grid;
   place-items: center;
   border: 1px solid var(--line-strong);
-  border-radius: 5px;
+  border-radius: 6px;
   color: transparent;
   background: var(--control);
 }
 
 .interviewExaminerQuestionSelected .interviewExaminerCheck { color: var(--accent-ink); border-color: var(--accent); background: var(--accent); }
 .interviewExaminerQuestionCopy { min-width: 0; display: grid; gap: 4px; }
-.interviewExaminerQuestionCopy > span { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 8px; }
+.interviewExaminerQuestionCopy > span { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .interviewExaminerQuestionCopy b { color: var(--accent); }
 .interviewExaminerQuestionCopy i { font-style: normal; }
 .interviewExaminerQuestionCopy strong { overflow-wrap: anywhere; color: var(--ink); font-size: 11px; white-space: normal; }
-.interviewExaminerQuestionCopy small { overflow-wrap: anywhere; color: var(--quiet); font-size: 9px; white-space: normal; }
+.interviewExaminerQuestionCopy small { overflow-wrap: anywhere; color: var(--quiet); font-size: 11px; white-space: normal; }
 
 .interviewExaminerFooter {
   position: relative;
@@ -4034,7 +4061,7 @@
   border-top: 1px solid var(--line);
 }
 
-.interviewExaminerFooter > span { min-width: 0; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.interviewExaminerFooter > span { min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 
 .interviewExaminerFooterActions {
   flex: 0 0 auto;
@@ -4059,7 +4086,7 @@
 
 .interviewExaminerEmpty svg { color: var(--accent); }
 .interviewExaminerEmpty strong { color: var(--ink); font-family: var(--font-reading); font-size: 14px; }
-.interviewExaminerEmpty span { max-width: 420px; font-size: 10px; line-height: 1.6; }
+.interviewExaminerEmpty span { max-width: 420px; font-size: 11px; line-height: 1.6; }
 
 /* Interview practice */
 .interviewPracticePage {
@@ -4087,7 +4114,7 @@
   gap: 8px;
   margin-bottom: 6px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .interviewPracticeTitle > div span + span::before { content: "/"; margin-right: 8px; color: var(--line-hover); }
@@ -4103,7 +4130,7 @@
 .interviewPracticeTitle p {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -4118,7 +4145,7 @@
   color: var(--muted);
   background: var(--surface);
   font-family: var(--font-code);
-  font-size: 9px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -4140,7 +4167,7 @@
   min-height: 0;
   display: grid;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--surface);
   box-shadow: var(--inset-highlight);
   overflow: hidden;
@@ -4181,15 +4208,15 @@
 }
 
 .interviewPaneHeader strong { color: var(--ink); font-size: 11px; }
-.interviewPaneHeader small { color: var(--muted); font-size: 8px; }
-.interviewPaneHeader :global(.button) { min-height: 30px; padding-inline: 9px; font-size: 9px; }
+.interviewPaneHeader small { color: var(--muted); font-size: 11px; }
+.interviewPaneHeader :global(.button) { min-height: 30px; padding-inline: 9px; font-size: 11px; }
 
 .interviewAutosave {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   color: var(--success);
-  font-size: 8px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -4223,7 +4250,7 @@
   border-top: 1px solid var(--line);
 }
 
-.interviewAnswerActions > span { color: var(--quiet); font-family: var(--font-code); font-size: 8px; }
+.interviewAnswerActions > span { color: var(--quiet); font-family: var(--font-code); font-size: 11px; }
 .interviewAnswerActions :global(.button) { min-height: 34px; }
 
 .interviewCoachActions {
@@ -4243,10 +4270,10 @@
   gap: 5px;
   padding: 0 6px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--muted);
   background: var(--surface-elevated);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
@@ -4274,7 +4301,7 @@
   align-items: center;
   gap: 6px;
   color: var(--accent);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -4299,7 +4326,7 @@
 
 .interviewCoachEmpty > svg { margin-bottom: 10px; color: var(--accent); }
 .interviewCoachEmpty strong { color: var(--ink); font-size: 11px; }
-.interviewCoachEmpty p { max-width: 290px; margin: 7px 0 0; font-size: 9px; line-height: 1.55; }
+.interviewCoachEmpty p { max-width: 290px; margin: 7px 0 0; font-size: 11px; line-height: 1.55; }
 
 .interviewThinking {
   width: 20px;
@@ -4317,7 +4344,7 @@
   border-left: 2px solid var(--danger);
   color: var(--danger);
   background: var(--danger-soft);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -4327,7 +4354,7 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--surface);
   overflow: hidden;
 }
@@ -4349,7 +4376,7 @@
 .interviewReferenceToggle > span { display: flex; align-items: center; gap: 8px; }
 .interviewReferenceToggle > span svg { color: var(--accent); }
 .interviewReferenceToggle strong { font-size: 11px; }
-.interviewReferenceToggle small { color: var(--muted); font-size: 8px; }
+.interviewReferenceToggle small { color: var(--muted); font-size: 11px; }
 .interviewReferenceToggle > svg { color: var(--muted); transition: transform 140ms ease; }
 .interviewReferenceOpen { transform: rotate(180deg); }
 
@@ -4363,9 +4390,9 @@
 
 .interviewReferenceBody > div { min-width: 0; padding: 12px 14px; }
 .interviewReferenceBody > div + div { border-left: 1px solid var(--line); }
-.interviewReferenceBody h2 { margin: 0 0 7px; color: var(--accent); font-size: 9px; }
+.interviewReferenceBody h2 { margin: 0 0 7px; color: var(--accent); font-size: 11px; }
 .interviewReferenceBody p,
-.interviewReferenceBody li { color: var(--body); font-size: 9px; line-height: 1.65; }
+.interviewReferenceBody li { color: var(--body); font-size: 11px; line-height: 1.65; }
 .interviewReferenceBody p { margin: 0; }
 .interviewReferenceBody ul,
 .interviewReferenceBody ol { margin: 0; padding-left: 17px; }
@@ -4385,7 +4412,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4402,7 +4429,7 @@
   border-radius: 6px;
   color: var(--muted);
   background: var(--surface-elevated);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
   cursor: pointer;
 }
@@ -4422,7 +4449,7 @@
   border: 1px solid var(--line);
   color: var(--muted);
   background: var(--info-soft);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 @media (max-width: 1280px) {
@@ -4431,7 +4458,7 @@
   .interviewFilters { grid-template-columns: minmax(210px, 1.2fr) repeat(4, minmax(98px, .5fr)) 36px; }
   .interviewPracticeGrid { grid-template-columns: minmax(0, 1fr) minmax(330px, .88fr); }
   .interviewPracticeGrid.reviewMode { grid-template-columns: 1fr; }
-  .interviewCoachAction { font-size: 8px; }
+  .interviewCoachAction { font-size: 11px; }
 }
 
 @media (max-width: 1050px) {
@@ -4501,7 +4528,7 @@
     justify-content: center;
     padding-inline: 7px;
     white-space: nowrap;
-    font-size: 10px;
+    font-size: 11px;
   }
   .interviewFilters { grid-template-columns: minmax(0, 1fr) 36px; }
   .interviewFilters > :not(:first-child):not(:last-child) { grid-column: 1 / -1; }
@@ -4563,7 +4590,7 @@
   min-height: 35px;
   padding-inline: 13px;
   border-color: transparent;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   box-shadow: none;
   font-size: 11px;
@@ -4594,7 +4621,7 @@
   padding: 2px 5px;
   border: 1px solid currentColor;
   border-radius: 3px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.2;
   opacity: .78;
 }
@@ -4637,7 +4664,7 @@
 .batchImport {
   gap: 18px;
   padding: 22px 24px;
-  border-radius: 9px;
+  border-radius: 8px;
   background:
     linear-gradient(115deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 40%),
     var(--surface);
@@ -4678,7 +4705,7 @@
   color: var(--ink);
   background: var(--surface);
   font-family: var(--font-code);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: .03em;
 }
 
@@ -4815,7 +4842,7 @@
   overflow: auto;
   border: 1px solid var(--line-strong);
   border-left: 1px solid var(--line-strong);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--editor-bg);
   color: var(--editor-ink);
   font-family: var(--font-code);
@@ -4831,7 +4858,7 @@
   height: auto;
   margin: 14px auto;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
 }
 
 .solveProblem .problemText hr,
@@ -4915,11 +4942,11 @@
   min-height: 36px;
   padding: 4px 8px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--muted);
   background: transparent;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   cursor: pointer;
   transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
@@ -4963,7 +4990,7 @@
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--surface);
 }
 
@@ -4974,7 +5001,7 @@
   gap: 12px;
   color: var(--quiet);
   font-family: var(--font-code);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .vocabularySessionRail span:first-child { color: var(--info); font-weight: 800; }
@@ -5027,15 +5054,15 @@
 .vocabularyRoundPreviewItem:nth-child(odd) { border-right: 1px solid var(--line); }
 .vocabularyRoundPreviewItem:last-child:nth-child(odd) { grid-column: 1 / -1; border-right: 0; }
 
-.vocabularyRoundPreviewIndex { color: var(--quiet); font-family: var(--font-code); font-size: 10px; }
+.vocabularyRoundPreviewIndex { color: var(--quiet); font-family: var(--font-code); font-size: 11px; }
 .vocabularyRoundPreviewWord { min-width: 0; display: grid; gap: 3px; }
 .vocabularyRoundPreviewWord strong { color: var(--ink); font-family: var(--font-reading); font-size: 15px; overflow-wrap: anywhere; }
-.vocabularyRoundPreviewWord small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.vocabularyRoundPreviewWord small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .vocabularyRoundPreviewMeaning { min-width: 0; color: var(--body); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
-.vocabularyRoundPreviewTag { justify-self: end; padding: 3px 6px; border: 1px solid var(--accent-border); border-radius: 3px; color: var(--accent); background: var(--accent-soft); font-size: 9px; white-space: nowrap; }
+.vocabularyRoundPreviewTag { justify-self: end; padding: 3px 6px; border: 1px solid var(--accent-border); border-radius: 3px; color: var(--accent); background: var(--accent-soft); font-size: 11px; white-space: nowrap; }
 .vocabularyRoundPreviewReview { border-color: var(--line-strong); color: var(--info); background: var(--info-soft); }
 .vocabularyRoundPreviewFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 2px; }
-.vocabularyRoundPreviewFooter > span { color: var(--muted); font-size: 10px; }
+.vocabularyRoundPreviewFooter > span { color: var(--muted); font-size: 11px; }
 .vocabularyRoundPreviewFooter > :global(.button) { min-height: 38px; white-space: nowrap; }
 
 .vocabularyPrompt {
@@ -5047,7 +5074,7 @@
   border: 1px solid var(--line);
   border-left: 1px solid var(--line);
   border-top: 2px solid color-mix(in srgb, var(--accent) 30%, var(--line));
-  border-radius: 4px;
+  border-radius: 3px;
   background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 7%, var(--surface)), var(--surface) 58%);
 }
 
@@ -5064,9 +5091,9 @@
   overflow-wrap: anywhere;
 }
 
-.vocabularyPrompt small { color: var(--quiet); font-size: 10px; }
+.vocabularyPrompt small { color: var(--quiet); font-size: 11px; }
 
-.vocabularyAnswerField { display: grid; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 750; }
+.vocabularyAnswerField { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 750; }
 .vocabularyAnswerField :global(.input) {
   width: 100%;
   min-height: 82px;
@@ -5090,7 +5117,7 @@
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--surface-elevated);
 }
 
@@ -5103,7 +5130,7 @@
 
 .vocabularyAnswerHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px 12px; }
 .vocabularyAnswerHead strong { color: var(--accent); font-family: var(--font-reading); font-size: 23px; }
-.vocabularyAnswerHead span { color: var(--muted); font-size: 10px; }
+.vocabularyAnswerHead span { color: var(--muted); font-size: 11px; }
 .vocabularyAnswerHead span:last-child { color: var(--ink); font-size: 13px; font-weight: 750; }
 .vocabularyAnswer > p { margin: 0; color: var(--body); font-size: 11px; line-height: 1.65; }
 .vocabularyCorrect,
@@ -5127,8 +5154,8 @@
 
 .vocabularyAnswerColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .vocabularyAnswerColumns > div { min-width: 0; }
-.vocabularyAnswerColumns small { color: var(--quiet); font-size: 9px; font-weight: 750; }
-.vocabularyAnswerColumns p { margin: 5px 0 0; color: var(--body); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.vocabularyAnswerColumns small { color: var(--quiet); font-size: 11px; font-weight: 750; }
+.vocabularyAnswerColumns p { margin: 5px 0 0; color: var(--body); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
 
 .vocabularyMnemonic { display: flex; align-items: flex-start; gap: 7px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--warning); }
 .vocabularyMnemonic svg { flex: 0 0 auto; margin-top: 1px; }
@@ -5144,7 +5171,7 @@
   gap: 4px;
   padding: 7px;
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--ink);
   background: var(--surface);
   text-align: left;
@@ -5156,7 +5183,7 @@
 .vocabularyGradeRow button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vocabularyGradeRow button:disabled { cursor: not-allowed; opacity: .55; }
 .vocabularyGradeRow button strong { font-size: 11px; }
-.vocabularyGradeRow button small { color: var(--quiet); font-size: 8px; line-height: 1.3; }
+.vocabularyGradeRow button small { color: var(--quiet); font-size: 11px; line-height: 1.3; }
 .vocabularyGradeRow .vocabularyGradeAgain { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
 .vocabularyGradeRow .vocabularyGradeAgain strong { color: var(--danger); }
 
@@ -5175,7 +5202,7 @@
 .vocabularyComplete > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .vocabularyTargetLine { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .vocabularyTargetLine > div { padding-left: 12px; border-left: 1px solid var(--line); }
-.vocabularyTargetLine small { display: block; color: var(--quiet); font-size: 10px; }
+.vocabularyTargetLine small { display: block; color: var(--quiet); font-size: 11px; }
 .vocabularyTargetLine strong { display: block; margin-top: 6px; color: var(--ink); font-family: var(--font-code); font-size: 27px; }
 .vocabularyTargetLine strong span { color: var(--muted); font-family: var(--font-body); font-size: 11px; }
 .vocabularyStartPanel > :global(.button) { min-height: 42px; width: auto; }
@@ -5185,10 +5212,10 @@
 .vocabularyCompleteMark { width: 52px; height: 52px; display: grid; place-items: center; border: 1px solid var(--success); border-radius: 50%; color: var(--success); background: var(--success-soft); }
 
 .vocabularyAsideMetric { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 5px 12px; padding: 15px 0; border-bottom: 1px solid var(--line); }
-.vocabularyAsideMetric span { color: var(--muted); font-size: 10px; }
+.vocabularyAsideMetric span { color: var(--muted); font-size: 11px; }
 .vocabularyAsideMetric strong { color: var(--ink); font-family: var(--font-code); font-size: 19px; }
-.vocabularyAsideMetric small { grid-column: 1 / -1; color: var(--quiet); font-size: 9px; }
-.vocabularyNote { display: flex; align-items: flex-start; gap: 9px; padding: 11px 12px; border-left: 2px solid var(--info); color: var(--muted); background: var(--info-soft); font-size: 10px; line-height: 1.55; }
+.vocabularyAsideMetric small { grid-column: 1 / -1; color: var(--quiet); font-size: 11px; }
+.vocabularyNote { display: flex; align-items: flex-start; gap: 9px; padding: 11px 12px; border-left: 2px solid var(--info); color: var(--muted); background: var(--info-soft); font-size: 11px; line-height: 1.55; }
 .vocabularyNote svg { flex: 0 0 auto; color: var(--info); }
 
 .vocabularyLibraryTools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, .3fr); align-items: end; gap: 12px; padding: 17px 0; }
@@ -5215,17 +5242,17 @@
 .vocabularyWordButton:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .vocabularyWordIdentity { min-width: 0; display: grid; gap: 4px; }
 .vocabularyWordIdentity strong { color: var(--ink); font-family: var(--font-reading); font-size: 15px; overflow-wrap: anywhere; }
-.vocabularyWordIdentity small { color: var(--quiet); font-size: 9px; }
+.vocabularyWordIdentity small { color: var(--quiet); font-size: 11px; }
 .vocabularyWordMeaning { color: var(--body); font-size: 11px; overflow-wrap: anywhere; }
-.vocabularyWordLevel { color: var(--info); font-family: var(--font-code); font-size: 10px; font-weight: 800; }
-.vocabularyStatus { justify-self: start; padding: 4px 7px; border: 1px solid var(--line); border-radius: 3px; font-size: 9px; white-space: nowrap; }
+.vocabularyWordLevel { color: var(--info); font-family: var(--font-code); font-size: 11px; font-weight: 800; }
+.vocabularyStatus { justify-self: start; padding: 4px 7px; border: 1px solid var(--line); border-radius: 3px; font-size: 11px; white-space: nowrap; }
 .vocabularyStatusNew { color: var(--muted); background: var(--subtle-fill); }
 .vocabularyStatusLearning { color: var(--warning); background: var(--warning-soft); }
 .vocabularyStatusMastered { color: var(--success); background: var(--success-soft); }
 .vocabularyWordButton > svg { color: var(--quiet); transition: transform 140ms ease; }
 .vocabularyWordButton .vocabularyChevronOpen { transform: rotate(180deg); }
 
-.vocabularyWordDetail { display: grid; gap: 10px; padding: 0 12px 16px; color: var(--body); font-size: 10px; line-height: 1.6; }
+.vocabularyWordDetail { display: grid; gap: 10px; padding: 0 12px 16px; color: var(--body); font-size: 11px; line-height: 1.6; }
 .vocabularyWordDetail > p { margin: 0; }
 .vocabularyWordDetail blockquote { display: grid; gap: 4px; margin: 0; padding: 9px 11px; border-left: 2px solid var(--info); background: var(--info-soft); overflow-wrap: anywhere; }
 .vocabularyWordDetail blockquote span { color: var(--muted); }

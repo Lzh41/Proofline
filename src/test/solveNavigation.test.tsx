@@ -615,7 +615,7 @@ const helper = (value: number): number => value * 2;`.split('\n');
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '显示全文' }));
+    fireEvent.click(await screen.findByRole('button', { name: '题面全文' }));
     const reader = await screen.findByRole('dialog', { name: /1\. 两数之和/ });
 
     expect(reader).toHaveAttribute('open');

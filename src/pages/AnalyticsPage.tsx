@@ -34,10 +34,10 @@ export function AnalyticsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="学习统计" title="学习统计" description="只统计实际练习和复习记录。样例结果与官方判题分开，不会混淆通过率。" />
+      <PageHeader title="学习统计" description="只统计实际练习和复习记录。样例结果与官方判题分开，不会混淆通过率。" />
       <div className={styles.metrics}>
         <Metric label="算法通过率" value={`${accuracy}%`} detail={`${passed.length}/${completed.length} 次已结束尝试`} tone="accent" />
-        <Metric label="算法平均用时" value={formatDuration(avgSeconds)} detail={`平均提示 ${avgHint.toFixed(1)} 级`} />
+        <Metric label="算法平均用时" value={avgSeconds > 0 ? formatDuration(avgSeconds) : '未记录'} detail={avgSeconds > 0 ? `平均提示 ${avgHint.toFixed(1)} 级` : '这些尝试没有记到时长'} />
         <Metric label="面试掌握率" value={`${Math.round(interviewStatistics.masteryRate * 100)}%`} detail={`${interviewStatistics.masteredQuestions}/${interviewStatistics.practicedQuestions} 题已掌握`} tone="info" />
         <Metric label="面试练习" value={interviewStatistics.totalAttempts} detail={`${interviewStatistics.dueReviews} 项到期复习`} />
       </div>
@@ -61,7 +61,7 @@ export function AnalyticsPage() {
             <div className={styles.barRow} key={item.role}>
               <span>{roleLabel(item.role)}</span>
               <div className={styles.barTrack}><span style={{ width: `${Math.max(4, (item.score / maxWeakRole) * 100)}%` }} /></div>
-              <strong>{Math.round(item.score * 100)}%</strong>
+              <strong>未掌握 {Math.round(item.score * 100)}%</strong>
             </div>
           ))}
           {!interviewStatistics.weakRoles.length && <EmptyState compact title="暂无岗位练习数据" message="完成面试题并选择掌握度后，这里会识别需要加强的岗位方向。" />}

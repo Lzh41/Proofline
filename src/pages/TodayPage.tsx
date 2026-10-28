@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowRight, CalendarClock, Check, Clock3, Languages, Play, RotateCcw, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatDuration, todayKey, useStoreView } from '../app/storeAdapter';
+import { formatDuration, formatFullDate, todayKey, useStoreView } from '../app/storeAdapter';
 import { EmptyState, Metric, PageHeader, ProgressBar, SectionHeader } from '../components/PagePrimitives';
 import { learningRoute } from '../lib/interviews';
 import styles from './Pages.module.css';
@@ -48,7 +48,7 @@ export function TodayPage() {
   return (
     <>
       <PageHeader
-        eyebrow={new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}
+        eyebrow={formatFullDate(new Date())}
         title="今日任务"
         description="先完成到期复习，再按任务单推进题目和单词。每次回忆都会记录下一次复习时间。"
         actions={
@@ -72,11 +72,11 @@ export function TodayPage() {
 
       <div className={styles.twoColumn}>
         <section className={styles.section}>
-          <SectionHeader title="今日任务" meta={plan ? `${plan.completedProblemIds.length}/${plan.targetProblems}` : '尚未排程'} action={<button className="button" type="button" onClick={generatePlan}><RotateCcw size={15} />重新排程</button>} />
+          <SectionHeader title="今日任务" meta={plan ? `${plan.completedProblemIds.length}/${plan.targetProblems}` : '尚未排程'} action={<button className="button" type="button" onClick={generatePlan}><RotateCcw size={15} />重新生成</button>} />
           {plan && <div style={{ padding: '18px 0 8px' }}><ProgressBar value={progress} label="计划完成度" /></div>}
           <div className={styles.list}>
             {tasks.length === 0 ? (
-              <EmptyState title="今天还没有题目" message="按到期复习、薄弱标签和难度比例生成一份可执行计划。" action={<button className="button buttonAccent" type="button" onClick={generatePlan}>生成今日计划</button>} />
+              <EmptyState title="今天还没有题目" message="按到期复习、薄弱标签和难度比例生成一份可执行计划。" action={<button className="button buttonAccent" type="button" onClick={generatePlan}>生成今日任务</button>} />
             ) : tasks.map((problem, index) => problem && (
               <div className={styles.row} key={problem.id}>
                 <div className={styles.rowMain}>

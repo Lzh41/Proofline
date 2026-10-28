@@ -47,7 +47,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="设置" title="掌控你的数据和工具。" description="个人记录默认仅保存在本机；平台登录、AI 密钥和学习备份相互隔离。" />
+      <PageHeader title="设置" description="个人记录默认仅保存在本机；平台登录、AI 密钥和学习备份相互隔离。" />
       {message && <div className={styles.notice}><Check size={17} />{message}</div>}
       <div className={styles.settingsList}>
         <section className={styles.settingRow}>
@@ -103,7 +103,7 @@ export function SettingsPage() {
 
         <section className={styles.settingRow}>
           <div className={styles.settingIntro}><Shield size={20} color="var(--danger)" /><h2>平台隔离</h2><p>清除平台资料会删除该站登录状态；个人题目与复盘不会受影响。</p></div>
-          <div className={styles.settingControls}><div className={styles.notice} style={{ margin: 0 }}>三个官方窗口没有本地 IPC、文件、数据库或凭据权限。外部链接会交给系统浏览器处理。</div></div>
+          <div className={styles.settingControls}><div className={styles.notice} style={{ margin: 0 }}>四个官方窗口没有本地 IPC、文件、数据库或凭据权限。外部链接会交给系统浏览器处理。</div></div>
         </section>
 
         <section className={styles.settingRow}>

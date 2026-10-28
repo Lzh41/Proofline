@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>把“看懂一道题”，变成“下次能独立写出来”。</strong><br />
-  本地优先的 Windows 算法与企业面试训练工作台。
+  本地优先的算法与企业面试训练工作台，Windows 与 macOS 同一套代码。
 </p>
 
 <p align="center">
@@ -16,7 +16,9 @@
   <a href="https://github.com/Lzh41/Proofline"><img src="https://img.shields.io/github/stars/Lzh41/Proofline?style=flat-square&color=E8B86D" alt="GitHub stars" /></a>
 </p>
 
-> 当前版本：`0.1.16` · Windows x64 · Tauri 2 · React 19 · SQLite
+> 当前版本：`0.1.19` · Windows x64 / macOS (Apple Silicon · Intel) · Tauri 2 · React 19 · SQLite
+
+macOS 侧的构建、数据迁移、和 Windows 的差异清单见 [docs/macos-build-and-migration.md](docs/macos-build-and-migration.md)。
 
 ## 先看它在做什么
 
@@ -65,6 +67,18 @@
 
 Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从当前用户选择的公开单题建立学习卡。页面遇到登录、验证码、改版或反爬限制时，会保留链接型卡片，并提供手工录入、剪贴板和截图 OCR 回退。
 
+### 本地工具：一处打开本机那些看板
+
+本机写过的看板和工作台各占一个端口，过几周就记不清哪个端口是干什么的。「工具」页把它们登记在一处：每条带功能说明、地址、启动命令和工作目录，卡片上标着当前是否在跑。
+
+- **一点就开**：在跑的直接在系统浏览器打开；没跑的先按登记的启动命令拉起服务，端口响应后再打开，不用回去翻脚本。
+- **后台无窗口**：拉起的服务不弹控制台窗口，输出写进数据目录的 `tool-logs/`；卡片右下角的叉号按端口找到进程并连带子进程结束。
+- **状态自检**：每 20 秒探测一次端口，绿点表示服务活着；探测走本地 TCP 连接，不受浏览器同源策略影响。
+- **随手维护**：新增、编辑、删除都在页面上完成，支持按分类筛选与关键词搜索；常用的钉在最前面。
+- **只收点得开的**：需要先起容器的 docker 服务不入列表，它们做不到点一下就进。
+
+新写完一个看板，用 `python scripts/local-tools.py add --name ... --url ...` 直接登记，不必打开应用手动填；清单的初始种子在 `src/data/localToolSeeds.json`，应用和脚本读的是同一份。
+
 ## 一次完整练习是什么样
 
 1. 在“题库”或官方平台窗口选择一道题。
@@ -78,8 +92,8 @@ Proofline 可以打开力扣中国、LeetCode 和牛客的官方页面，并从�
 
 前往 [Releases](https://github.com/Lzh41/Proofline/releases) 下载：
 
-- `Proofline_0.1.16_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
-- `Proofline_0.1.16_x64-portable.exe`：Windows x64 便携版，免安装运行。
+- `Proofline_0.1.19_x64-setup.exe`：Windows x64 安装版，可指定安装路径。
+- `Proofline_0.1.19_x64-portable.exe`：Windows x64 便携版，免安装运行。
 
 当前版本未配置商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。下载后请先核对 Release 页面中的 SHA-256。若系统没有 WebView2 Runtime，安装阶段需要联网下载安装运行时。
 
@@ -126,7 +140,7 @@ React 19 · TypeScript · Vite · Tauri 2 · Rust · SQLite · Zustand · CSS Mo
 
 ## 验证记录
 
-- 前端测试：`35` 个测试文件，`235/235` 通过。
+- 前端测试：`44` 个测试文件，`301/301` 通过。
 - Rust 测试：`65/65` 通过。
 - Windows x64 NSIS 安装包和便携版已构建。
 - 已在全新安装目录验证：首次启动、导入题目、完全退出、重启后数据持久化。

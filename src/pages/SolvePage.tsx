@@ -32,9 +32,8 @@ import {
   Redo2,
   X,
 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
-import type { AiCoachIntent } from '../lib/ai';
-import { DebugSession } from '../lib/debugSession';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import type { AiCoachIntent } from '../lib/ai';import { DebugSession } from '../lib/debugSession';
 import { isAllowedPlatformUrl, isSafeExternalUrl } from '../lib/platform';
 import { EDITOR_FONT_SIZES } from '../lib/data';
 import { normalizeProblemExamples } from '../lib/problemExamples';
@@ -45,6 +44,7 @@ import { difficultyLabel, formatDuration, sourceLabel, useStoreView } from '../a
 import { EmptyState, PageHeader } from '../components/PagePrimitives';
 import { editorThemeFor } from '../app/theme';
 import { useResolvedTheme } from '../app/useResolvedTheme';
+import { redoShortcutLabel, undoShortcutLabel } from '../lib/os';
 import styles from './Pages.module.css';
 
 const MonacoEditor = lazy(() => import('../lib/localMonaco'));
@@ -218,9 +218,17 @@ async function writeClipboard(text: string): Promise<void> {
   textarea.remove();
 }
 
-function AiCoachContent({ content, busy, complete }: { content: string; busy: boolean; complete: boolean }) {
+function AiCoachContent({ content, busy, complete, editorCode }: { content: string; busy: boolean; complete: boolean; editorCode?: string }) {
   const [copiedBlock, setCopiedBlock] = useState<number | null>(null);
   const blocks = content.split(/(```[\s\S]*?```)/g).filter(Boolean);
+
+  // 行内 **粗体** 之前是原样输出的，界面上直接看到两个星号。
+  const renderInline = (text: string) => text
+    .split(/(\*\*[^*]+\*\*)/g)
+    .filter(Boolean)
+    .map((part, index) => (part.startsWith('**') && part.endsWith('**') && part.length > 4
+      ? <strong key={index}>{part.slice(2, -2)}</strong>
+      : <span key={index}>{part}</span>));
 
   const copyCode = async (value: string, index: number) => {
     await writeClipboard(value);
@@ -240,15 +248,26 @@ function AiCoachContent({ content, busy, complete }: { content: string; busy: bo
                 const bullet = line.match(/^\s*[-*]\s+(.+)$/);
                 const numbered = line.match(/^\s*(\d+)[.)、]\s+(.+)$/);
                 if (heading) return <h3 key={lineIndex}>{heading[1]}</h3>;
-                if (bullet) return <p className={styles.aiBullet} key={lineIndex}><i />{bullet[1]}</p>;
-                if (numbered) return <p className={styles.aiNumbered} key={lineIndex}><b>{numbered[1]}</b>{numbered[2]}</p>;
+                if (bullet) return <p className={styles.aiBullet} key={lineIndex}><i />{renderInline(bullet[1])}</p>;
+                if (numbered) return <p className={styles.aiNumbered} key={lineIndex}><b>{numbered[1]}</b>{renderInline(numbered[2])}</p>;
                 if (!line.trim()) return <span className={styles.aiProseGap} key={lineIndex} aria-hidden="true" />;
-                return <p key={lineIndex}>{line}</p>;
+                return <p key={lineIndex}>{renderInline(line)}</p>;
               })}
             </div>
           );
         }
         const codeText = codeBlock[2].trimEnd();
+        // 回答引用的是编辑器里同一段代码时，别整段再贴一遍，左边本来就看得见。
+        // 用「压缩空白后互相包含」判断：AI 常常只截取其中几行来讲解。
+        const squash = (value: string) => value.replace(/\s+/g, ' ').trim();
+        const squashed = squash(codeText);
+        if (editorCode && squashed.length > 30 && squash(editorCode).includes(squashed)) {
+          return (
+            <p className={styles.aiCodeSame} key={`${index}-same`}>
+              这一节引用的就是你编辑器里的代码，已省略。
+            </p>
+          );
+        }
         return (
           <div className={styles.aiCodeBlock} key={`${index}-${codeBlock[1]}`}>
             <div className={styles.aiCodeHeader}>
@@ -675,6 +694,11 @@ const SolveStopwatch = memo(function SolveStopwatch({
 export function SolvePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  // 今日页的「到期复习」会带 ?review=<mistakeId> 过来，之前这里没读它，
+  // 点进去其实是普通练习。现在按复习态处理：不沿用上次代码，并挂个横幅说明。
+  const [searchParams] = useSearchParams();
+  const reviewMistakeId = searchParams.get('review');
+  const reviewing = Boolean(reviewMistakeId);
   const store = useStoreView();
   const allAlgorithmProblems = useMemo(() => store.problems.filter(isAlgorithmProblem), [store.problems]);
   const requestedProblem = useMemo(
@@ -727,8 +751,15 @@ export function SolvePage() {
   const attempt = useMemo(() => store.attempts.filter((item) => item.problemId === problem?.id).sort((a, b) => b.startedAt - a.startedAt)[0], [problem?.id, store.attempts]);
   // 编辑器文本由 Monaco 非受控维护，这里只保留“最近一次已知代码”的 ref，
   // 用户输入不再同步 React 状态，避免每次输入/删除停顿后整页重渲染造成卡顿。
-  // 复习模式下使用空字符串，不保留之前的代码
-  const codeRef = useRef(initialEditorCode(problem, attempt, attempt?.language ?? store.settings.defaultLanguage ?? 'cpp', algorithmProblems));
+  // 复习模式不沿用上次的代码，从模板重新开始。
+  const initialCode = useMemo(() => {
+    const initialLanguage = attempt?.language ?? store.settings.defaultLanguage ?? 'cpp';
+    return reviewing
+      ? editorTemplateForProblem(problem, initialLanguage)
+      : initialEditorCode(problem, attempt, initialLanguage, algorithmProblems);
+    // 只在挂载时定一次；之后编辑器由 Monaco 非受控维护。
+  }, []);
+  const codeRef = useRef(initialCode);
   const [editorHistory, setEditorHistory] = useState({ canUndo: false, canRedo: false });
   const codeEditorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const [language, setLanguage] = useState(attempt?.language ?? store.settings.defaultLanguage ?? 'cpp');
@@ -1653,8 +1684,8 @@ export function SolvePage() {
   if (!problem) {
     return (
       <>
-        <PageHeader eyebrow="做题工作台" title="先选择一道题。" description="从个人题库或官方平台绑定题目后，计时、代码和思路才会建立关联。" />
-        <EmptyState title="没有可练习的题目" message="去题库建立学习卡，或从官方平台绑定当前题。" action={<button className="button buttonPrimary" type="button" onClick={() => navigate('/problems')}>前往题库</button>} />
+        <PageHeader title="做题" description="先选一道题：从个人题库里挑，或从官方平台绑定当前题。绑定之后计时、代码和思路才会关联起来。" />
+        <EmptyState title="没有可练习的题目" message="去题库新建题目，或从官方平台绑定当前题。" action={<button className="button buttonPrimary" type="button" onClick={() => navigate('/problems')}>前往题库</button>} />
       </>
     );
   }
@@ -1674,7 +1705,13 @@ export function SolvePage() {
   return (
     <div ref={solvePageRef} className={styles.solvePage}>
       <div className={styles.solveWorkspace} style={resizeStyle}>
-        <section className={styles.solveProblem}>
+        <section className={styles.solveProblem} data-reviewing={reviewing}>
+          {reviewing && (
+            <div className={styles.solveReviewBanner}>
+              <span>复习模式</span>
+              这次从模板重新写，不沿用上次的代码。
+            </div>
+          )}
           <div className={styles.solveProblemHeader}>
             <div className={styles.solveProblemIdentity}>
               <div className={styles.solveProblemMeta}>
@@ -1726,8 +1763,8 @@ export function SolvePage() {
               <button className="button" type="button" disabled={sampleBusy || runningCode} onClick={() => openSampleEditor()}>
                 <Pencil size={14} />编辑样例
               </button>
-              <button className="button" type="button" aria-haspopup="dialog" onClick={openProblemReader}>
-                <BookOpenCheck size={14} />显示全文
+              <button className="iconButton" type="button" aria-haspopup="dialog" aria-label="题面全文" title="题面全文" onClick={openProblemReader}>
+                <BookOpenCheck size={14} />
               </button>
             </div>
           </div>
@@ -1834,8 +1871,8 @@ export function SolvePage() {
                   ? <button className="iconButton" title="开始计时" aria-label="开始计时" type="button" onClick={begin}><Play size={14} /></button>
                    : <button className="iconButton" title="暂停计时" aria-label="暂停计时" type="button" onClick={() => { setRunning(false); if (attempt?.id) void store.updateAttempt?.(attempt.id, { durationSeconds: secondsRef.current }); }}><Pause size={14} /></button>}
                 <button className="button buttonAccent" type="button" disabled={runningCode} onClick={runSample}><TestTube2 size={14} />{runningCode ? '运行中' : '运行全部样例'}</button>
-                <button className="iconButton" type="button" title="撤销 (Ctrl+Z)" aria-label="撤销" disabled={!editorHistory.canUndo} onClick={undoCode}><Undo2 size={15} /></button>
-                <button className="iconButton" type="button" title="还原 (Ctrl+Y)" aria-label="还原" disabled={!editorHistory.canRedo} onClick={redoCode}><Redo2 size={15} /></button>
+                <button className="iconButton" type="button" title={`撤销 (${undoShortcutLabel()})`} aria-label="撤销" disabled={!editorHistory.canUndo} onClick={undoCode}><Undo2 size={15} /></button>
+                <button className="iconButton" type="button" title={`还原 (${redoShortcutLabel()})`} aria-label="还原" disabled={!editorHistory.canRedo} onClick={redoCode}><Redo2 size={15} /></button>
               </div>
             </div>
 
@@ -2011,13 +2048,15 @@ export function SolvePage() {
                       data-ai-module={action.intent}
                       key={action.intent}
                     >
-                   <header className={styles.aiModuleHeader}>
+                   {!turn && (
+                      <header className={styles.aiModuleHeader}>
                         <div className={styles.aiModuleTitle}>
                           <action.icon size={14} />
                           <strong>{action.label}</strong>
                         </div>
-                        <small>{turn ? '仅保留最新回答' : action.description}</small>
+                        <small>{action.description}</small>
                       </header>
+                    )}
                       <div
                         className={styles.aiModuleConversation}
                         data-ai-scroll={action.intent}
@@ -2029,10 +2068,11 @@ export function SolvePage() {
                         )}
                         {turn && (
                           <article className={styles.aiCoachTurn} key={turn.id}>
-                          <header>
-                            <span>{turn.label}</span>
-                            {turn.question && <small title={turn.question}>{turn.question}</small>}
-                          </header>
+                          {turn.question && (
+                            <header>
+                              <small title={turn.question}>{turn.question}</small>
+                            </header>
+                          )}
                           <AiCoachContent content={turn.answer} busy={false} complete={turn.intent === 'complete'} />
                           {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
                           <footer className={styles.aiCoachTurnFooter}>
@@ -2090,10 +2130,9 @@ export function SolvePage() {
                      {explainTurns.map((turn) => (
                        <article className={styles.aiCoachTurn} key={turn.id}>
                       <header>
-                        <span>{turn.label}</span>
-                        {turn.question && <small title={turn.question}>{turn.question}</small>}
+                        {turn.question ? <small title={turn.question}>{turn.question}</small> : <span>{turn.label}</span>}
                       </header>
-                      <AiCoachContent content={turn.answer} busy={false} complete={false} />
+                      <AiCoachContent content={turn.answer} busy={false} complete={false} editorCode={codeRef.current} />
                       {turn.error && <div className={styles.aiStreamMessage}>{turn.error}</div>}
                       <footer className={styles.aiCoachTurnFooter}>
                         <button

@@ -97,6 +97,8 @@ export function importSnapshot(currentInput: AppDataSnapshot, incomingInput: unk
   const templates = mergeById(current.codeTemplates, incoming.codeTemplates);
   const plans = mergeById(current.dailyPlans, incoming.dailyPlans);
   const generations = mergeById(current.aiGenerations, incoming.aiGenerations);
+  // 本地工具清单属于本机登记：恢复备份时按 id 合并，别让导入把已经删掉的条目又拉回来。
+  const localTools = mergeById(current.localTools, incoming.localTools);
   const vocabularyWords = mergeById(current.vocabularyWords, incoming.vocabularyWords);
   const vocabularyReviews = mergeById(current.vocabularyReviews, incoming.vocabularyReviews);
   const vocabularyProgressByWord = new Map(current.vocabularyProgress.map((item) => [
@@ -124,10 +126,11 @@ export function importSnapshot(currentInput: AppDataSnapshot, incomingInput: unk
     vocabularyProgress: [...vocabularyProgressByWord.values()],
     vocabularyReviews: vocabularyReviews.values,
     aiGenerations: generations.values,
+    localTools: localTools.values,
     settings: { ...incoming.settings, ...current.settings, hasAiCredential: current.settings.hasAiCredential },
     updatedAt: Date.now(),
   };
-  const entities = { problems: [problemAdded, problemUpdated, problemSkipped], attempts: [attempts.added, attempts.updated, attempts.skipped], thoughts: [thoughts.added, thoughts.updated, thoughts.skipped], results: [results.added, results.updated, results.skipped], mistakes: [mistakes.added, mistakes.updated, mistakes.skipped], notes: [notes.added, notes.updated, notes.skipped], templates: [templates.added, templates.updated, templates.skipped], plans: [plans.added, plans.updated, plans.skipped], generations: [generations.added, generations.updated, generations.skipped], vocabularyWords: [vocabularyWords.added, vocabularyWords.updated, vocabularyWords.skipped], vocabularyProgress: [incoming.vocabularyProgress.length, 0, Math.max(0, current.vocabularyProgress.length - incoming.vocabularyProgress.length)], vocabularyReviews: [vocabularyReviews.added, vocabularyReviews.updated, vocabularyReviews.skipped] };
+  const entities = { problems: [problemAdded, problemUpdated, problemSkipped], attempts: [attempts.added, attempts.updated, attempts.skipped], thoughts: [thoughts.added, thoughts.updated, thoughts.skipped], results: [results.added, results.updated, results.skipped], mistakes: [mistakes.added, mistakes.updated, mistakes.skipped], notes: [notes.added, notes.updated, notes.skipped], templates: [templates.added, templates.updated, templates.skipped], plans: [plans.added, plans.updated, plans.skipped], generations: [generations.added, generations.updated, generations.skipped], vocabularyWords: [vocabularyWords.added, vocabularyWords.updated, vocabularyWords.skipped], vocabularyProgress: [incoming.vocabularyProgress.length, 0, Math.max(0, current.vocabularyProgress.length - incoming.vocabularyProgress.length)], vocabularyReviews: [vocabularyReviews.added, vocabularyReviews.updated, vocabularyReviews.skipped], localTools: [localTools.added, localTools.updated, localTools.skipped] };
   return {
     snapshot,
     added: Object.fromEntries(Object.entries(entities).map(([key, value]) => [key, value[0]])),

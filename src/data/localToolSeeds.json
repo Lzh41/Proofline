@@ -1,0 +1,62 @@
+[
+  {
+    "id": "local-tool-benchlab-dashboard",
+    "name": "benchlab 评测看板",
+    "category": "评测",
+    "description": "跑评测时边跑边看的单文件看板，1.5 秒轮询 runs/<run_id>/ 下的 meta、summary 和 results.jsonl，把每题输出、判分和音频摊开。地址后加 ?run=<run_id> 直接锁定某一次运行。",
+    "url": "http://127.0.0.1:8777/dashboard.html",
+    "port": 8777,
+    "launchCommand": "\".venv\\Scripts\\python.exe\" serve.py --port 8777",
+    "workingDirectory": "G:\\benchlab"
+  },
+  {
+    "id": "local-tool-isb-annotation",
+    "name": "IntentShiftBench 标注看板",
+    "category": "标注",
+    "description": "盲标答卷用。起服务时额外提供 POST /save，把答案直接写进 data/annotation/<role>/answers.jsonl，写盘前先校验盲号集合与标签取值，不合格直接拒收。",
+    "url": "http://127.0.0.1:8765/dashboard.html",
+    "port": 8765,
+    "launchCommand": "\"G:\\Codex\\Scientific research\\shuanggong benchmark\\.venv-cpu\\Scripts\\python.exe\" tools\\serve_annotation.py --no-open",
+    "workingDirectory": "G:\\Codex\\Scientific research\\shuanggong benchmark\\IntentShiftBench"
+  },
+  {
+    "id": "local-tool-isb-replay",
+    "name": "IntentShiftBench 测评回放",
+    "category": "标注",
+    "description": "按相对路径取 data/episodes/audio/<id>/{user,model}.wav，逐条回放测评过程；HTML 一律 no-store，看板重建后不会看到缓存住的旧界面。",
+    "url": "http://127.0.0.1:8770/replay/viewer.html",
+    "port": 8770,
+    "launchCommand": "\"G:\\Codex\\Scientific research\\shuanggong benchmark\\.venv-cpu\\Scripts\\python.exe\" tools\\serve_replay.py --no-open",
+    "workingDirectory": "G:\\Codex\\Scientific research\\shuanggong benchmark\\IntentShiftBench"
+  },
+  {
+    "id": "local-tool-isb-live",
+    "name": "IntentShiftBench 实时看板",
+    "category": "评测",
+    "description": "托管仓库根目录并提供事件流接口：GET /api/runs 列出带 live.jsonl 的运行，GET /api/live?run=<id>&from=<n> 增量取事件，看板按已读行数轮询，不重复渲染。",
+    "url": "http://127.0.0.1:8780/live/live.html",
+    "port": 8780,
+    "launchCommand": "\"G:\\Codex\\Scientific research\\shuanggong benchmark\\.venv-cpu\\Scripts\\python.exe\" tools\\serve_live.py --no-open",
+    "workingDirectory": "G:\\Codex\\Scientific research\\shuanggong benchmark\\IntentShiftBench"
+  },
+  {
+    "id": "local-tool-mililab-client",
+    "name": "MiliLab 集群客户端",
+    "category": "集群",
+    "description": "单进程本地服务，浏览器界面配 paramiko 后端：密钥或密码登录、跳板机转发、交互式终端、SFTP 上传下载、快捷命令。",
+    "url": "http://127.0.0.1:8787/",
+    "port": 8787,
+    "launchCommand": "\".venv\\Scripts\\python.exe\" app.py --no-browser",
+    "workingDirectory": "G:\\deepseek harness\\dp harness\\hpc-client"
+  },
+  {
+    "id": "local-tool-paper-workbench",
+    "name": "Paper Workbench 论文工作台",
+    "category": "写作",
+    "description": "本地论文工作台，桌面风格 Web UI：选题、看图、写作流水线、图表与 PDF 导出都在同一页里点。",
+    "url": "http://127.0.0.1:8123/",
+    "port": 8123,
+    "launchCommand": "\"C:\\Users\\hp\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" web\\server.py",
+    "workingDirectory": "G:\\deepseek harness\\dp harness\\paper-workbench-main"
+  }
+]

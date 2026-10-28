@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { FileImage, FilePlus2, Play, Plus, Search, Square, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { AlgorithmMode, Problem } from '../types';
-import { difficultyLabel, sourceLabel, useStoreView } from '../app/storeAdapter';
+import { difficultyLabel, formatMonthDay, sourceLabel, useStoreView } from '../app/storeAdapter';
 import { EmptyState, PageHeader } from '../components/PagePrimitives';
 import { isOcrCancelled, OCR_MAX_FILE_BYTES, recognizeProblemImage, type OfflineOcrTask } from '../lib/ocr';
 import { inferProblemFromUrl } from '../lib/platform';
@@ -134,7 +134,7 @@ export function ProblemsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="算法题训练" title="函数题与完整程序题，分开练。" description="函数题只写解题函数；完整程序题按 PAT / ACM 习惯自行处理标准输入和标准输出。题面、难度与样例仍从官网同步。" actions={<button className="button buttonPrimary" type="button" onClick={() => openDialog(activeMode)}><Plus size={16} />建立学习卡</button>} />
+      <PageHeader eyebrow="算法题训练" title="题库" description="函数题与完整程序题分开练。函数题只写解题函数；完整程序题按 PAT / ACM 习惯自行处理标准输入和标准输出。题面、难度与样例仍从官网同步。" actions={<button className="button buttonPrimary" type="button" onClick={() => openDialog(activeMode)}><Plus size={16} />新建题目</button>} />
       {message && <div className={styles.notice}>{message}</div>}
       <div className={styles.modeTabs} role="tablist" aria-label="算法题类型">
         <button className={`button ${activeMode === 'function' ? 'buttonPrimary' : ''}`} type="button" role="tab" aria-selected={activeMode === 'function'} onClick={() => setActiveMode('function')}>函数题 <span className={styles.modeCount}>{functionProblems.length}</span></button>
@@ -161,17 +161,17 @@ export function ProblemsPage() {
                 <td className={styles.tableTitle}>{problem.externalId ? `${problem.externalId}. ` : ''}{problem.title}<div className={styles.tags}>{problem.tags.slice(0, 4).map((tag) => <span className={styles.tag} key={tag}>{tag}</span>)}</div></td>
                 <td>{sourceLabel(problem.source)}</td><td>{difficultyLabel(problem.difficulty)}</td>
                 <td><span className={`${styles.badge} ${problem.platformStatus === 'solved' ? styles.badgeAccent : ''}`}>{problem.platformStatus === 'solved' ? '已通过' : problem.platformStatus === 'attempted' ? '练习中' : '待练习'}</span></td>
-                <td>{new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(problem.updatedAt))}</td>
+                <td>{formatMonthDay(problem.updatedAt)}</td>
                 <td><button className="iconButton" type="button" title="开始做题" aria-label={`开始 ${problem.title}`} onClick={() => navigate(`/solve/${problem.id}`)}><Play size={15} /></button></td>
               </tr>
             ))}</tbody>
           </table>
-        ) : <EmptyState title={activeMode === 'stdin' ? '还没有完整程序题' : '没有匹配的函数题'} message={activeMode === 'stdin' ? '可从官方平台导入题面，或粘贴官网链接建立一张完整程序题。' : '调整筛选条件，或换一个关键词。'} action={<button className="button buttonAccent" type="button" onClick={() => openDialog(activeMode)}><FilePlus2 size={15} />建立学习卡</button>} />}
+        ) : <EmptyState title={activeMode === 'stdin' ? '还没有完整程序题' : '没有匹配的函数题'} message={activeMode === 'stdin' ? '可从官方平台导入题面，或粘贴官网链接建立一张完整程序题。' : '调整筛选条件，或换一个关键词。'} action={<button className="button buttonAccent" type="button" onClick={() => openDialog(activeMode)}><FilePlus2 size={15} />新建题目</button>} />}
       </div>
       </section>
 
       <dialog className={styles.dialog} ref={dialogRef}>
-        <div className={styles.dialogHead}><h2>建立学习卡</h2><button className="iconButton" type="button" aria-label="关闭" onClick={() => dialogRef.current?.close()}><X size={17} /></button></div>
+        <div className={styles.dialogHead}><h2>新建题目</h2><button className="iconButton" type="button" aria-label="关闭" onClick={() => dialogRef.current?.close()}><X size={17} /></button></div>
         <form className={`${styles.dialogBody} ${styles.formGrid}`} onSubmit={submit}>
           <label className={`field ${styles.formFull}`}><span>题目标题</span><input className="input" required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
           <label className="field"><span>题号</span><input className="input" value={form.externalId} onChange={(event) => setForm({ ...form, externalId: event.target.value })} /></label>

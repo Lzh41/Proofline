@@ -8,6 +8,7 @@ import {
   ChevronsLeft,
   Code2,
   BrainCircuit,
+  LayoutDashboard,
   LibraryBig,
   Languages,
   Menu,
@@ -24,6 +25,7 @@ import clsx from 'clsx';
 import { useStoreView } from '../app/storeAdapter';
 import { nextTheme } from '../app/theme';
 import { useResolvedTheme } from '../app/useResolvedTheme';
+import { primaryModifierLabel } from '../lib/os';
 import styles from './AppShell.module.css';
 import { WindowTitlebar } from './WindowTitlebar';
 
@@ -38,6 +40,7 @@ const NAVIGATION = [
   { to: '/knowledge', label: '知识库', icon: BookOpenText },
   { to: '/plan', label: '计划', icon: CalendarCheck2 },
   { to: '/analytics', label: '统计', icon: BarChart3 },
+  { to: '/tools', label: '工具', icon: LayoutDashboard },
   { to: '/settings', label: '设置', icon: Settings },
 ] as const;
 
@@ -165,7 +168,7 @@ export function AppShell({ children }: AppShellProps) {
               placeholder="搜索题目、标签或题号"
               aria-label="全局搜索"
             />
-            <kbd>Ctrl K</kbd>
+            <kbd>{primaryModifierLabel()} K</kbd>
           </form>
           <div className={styles.topbarActions}>
             <div className={styles.syncState} title="个人数据仅保存在本机">

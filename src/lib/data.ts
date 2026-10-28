@@ -1,6 +1,8 @@
-import type { AppDataSnapshot, AppFontScale, AppSettings, AppTheme, EditorFontSize } from '../types';
+import type { AppDataSnapshot, AppFontScale, AppSettings, AppTheme, EditorFontSize, LocalTool } from '../types';
 import { VOCABULARY_CATALOG_FULL } from '../data/vocabularyCatalog';
+import SEED_FILE from '../data/localToolSeeds.json';
 import { isVocabularyDifficulty, type VocabularyReviewDirection, type VocabularyScope, type VocabularySessionCardState, type VocabularySessionState, type VocabularyWord } from './vocabulary';
+import { isMacOS } from './os';
 
 export const EDITOR_FONT_SIZES: EditorFontSize[] = [14, 16, 18, 20, 22];
 export const APP_FONT_SCALES: AppFontScale[] = [90, 100, 110, 120, 130];
@@ -27,6 +29,61 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export function normalizeTheme(value: unknown): AppTheme {
   return value === 'light' || value === 'system' || value === 'dark' ? value : 'dark';
+}
+
+/**
+ * 内置清单的唯一数据源是 src/data/localToolSeeds.json：应用从这里生成种子，
+ * scripts/local-tools.mjs 登记新工具时读的也是同一份文件。
+ * 只收点一下就能打开的本地看板/工作台；需要先起容器的服务（docker 一类）不在其中。
+ */
+const LOCAL_TOOL_SEEDS = SEED_FILE as ReadonlyArray<Omit<LocalTool, 'createdAt' | 'updatedAt' | 'origin'>>;
+
+/**
+ * 内置清单里每条都钉着某台机器的绝对路径（`G:\...`、`.venv\Scripts\python.exe`）。
+ * 换到 macOS 后这些路径一个都不存在，与其在工具页摆一排点了就报「工作目录不存在」的条目，
+ * 不如按平台过滤：Windows 形态的条目只在 Windows 上出现。mac 上工具页就是空的，不用管它。
+ */
+function seedFitsCurrentPlatform(tool: Omit<LocalTool, 'createdAt' | 'updatedAt' | 'origin'>): boolean {
+  if (!isMacOS()) return true;
+  const windowsStyle = (value?: string): boolean =>
+    Boolean(value && (/^[A-Za-z]:[\\/]/.test(value) || value.includes('\\')));
+  return !windowsStyle(tool.workingDirectory) && !windowsStyle(tool.launchCommand);
+}
+
+/** 内置清单的实例化：每条都带稳定的 id，用户删掉后不会自己回来。 */
+export function createSeedLocalTools(now = Date.now()): LocalTool[] {
+  return LOCAL_TOOL_SEEDS.filter(seedFitsCurrentPlatform)
+    .map((tool) => ({ ...tool, origin: 'seed' as const, createdAt: now, updatedAt: now }));
+}
+
+// description 允许为空（用户可以只登记名字和地址），其余字段缺了就没法用。
+const LOCAL_TOOL_REQUIRED_FIELDS = ['id', 'name', 'category', 'url'] as const;
+
+/** 宽容解析：坏条目直接丢掉，不让一条脏数据把整份快照读取拖崩。 */
+export function normalizeLocalTools(value: unknown): LocalTool[] {
+  if (value === undefined) return createSeedLocalTools();
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const raw = item as Record<string, unknown>;
+    if (LOCAL_TOOL_REQUIRED_FIELDS.some((field) => typeof raw[field] !== 'string' || !(raw[field] as string).trim())) return [];
+    const port = Number(raw.port);
+    const tool: LocalTool = {
+      id: String(raw.id),
+      name: String(raw.name),
+      category: String(raw.category),
+      description: typeof raw.description === 'string' ? raw.description : '',
+      url: String(raw.url),
+      createdAt: Number.isFinite(raw.createdAt) ? Number(raw.createdAt) : Date.now(),
+      updatedAt: Number.isFinite(raw.updatedAt) ? Number(raw.updatedAt) : Date.now(),
+    };
+    if (Number.isInteger(port) && port > 0 && port <= 65_535) tool.port = port;
+    if (typeof raw.launchCommand === 'string' && raw.launchCommand.trim()) tool.launchCommand = raw.launchCommand;
+    if (typeof raw.workingDirectory === 'string' && raw.workingDirectory.trim()) tool.workingDirectory = raw.workingDirectory;
+    if (raw.pinned === true) tool.pinned = true;
+    tool.origin = raw.origin === 'manual' ? 'manual' : 'seed';
+    return [tool];
+  });
 }
 
 export function normalizeEditorFontSize(value: unknown): EditorFontSize {
@@ -57,6 +114,7 @@ export function createEmptySnapshot(now = Date.now()): AppDataSnapshot {
     vocabularyProgress: [],
     vocabularyReviews: [],
     aiGenerations: [],
+    localTools: createSeedLocalTools(now),
     settings: { ...DEFAULT_SETTINGS },
     updatedAt: now,
   };
@@ -233,6 +291,7 @@ export function normalizeSnapshot(value: unknown): AppDataSnapshot {
     vocabularyProgress: normalizeVocabularyProgress(raw.vocabularyProgress),
     vocabularyReviews: normalizeVocabularyReviews(raw.vocabularyReviews),
     aiGenerations: arrayValue(raw.aiGenerations, 'aiGenerations'),
+    localTools: normalizeLocalTools(raw.localTools),
     settings,
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
   };

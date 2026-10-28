@@ -23,7 +23,7 @@
   margin: 0 0 8px;
   color: var(--accent);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -150,7 +150,7 @@
   display: block;
   margin-top: 10px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .tone_accent { --metric-tone: var(--accent); }
@@ -184,7 +184,7 @@
   position: relative;
   height: 7px;
   overflow: visible;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--surface-strong);
 }
 

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, RotateCcw, Sparkles } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { todayKey, useStoreView } from '../app/storeAdapter';
-import { EmptyState, ProgressBar, SectionHeader } from '../components/PagePrimitives';
+import { formatMonthDay, relativeDays, todayKey, useStoreView } from '../app/storeAdapter';
+import { EmptyState, PageHeader, ProgressBar, SectionHeader } from '../components/PagePrimitives';
 import { rememberVocabularyDifficulty, writeVocabularySessionJournal } from '../lib/vocabularySessionJournal';
 import {
   difficultyLabel,
@@ -365,6 +365,10 @@ export function VocabularyPage() {
 
   return (
     <div className={styles.vocabularyPage}>
+      <PageHeader
+        title="词汇"
+        description="按难度和考试方向刷词。到期复习优先出现，答错的词会回到本轮队尾再来一遍。"
+      />
       {message && <div className={styles.notice}><CircleHelp size={16} />{message}</div>}
 
       <div className={styles.vocabularyToolbar}>
@@ -384,7 +388,7 @@ export function VocabularyPage() {
       {mode === 'practice' && (
         <div className={styles.vocabularyPracticeLayout}>
           <section className={styles.paperPanel}>
-            <SectionHeader title={!sessionScopeLoaded ? '正在恢复学习进度' : previewingSession ? '本轮背诵准备' : activeWord ? `本轮 ${queueIndex + 1} / ${queue.length}` : completedSession ? '本轮完成' : '今日安排'} meta={!sessionScopeLoaded ? '' : previewingSession ? `${queue.length} 个单词` : activeWord ? activeIsNew ? '新词' : '到期复习' : `${dueWords.length} 个到期`} />
+            <SectionHeader title={!sessionScopeLoaded ? '正在恢复学习进度' : previewingSession ? '本轮背诵准备' : activeWord ? `第 ${queueIndex + 1} / ${queue.length} 个` : completedSession ? '本轮完成' : '今日安排'} meta={!sessionScopeLoaded ? '' : previewingSession ? `${queue.length} 个单词` : activeWord ? activeIsNew ? '新词' : '到期复习' : `${dueWords.length} 个到期`} />
             {!sessionScopeLoaded ? (
               <div className={styles.vocabularySessionRestore} role="status">正在恢复当前考试方向的词单与进度…</div>
             ) : previewingSession ? (
@@ -499,9 +503,9 @@ export function VocabularyPage() {
 
           <aside className={styles.vocabularyAside}>
             <section className={styles.section}>
-              <SectionHeader title="记忆记录" meta={`${reviewsToday} 次`} />
+              <SectionHeader title="今日评价" meta={`${reviewsToday} 次`} />
               <div className={styles.vocabularyAsideMetric}><span>连续答对</span><strong>{activeProgress?.streak ?? 0}</strong><small>再次忘记会重新缩短间隔</small></div>
-              <div className={styles.vocabularyAsideMetric}><span>下次复习</span><strong>{activeProgress?.lastReviewedAt ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(activeProgress.dueAt)) : '首次学习'}</strong><small>{activeProgress?.intervalDays ? `当前间隔 ${activeProgress.intervalDays} 天` : '答后按评分安排'}</small></div>
+              <div className={styles.vocabularyAsideMetric}><span>下次复习</span><strong>{activeProgress?.lastReviewedAt ? `${formatMonthDay(activeProgress.dueAt)}（${relativeDays(activeProgress.dueAt)}）` : '首次学习'}</strong><small>{activeProgress?.intervalDays ? `当前间隔 ${activeProgress.intervalDays} 天` : '答后按评分安排'}</small></div>
             </section>
             <div className={styles.vocabularyNote}><RotateCcw size={16} /><span>新词看释义回忆拼写，到期复习看单词回忆含义。</span></div>
           </aside>
@@ -529,7 +533,7 @@ export function VocabularyPage() {
                     <span className={`${styles.vocabularyStatus} ${status === 'mastered' ? styles.vocabularyStatusMastered : status === 'new' ? styles.vocabularyStatusNew : styles.vocabularyStatusLearning}`}>{status === 'mastered' ? '已掌握' : status === 'new' ? '新词' : '复习中'}</span>
                     <ChevronDown className={expanded ? styles.vocabularyChevronOpen : ''} size={16} />
                   </button>
-                  {expanded && <div className={styles.vocabularyWordDetail}><p>{word.definitionEn}</p>{word.example && <blockquote>{word.example}{word.exampleTranslation && <span>{word.exampleTranslation}</span>}</blockquote>}{word.collocations.length > 0 && <div><small>搭配</small>{word.collocations.join(' · ')}</div>}{word.family.length > 0 && <div><small>词族</small>{word.family.join(' / ')}</div>}<footer><small>{progress?.lastReviewedAt ? `上次复习 ${new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(progress.lastReviewedAt))}` : `来源：${word.source}`}</small><button className="button" type="button" onClick={() => practiceWord(word)}>练这个词</button></footer></div>}
+                  {expanded && <div className={styles.vocabularyWordDetail}><p>{word.definitionEn}</p>{word.example && <blockquote>{word.example}{word.exampleTranslation && <span>{word.exampleTranslation}</span>}</blockquote>}{word.collocations.length > 0 && <div><small>搭配</small>{word.collocations.join(' · ')}</div>}{word.family.length > 0 && <div><small>词族</small>{word.family.join(' / ')}</div>}<footer><small>{progress?.lastReviewedAt ? `上次复习 ${formatMonthDay(progress.lastReviewedAt)}` : `来源：${word.source}`}</small><button className="button" type="button" onClick={() => practiceWord(word)}>练这个词</button></footer></div>}
                 </article>
               );
             })}

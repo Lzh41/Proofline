@@ -14,6 +14,7 @@ import { ProblemsPage } from './pages/ProblemsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SolvePage } from './pages/SolvePage';
 import { TodayPage } from './pages/TodayPage';
+import { ToolsPage } from './pages/ToolsPage';
 import { InterviewsPage } from './pages/InterviewsPage';
 import { InterviewPracticePage } from './pages/InterviewPracticePage';
 import { VocabularyPage } from './pages/VocabularyPage';
@@ -47,6 +48,7 @@ function ApplicationRoutes() {
         <Route path="/knowledge/:id" element={<KnowledgePage />} />
         <Route path="/plan" element={<PlanPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/tools" element={<ToolsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

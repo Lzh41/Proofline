@@ -113,7 +113,7 @@ export function PlanPage() {
 
   return (
     <>
-      <PageHeader eyebrow="每日计划" title="每日计划" description="先安排到期复习，再按关注专题和难度比例选择个人题库中的题目。" actions={<><button className="button" type="button" onClick={save}><Save size={15} />保存目标</button><button className="button buttonPrimary" type="button" onClick={generate}><RefreshCw size={15} />生成今日任务</button></>} />
+      <PageHeader title="计划" description="先安排到期复习，再按关注专题和难度比例从个人题库里选题。" actions={<><button className="button" type="button" onClick={save}><Save size={15} />保存目标</button><button className="button buttonPrimary" type="button" onClick={generate}><RefreshCw size={15} />生成今日任务</button></>} />
       {(message || targetError) && <div className={`${styles.notice} ${totalRatio !== 100 || targetError ? styles.noticeDanger : ''}`}>{totalRatio === 100 && !targetError ? <Check size={17} /> : <CalendarCheck2 size={17} />}{targetError || message}</div>}
       <div className={`${styles.twoColumn} ${styles.balanced}`}>
         <section className={styles.paperPanel}>
@@ -148,7 +148,7 @@ export function PlanPage() {
       <section className={styles.section} style={{ marginTop: 34 }}>
         <SectionHeader title="今日任务单" meta={`${current?.completedProblemIds.length ?? 0}/${current?.targetProblems ?? targetProblems}`} />
         {tasks.map((problem, index) => problem && <div className={styles.row} key={problem.id}><div className={styles.rowMain}><strong>{String(index + 1).padStart(2, '0')} · {problem.title}</strong><p>{problem.kind === 'interview' ? '面试题' : '算法题'} · {problem.tags.slice(0, 3).join(' / ') || '综合训练'}</p></div><div className={styles.rowActions}>{current?.completedProblemIds.includes(problem.id) ? <span className={`${styles.badge} ${styles.badgeAccent}`}><Check size={12} />完成</span> : <button className="button" type="button" onClick={() => navigate(learningRoute(problem))}>开始</button>}</div></div>)}
-        {!tasks.length && <EmptyState title="任务单还未生成" message="保存目标后生成任务；题库数量不足时会保留已有题目并提示补充。" action={<button className="button buttonAccent" type="button" onClick={generate}>生成任务</button>} />}
+        {!tasks.length && <EmptyState title="任务单还未生成" message="保存目标后生成任务；题库数量不足时会保留已有题目并提示补充。" action={<button className="button buttonAccent" type="button" onClick={generate}>生成今日任务</button>} />}
       </section>
       <section className={styles.section}>
         <SectionHeader title="今日新词预览" meta={`${vocabularyPreviewedWordIds.length}/${vocabularyTasks.length} 已预览 · ${current?.completedVocabularyWordIds.length ?? 0}/${current?.targetVocabularyWords ?? parsedTargets.vocabulary} 已完成`} action={<button className="button buttonPrimary" type="button" onClick={() => navigate('/vocabulary')}><Languages size={15} />开始刷词</button>} />
@@ -166,7 +166,7 @@ export function PlanPage() {
             <div className={styles.rowActions}>
               {extra && <span className={styles.badge}>明日额外</span>}
               {completed && <span className={`${styles.badge} ${styles.badgeAccent}`}><Check size={12} />完成</span>}
-              {!completed && <button className="button" type="button" onClick={() => void store.markVocabularyPreviewed?.(word.id, date, vocabularyDifficulty)}>{previewed ? '已预览' : '标记已背'}</button>}
+              {!completed && <button className="button" type="button" onClick={() => void store.markVocabularyPreviewed?.(word.id, date, vocabularyDifficulty)}>{previewed ? '已预览' : '标记已预览'}</button>}
               {!completed && <button className={`button${unfamiliar ? ' buttonDanger' : ''}`} type="button" aria-pressed={unfamiliar} onClick={() => void (unfamiliar ? store.unmarkVocabularyUnfamiliar?.(word.id, date, vocabularyDifficulty) : store.markVocabularyUnfamiliar?.(word.id, date, vocabularyDifficulty))}>{unfamiliar ? '取消不熟' : '标记不熟'}</button>}
             </div>
           </div>;

@@ -172,12 +172,20 @@ fn find_cpp_compiler() -> Result<PathBuf, String> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        extend_search_path(&mut command);
         hide_window(&mut command);
         if command.status().is_ok_and(|status| status.success()) {
             return Ok(candidate);
         }
     }
-    Err("未找到可用的 C++17 编译器。请安装 MinGW-w64/LLVM，并把 g++ 或 clang++ 加入 PATH；也可以设置 PROOFLINE_CXX。".to_string())
+    Err(
+        if cfg!(windows) {
+            "未找到可用的 C++17 编译器。请安装 MinGW-w64/LLVM，并把 g++ 或 clang++ 加入 PATH；也可以设置 PROOFLINE_CXX。"
+        } else {
+            "未找到可用的 C++17 编译器。macOS 上运行 `xcode-select --install` 安装命令行工具即可（自带 clang++）；也可以设置 PROOFLINE_CXX 指向自定义编译器。"
+        }
+        .to_string(),
+    )
 }
 
 fn run_process(
@@ -199,6 +207,7 @@ fn run_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_window(&mut command);
+    isolate_process_group(&mut command);
     let started = Instant::now();
     let mut child = command
         .spawn()
@@ -281,8 +290,52 @@ fn terminate_process_tree(child: &mut Child) {
         hide_window(&mut command);
         let _ = command.status();
     }
+    #[cfg(unix)]
+    {
+        // Windows 用 taskkill /T 连子进程一起收；macOS / Linux 没有这个开关，
+        // 于是 spawn 时把子进程放进独立进程组（pgid 就是它的 pid），
+        // 这里按组 SIGKILL，用户程序 fork 出来的子进程才不会被漏掉。
+        let group = child.id().to_string();
+        let _ = Command::new("pkill")
+            .args(["-KILL", "-g", &group])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let _ = Command::new("/bin/kill")
+            .args(["-KILL", &group])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     let _ = child.kill();
 }
+
+/// 非 Windows 侧给子进程建独立进程组，超时后才能整组杀掉。
+#[cfg(unix)]
+fn isolate_process_group(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
+}
+
+/// macOS / Linux 的 GUI 进程 PATH 很窄，补上 Homebrew / /usr/local，
+/// `PROOFLINE_CXX` 之外也好找到 brew 装的编译器。
+#[cfg(not(windows))]
+fn extend_search_path(command: &mut Command) {
+    let extra = "/opt/homebrew/bin:/usr/local/bin";
+    let path = match std::env::var("PATH") {
+        Ok(existing) if !existing.trim().is_empty() => format!("{extra}:{existing}"),
+        _ => extra.to_string(),
+    };
+    command.env("PATH", path);
+}
+
+#[cfg(windows)]
+fn extend_search_path(_command: &mut Command) {}
+
+#[cfg(windows)]
+fn isolate_process_group(_command: &mut Command) {}
 
 fn hide_window(command: &mut Command) {
     #[cfg(windows)]

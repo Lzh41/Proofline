@@ -25,6 +25,12 @@
   pointer-events: none;
 }
 
+/* macOS：原生红绿灯浮在内容上方（titleBarStyle: Overlay），左侧让出系统按钮的位置。
+ * 74px = 红绿灯起始 x(14) + 三颗按钮宽(约 52) + 一点呼吸空间。 */
+.macTrafficLights {
+  padding-left: 74px;
+}
+
 .controls {
   align-self: stretch;
   display: flex;

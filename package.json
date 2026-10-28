@@ -1,7 +1,7 @@
 {
   "name": "proofline",
   "private": true,
-  "version": "0.1.16",
+  "version": "0.1.19",
   "type": "module",
   "overrides": {
     "dompurify": "3.4.13"
@@ -15,7 +15,9 @@
     "test:e2e": "playwright test",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build --bundles nsis"
+    "tauri:build": "tauri build --bundles nsis",
+    "tauri:build:mac": "tauri build --target aarch64-apple-darwin",
+    "tauri:build:mac-universal": "tauri build --target universal-apple-darwin"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

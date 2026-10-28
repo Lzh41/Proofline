@@ -235,8 +235,8 @@ export function InterviewsPage() {
     <div className={styles.interviewLibraryPage}>
       <header className={styles.interviewHero}>
         <div className={styles.interviewHeroCopy}>
-          <span className={styles.interviewEyebrow}><BriefcaseBusiness size={13} />企业面试工作台</span>
-          <h1>企业面试题库</h1>
+          <span className={styles.interviewEyebrow}><BriefcaseBusiness size={13} />企业面试</span>
+          <h1>面试题</h1>
           <p>按岗位、场景和掌握状态筛选题目，练习后保留回答与复习记录。</p>
         </div>
         <div className={styles.interviewHeroActions}>
@@ -244,7 +244,6 @@ export function InterviewsPage() {
           <InterviewExaminerDialog />
           <button className="button" type="button" onClick={openCreateDialog}><Plus size={15} />新增面试题</button>
           <button className="button buttonPrimary" type="button" disabled={!filtered.length} onClick={randomPractice}><Dices size={15} />随机一题</button>
-          <button className="iconButton" type="button" aria-label="恢复内置题库" title="恢复内置题库" disabled={restoring || !store.restoreInterviewCatalog} onClick={() => void restoreCatalog()}><RefreshCcw size={16} className={restoring ? styles.spin : undefined} /></button>
         </div>
       </header>
 

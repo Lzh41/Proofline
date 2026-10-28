@@ -8,6 +8,7 @@ import type {
   Attempt,
   DailyPlan,
   KnowledgeNote,
+  LocalTool,
   Mistake,
   PlatformSource,
   PlatformBatchImportRequest,
@@ -86,6 +87,7 @@ export interface AppStoreView {
   vocabularyReviews: VocabularyReview[];
   thoughtEvents: ThoughtEvent[];
   aiGenerations: AiGeneration[];
+  localTools: LocalTool[];
   settings: AppSettingsView;
   currentAttemptId?: string | null;
   initialize?: () => Promise<void> | void;
@@ -107,6 +109,9 @@ export interface AppStoreView {
   createKnowledgeNote?: (note: Partial<KnowledgeNote>) => Promise<void> | void;
   updateKnowledgeNote?: (id: string, patch: Partial<KnowledgeNote>) => Promise<void> | void;
   deleteKnowledgeNote?: (id: string) => Promise<void> | void;
+  createLocalTool?: (input: Partial<LocalTool>) => Promise<LocalTool> | LocalTool;
+  updateLocalTool?: (id: string, patch: Partial<LocalTool>) => Promise<void> | void;
+  deleteLocalTool?: (id: string) => Promise<void> | void;
   savePlan?: (plan: Partial<DailyPlan>) => Promise<void> | void;
   generateDailyPlan?: (options?: Record<string, unknown>) => Promise<DailyPlan> | DailyPlan;
   markVocabularyPreviewed?: (wordId: string, date?: string, scope?: VocabularyScope) => Promise<void> | void;
@@ -161,6 +166,7 @@ export function useStoreView(): AppStoreView {
       vocabularyReviews: raw.vocabularyReviews ?? EMPTY_ARRAY,
       thoughtEvents: raw.thoughtEvents ?? EMPTY_ARRAY,
       aiGenerations: raw.aiGenerations ?? EMPTY_ARRAY,
+      localTools: raw.localTools ?? EMPTY_ARRAY,
       settings: raw.settings ?? EMPTY_SETTINGS,
     }),
     [raw],
@@ -172,6 +178,29 @@ export function todayKey(date = new Date()): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/** 列表、徽章里的紧凑日期：08-23。全站只用这一种紧凑写法。 */
+export function formatMonthDay(value: number | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/** 正文与标题里的日期：10月22日 周四。 */
+export function formatFullDate(value: number | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()];
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${weekday}`;
+}
+
+/** 相对天数：今天 / 3 天后 / 逾期 2 天。 */
+export function relativeDays(target: number, now = Date.now()): string {
+  const days = Math.round((target - now) / 86_400_000);
+  if (days === 0) return '今天';
+  if (days > 0) return `${days} 天后`;
+  return `逾期 ${-days} 天`;
 }
 
 export function formatDuration(seconds = 0): string {

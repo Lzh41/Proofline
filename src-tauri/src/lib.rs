@@ -1,6 +1,7 @@
 mod ai;
 mod backup;
 mod db;
+mod local_tools;
 mod platform;
 mod runner;
 
@@ -24,7 +25,10 @@ impl AppPaths {
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| {
-                let data_local = dirs::data_local_dir().expect("无法确定 Windows 本地数据目录");
+                // Windows: %LOCALAPPDATA%；macOS: ~/Library/Application Support。
+                // 两边都从 dirs 拿，不拼死路径。
+                let data_local = dirs::data_local_dir()
+                    .expect("无法确定应用数据目录（LOCALAPPDATA / Application Support）");
                 let preferred = data_local.join("Proofline");
                 let legacy = data_local.join("Xiti");
                 // 新安装使用 Proofline；已有 Xiti 数据继续原地使用，避免丢失学习记录。
@@ -164,6 +168,9 @@ pub fn run() {
             ai::request_ai_hint,
             ai::cancel_ai_request,
             runner::run_cpp_code,
+            local_tools::probe_local_port,
+            local_tools::launch_local_tool,
+            local_tools::stop_local_tool,
         ])
         .run(tauri::generate_context!())
         .expect("Proofline 桌面应用运行失败");

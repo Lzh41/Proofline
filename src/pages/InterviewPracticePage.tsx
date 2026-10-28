@@ -367,26 +367,24 @@ export function InterviewPracticePage() {
         )}
       </div>
 
-      {submitted && (
-        <section className={styles.interviewReference}>
+      <section className={styles.interviewReference}>
           <button className={styles.interviewReferenceToggle} type="button" aria-expanded={referenceOpen} onClick={() => setReferenceOpen((value) => !value)}>
-            <span><CircleHelp size={15} /><strong>参考要点</strong><small>用来校准答案，不要求逐字背诵</small></span><ChevronDown size={16} className={referenceOpen ? styles.interviewReferenceOpen : undefined} />
+            <span><CircleHelp size={15} /><strong>参考要点</strong><small>{submitted ? '用来校准答案，不要求逐字背诵' : '随时可以看，不过先自己写完更有用'}</small></span><ChevronDown size={16} className={referenceOpen ? styles.interviewReferenceOpen : undefined} />
           </button>
           {referenceOpen && <div className={styles.interviewReferenceBody}>
             <div><h2>回答骨架</h2><ul>{interview.keyPoints.map((point) => <li key={point}>{point}</li>)}</ul></div>
             <div><h2>完整参考答案</h2><p>{interview.referenceAnswer}</p></div>
             <div><h2>面试官追问</h2><ol>{interview.followUps.map((item) => <li key={item}>{item}</li>)}</ol></div>
           </div>}
-          <div className={styles.interviewMasteryBar}>
+          {submitted && <div className={styles.interviewMasteryBar}>
             <span>{message || '对照完成后，记录你这次的真实掌握度。'}</span>
             <div>
               <button className={`${styles.interviewMasteryButton} ${finished === 'mastered' ? styles.interviewMasterySelected : ''}`} type="button" disabled={Boolean(finished)} onClick={() => void finish('mastered')}><CheckCircle2 size={14} />已掌握</button>
               <button className={`${styles.interviewMasteryButton} ${finished === 'uncertain' ? styles.interviewMasterySelected : ''}`} type="button" disabled={Boolean(finished)} onClick={() => void finish('uncertain')}><CircleHelp size={14} />还需巩固</button>
               <button className={`${styles.interviewMasteryButton} ${styles.interviewMasteryDanger} ${finished === 'unknown' ? styles.interviewMasterySelected : ''}`} type="button" disabled={Boolean(finished)} onClick={() => void finish('unknown')}><Target size={14} />完全不会</button>
             </div>
-          </div>
+          </div>}
         </section>
-      )}
       {!submitted && message && <div className={styles.interviewPracticeMessage} role="status">{message}</div>}
     </div>
   );

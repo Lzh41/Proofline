@@ -337,10 +337,16 @@ fn extend_search_path(_command: &mut Command) {}
 #[cfg(windows)]
 fn isolate_process_group(_command: &mut Command) {}
 
+#[cfg(windows)]
 fn hide_window(command: &mut Command) {
-    #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 }
+
+/// macOS / Linux 起子进程本来就不带控制台窗口，这里什么都不用做。
+/// 参数必须叫 `_command`：写成空函数体加 `command` 会在 mac 上触发
+/// unused_variables，CI 的 `-D warnings` 直接判失败。
+#[cfg(not(windows))]
+fn hide_window(_command: &mut Command) {}
 
 fn useful_diagnostics(stderr: &str, stdout: &str) -> String {
     let detail = if stderr.trim().is_empty() {

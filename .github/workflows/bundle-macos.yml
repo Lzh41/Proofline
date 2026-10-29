@@ -1,0 +1,83 @@
+name: 构建 macOS 安装包
+
+# macOS 的 .app / .dmg 只能在 macOS 上编译链接，Windows 出不了包。
+# 所以用 GitHub 的 macOS runner（Apple Silicon）编，产物自动挂到指定的 Release。
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 挂到哪个 Release tag
+        required: true
+        default: v0.1.19
+      arch:
+        description: 目标架构
+        required: true
+        default: arm64
+        type: choice
+        options:
+          - arm64
+          - universal
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    name: macOS ${{ inputs.arch }}
+    runs-on: macos-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v5
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ inputs.arch == 'universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || 'aarch64-apple-darwin' }}
+
+      - name: 缓存 Rust 构建
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建 .app 与 .dmg
+        run: |
+          set -e
+          if [ "${{ inputs.arch }}" = "universal" ]; then
+            npm run tauri:build:mac-universal
+          else
+            npm run tauri:build:mac
+          fi
+
+      - name: 列出产物
+        run: |
+          set -e
+          find src-tauri/target -maxdepth 6 -type d -name dmg -print
+          find src-tauri/target -maxdepth 7 -name '*.dmg' -exec ls -lh {} \;
+
+      - name: 上传为构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: proofline-macos-${{ inputs.arch }}
+          path: src-tauri/target/**/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: 挂到 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -e
+          DMG=$(find src-tauri/target -name '*.dmg' -path '*release/bundle/dmg/*' | head -n1)
+          if [ -z "$DMG" ]; then echo "没有找到 dmg"; exit 1; fi
+          echo "上传 $DMG 到 $TAG"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Proofline ${TAG#v}" --notes "macOS 安装包"
+          gh release upload "$TAG" "$DMG" --clobber

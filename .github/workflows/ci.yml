@@ -46,6 +46,12 @@ jobs:
   rust-macos:
     name: Rust macOS 目标检查
     runs-on: macos-latest
+    # 与打包 workflow 共用同一个并发组：macOS runner 数量少，两个 workflow
+    # 同时抢会排队十几分钟甚至被取消（2026-10-29 就这样红过一次）。
+    concurrency:
+      group: macos-runner
+      cancel-in-progress: false
+    timeout-minutes: 30
     steps:
       - name: 检出代码
         uses: actions/checkout@v5

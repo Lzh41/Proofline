@@ -25,6 +25,11 @@ jobs:
   bundle:
     name: macOS ${{ inputs.arch }}
     runs-on: macos-latest
+    # 与 ci.yml 的 macOS 检查共用并发组，串行排队而不是互相抢占 runner。
+    concurrency:
+      group: macos-runner
+      cancel-in-progress: false
+    timeout-minutes: 60
     steps:
       - name: 检出代码
         uses: actions/checkout@v5

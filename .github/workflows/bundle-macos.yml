@@ -62,17 +62,31 @@ jobs:
             npm run tauri:build:mac
           fi
 
+      - name: 把 .app 打成 zip
+        # dmg 在某些下载器/代理下会被改写，挂载失败时用这个包直接解压即可。
+        # ditto 会保留符号链接与权限，比 zip -r 更适合打 .app。
+        run: |
+          set -e
+          APP=$(find src-tauri/target -maxdepth 8 -name 'Proofline.app' -print | head -n1)
+          if [ -z "$APP" ]; then echo "没有找到 Proofline.app"; exit 1; fi
+          TAG="${{ inputs.tag }}"
+          VER="${TAG#v}"
+          echo "打包 $APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "Proofline_${VER}_${{ inputs.arch }}-app.zip"
+
       - name: 列出产物
         run: |
           set -e
-          find src-tauri/target -maxdepth 6 -type d -name dmg -print
           find src-tauri/target -maxdepth 7 -name '*.dmg' -exec ls -lh {} \;
+          ls -lh ./*.zip
 
       - name: 上传为构建产物
         uses: actions/upload-artifact@v4
         with:
           name: proofline-macos-${{ inputs.arch }}
-          path: src-tauri/target/**/release/bundle/dmg/*.dmg
+          path: |
+            src-tauri/target/**/release/bundle/dmg/*.dmg
+            Proofline_*.zip
           if-no-files-found: error
 
       - name: 挂到 Release
@@ -81,8 +95,8 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           set -e
-          DMG=$(find src-tauri/target -name '*.dmg' -path '*release/bundle/dmg/*' | head -n1)
-          if [ -z "$DMG" ]; then echo "没有找到 dmg"; exit 1; fi
-          echo "上传 $DMG 到 $TAG"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Proofline ${TAG#v}" --notes "macOS 安装包"
-          gh release upload "$TAG" "$DMG" --clobber
+          for file in $(find src-tauri/target -name '*.dmg' -path '*release/bundle/dmg/*') ./*.zip; do
+            echo "上传 $file"
+            gh release upload "$TAG" "$file" --clobber
+          done

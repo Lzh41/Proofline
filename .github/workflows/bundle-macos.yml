@@ -96,7 +96,14 @@ jobs:
         run: |
           set -e
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Proofline ${TAG#v}" --notes "macOS 安装包"
+          existing=$(gh release view "$TAG" --json assets --jq '.assets[].name' || true)
           for file in $(find src-tauri/target -name '*.dmg' -path '*release/bundle/dmg/*') ./*.zip; do
-            echo "上传 $file"
-            gh release upload "$TAG" "$file" --clobber
+            name=$(basename "$file")
+            # 已发布的包不覆盖：重跑构建会生成哈希不同的同名文件，悄悄替换会让用户的校验值对不上。
+            if echo "$existing" | grep -qx "$name"; then
+              echo "已存在，跳过：$name"
+            else
+              echo "上传 $name"
+              gh release upload "$TAG" "$file"
+            fi
           done
